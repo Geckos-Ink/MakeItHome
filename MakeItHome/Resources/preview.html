@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en" >
+    <head>
+        <meta charset="UTF-8">
+        <title>CSS Random Bubbles background</title>
+        <link rel="stylesheet" href="./assets/preview.css">
+        <link rel="stylesheet" href="./assets/style.css">
+
+        <script src="./assets/jquery-3.7.1.min.js"></script>
+        
+        <style>
+            .title{
+                font-size: 22px;
+                padding: 10px;
+            }
+        </style>
+        
+    </head>
+    <body>
+        <!-- partial:index.partial.html -->
+        <div class='main'>
+          <div class='bubble bubble-1'></div>
+          <div class='bubble bubble-2'></div>
+          <div class='bubble bubble-3'></div>
+          <div class='bubble bubble-4'></div>
+          <div class='bubble bubble-5'></div>
+          <div class='bubble bubble-6'></div>
+          <div class='bubble bubble-7'></div>
+          <div class='bubble bubble-8'></div>
+          <div class='bubble bubble-9'></div>
+          <div class='bubble bubble-10'></div>
+          <div class='bubble bubble-11'></div>
+          <div class='bubble bubble-12'></div>
+          <div class='bubble bubble-13'></div>
+          <div class='bubble bubble-14'></div>
+          <div class='bubble bubble-15'></div>
+          <div class='bubble bubble-16'></div>
+          <div class='bubble bubble-17'></div>
+          <div class='bubble bubble-18'></div>
+          <div class='bubble bubble-19'></div>
+          <div class='bubble bubble-20'></div>
+          <div class='bubble bubble-21'></div>
+          <div class='bubble bubble-22'></div>
+          <div class='bubble bubble-23'></div>
+          <div class='bubble bubble-24'></div>
+          <div class='bubble bubble-25'></div>
+          <div class='bubble bubble-26'></div>
+          <div class='bubble bubble-27'></div>
+          <div class='bubble bubble-28'></div>
+          <div class='bubble bubble-29'></div>
+          <div class='bubble bubble-30'></div>
+        </div>
+        
+        <div class="overscreen">
+            <div class="space">
+                <div class="hello">
+                    <div>
+                        <img src="assets/hello.png"/>
+                        <div class="title">
+                        Welcome in the next step of <br> <b>MakeItHome</b>!
+                        </div>
+                    </div>
+                </div>
+
+                <div class="left">
+
+                    <div class="show bold" id="show1">
+                        Hello, this will be your widgets zone.
+                    </div>
+                    <div class="show" id="show2">
+                        Discover the power of customization and productivity in our new Widgets Zone. With the upcoming 2.0 version, we're introducing a dynamic space designed exclusively for you.                    
+                    </div>
+
+                    <div class="show bold" id="show5">
+                        Clipboard Management Made Simple
+                    </div>
+                    <div class="show" id="show6">
+                        Say goodbye to the limitations of traditional copy-paste. Manage your clipboard history seamlessly within the Widgets Zone. Retrieve snippets of text or media with just a click.
+                    </div>
+
+                    <div class="show bold" id="show9">
+                        Personalized Widgets, Your Way
+                    </div>
+                    <div class="show" id="show10">
+                        Add a touch of personality to your workspace. Customize your Widgets Zone with personalized widgets tailored to your needs. From weather updates to to-do lists, make your workspace truly yours.
+                    </div>
+                    
+                </div>
+
+                <div class="right">
+                    <div class="show bold" id="show3">
+                        Drag-and-Drop files easily
+                    </div>
+                    <div class="show" id="show4">
+                        Effortlessly drag files in and out of the Widgets Zone, streamlining your workflow. No more navigating through complex menus – simplicity meets efficiency.    
+                    </div>
+
+                    <div class="show bold" id="show7">
+                        Search Engine Queries
+                    </div>
+                    <div class="show" id="show8">
+                        Harness the speed of instant searches. Perform rapid searches across the web without switching tabs. Your search engine results, now just a glance away.
+                    </div>
+
+                    <div class="show bold" id="show11">
+                        Experience the Future: Version 2.0
+                    </div>
+                    <div class="show" id="show12">
+                        Get ready for the ultimate upgrade! The 2.0 version of our app is set to launch in December 2023, introducing a world of possibilities. Elevate your experience, streamline your tasks, and embrace a new era of productivity.
+                    </div>
+
+                </div>
+            </div>
+        </div>
+      
+        <style>
+            .show{
+                display: none;
+                font-size: 16px;
+                filter: blur(4px);
+            }
+
+            .show span{
+                display: inline-block;
+                opacity: 0;
+                filter: blur(4px);
+            }
+
+            .bold {
+                font-weight: bold;
+            }
+
+            .show.bold {
+                margin-top: 10px;
+            }
+            
+            @keyframes scale {
+                100% {
+                    transform: scale(1);
+                }
+            }
+
+            @keyframes fade-in{
+                100%{
+                    opacity: 1;
+                }
+            }
+
+            @keyframes focus-in {
+                100% {                    
+                    filter: blur(0px);
+                    color: black;
+                }
+            }
+
+            @keyframes show-hello {
+                0% {                    
+                    filter: blur(3px);
+                    transform: translateY(-50px);
+                    color: black;
+                }
+
+                100% {                    
+                    filter: blur(0px);
+                    transform: translateY(0px);
+                    color: black;
+                }
+            }
+
+            .hello > div {
+                animation: show-hello 0.5s forwards linear;
+            }
+            
+        </style>
+
+        <script>
+            // https://codepen.io/alvarotrigo/pen/ExvqdNa
+
+            const wordDuration = 0.04
+            function show(id, offset=0, go=false){
+
+                $id = $('#'+id)
+
+                let text = $id.html()
+                let words = text.split(' ')
+
+                let res = ''
+
+                let cTime = 0
+                for(let i in words){
+                    let word = words[i]
+
+                    if(/[a-zA-Z0-9!"#$%&'()*+,-./:;<=>?@[\\\]^_`{|}~]/.test(word)){
+                        res += '<span style="animation: fade-in '+wordDuration+'s '+cTime+'s forwards cubic-bezier(0.11, 0, 0.5, 0), focus-in '+(wordDuration*2)+'s '+cTime+'s forwards cubic-bezier(0.11, 0, 0.5, 0);">'+word+'</span> '
+                        cTime += wordDuration
+                    }
+                }
+
+                if(!go){
+                    setTimeout(()=>{
+                        show(id, offset, true)
+                    }, (offset + (wordDuration*10)) * 1000)
+
+                    let func = (id)=>{
+                        return show(id, offset + cTime)                    
+                    }                
+
+                    return func
+                }
+
+                $id.html(res)
+
+                $id.attr('style', 'transform: scale(0.94); animation: scale '+cTime+'s forwards cubic-bezier(0.5, 1, 0.89, 1), focus-in '+cTime+'s forwards cubic-bezier(0.5, 1, 0.89, 1); display: block;')
+            }
+
+            setTimeout(()=>{
+                show('show1')('show2')('show3')('show4')('show5')('show6')('show7')('show8')('show9')('show10')('show11')('show12')
+            }, 1000)            
+
+        </script>
+
+    </body>
+</html>

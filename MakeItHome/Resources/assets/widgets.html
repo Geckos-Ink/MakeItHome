@@ -1,0 +1,310 @@
+<html>
+    <head>
+        <style>
+            .draggable {
+                width: 200px;
+                height: 50px;
+                background-color: lightblue;
+                text-align: center;
+                padding-top: 10px;
+                cursor: grab;
+            }
+            
+            [draggable=true] {
+              -khtml-user-drag: element;
+              -webkit-user-drag: element;
+              -khtml-user-select: none;
+              -webkit-user-select: none;
+            }
+            
+            .table {
+                display: table;
+                width: 100%;
+                height: 100%
+            }
+            
+            .table .left, .table .right {
+                position: relative;
+                display: table-cell;
+                width: 15%
+            }
+
+            .table .line {
+                position: absolute;
+                bottom: 5%;
+                top: 5%;
+
+                background-image: url('./line.png');
+                background-size: 100% 100%;
+
+                width: 2px;
+            }
+
+            .table .left .line {
+                right: 10px;                
+            }
+
+            .table .right .line {
+                left: 10px;
+                transform: rotate(180deg);
+            }
+
+            .table .right .clipboardRight {
+                position: absolute;
+                left: 15px;
+                right: 0px;
+                top: 0px;
+                bottom: 0px;
+
+                padding: 5px;
+            }
+            
+            .table .center {
+                display: table-cell;
+            }
+
+        </style>
+        
+        <link rel="stylesheet" href="./style.css">
+        
+        <link rel="stylesheet" href="./fontawesome/css/all.min.css">
+
+        <script src="./jquery-3.7.1.min.js"></script>
+        <script src="./masonry.pkgd.min.js"></script>
+        
+        <!-- OsenUI -->
+        <link rel="stylesheet" href="./onsenui/css/onsenui.css">
+        <link rel="stylesheet" href="./onsenui/css/dark-onsen-css-components.min.css">
+        <script src="./onsenui/js/onsenui.min.js"></script>
+    </head>
+    
+    <body ondrop="drop(event)" ondragover="allowDrop(event)" ondragover="dragover_handler(event)" ondragend="dragend(event)" ondragenter="dragenter(event)" ondragleave="dragleave(event)">
+        <div class="overscreen">
+            <!--<br><br><br>
+            <h1 ondrag="drag(event)">Hello world</h1>
+            
+            <div id="draggableElement" class="draggable" draggable="true">
+                Drag me to create a file!
+            </div>-->
+            
+            <div class="table">
+                <div class="left">
+                    <div class="leftMenu">
+                        <div class="appItem" id="appItem-settings" onclick="openApp('settings')">
+                            <div class="img"><!--<img src="./assets/settings.png"/>--><i class="fa fa-cog" aria-hidden="true"></i></div> <div class="text">Settings</div>
+                        </div>
+                        <div class="appItem selected" id="appItem-clipboard" onclick="openApp('clipboard')">
+                            <div class="img"><!--<img src="./assets/clipboard.png"/>--><i class="fa fa-clipboard" aria-hidden="true"></i></div> <div class="text">Clipboard</div>
+                        </div>
+                        <!--<div class="appItem" id="appItem-todo" onclick="openApp('todo')">
+                            <div class="img"><i class="fa fa-list-ul" aria-hidden="true"></i></div> <div class="text">To-do</div>
+                        </div>-->
+
+                        <!-- Board Apps -->
+                        <div class="appItem" id="appItem-board-notes" onclick="openApp('board-notes')">
+                            <div class="img"><i class="fa-solid fa-note-sticky"></i></div> <div class="text">Notes</div>
+                        </div>
+                        <div class="appItem" id="appItem-board-tasks" onclick="openApp('board-tasks')">
+                            <div class="img"><i class="fa-solid fa-list-check"></i></div> <div class="text">Tasks</div>
+                        </div>
+                        <!--<div class="appItem" id="appItem-board-scrumboard" onclick="openApp('board-scrumboard')">
+                            <div class="img"><i class="fa-solid fa-chess-board"></i></div> <div class="text">Scrumboard</div>
+                        </div>-->
+
+                        <!-- -->
+                        <div class="appItem" id="appItem-calendar" onclick="openApp('calendar')">
+                            <div class="img"><i class="fa-regular fa-calendar"></i></div> <div class="text">Calendar</div>
+                        </div>
+                    </div>
+
+                    <div class="line"></div>
+                </div>
+                <div class="app-main center">
+                    <div id="clipboard">                        
+                        <div class="down">
+                            <div class="grid">                                
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="search">
+                        <div class="bar">
+                            <input id="searchbar" class="searchbar" type="text" title="Search" onkeypress="searchPressEnter(event)">
+                            <a href="#"> <img class="voice" src="./search.png" title="Search by Voice"></a>
+                        </div>
+                    </div>
+                </div>
+                <div class="app-main right">
+                    <div class="line"></div>
+
+                    <div class="clipboardRight">
+                        <div class="rightButton" onclick="clearClipboard()">Clear clipboard</div>
+                    </div>
+                </div>
+            </div>
+
+            <!--<div class="app" id="app-todo">
+                <div class="todo">
+                    <ul></ul>
+                    <form>
+                        <input type="text" placeholder="Add new task...">
+                        <button type="submit">+</button>
+                    <closeform></closeform></form>                    
+                </div>
+            </div>-->
+
+            <div class="app" id="app-phantom">
+                <!-- Just a placeholder -->                
+            </div>
+
+            <div class="app" id="app-board">
+                <iframe id="app-board-iframe" src="http://127.0.0.1:19494/fuse/index.html"></iframe>
+            </div>
+
+            <div class="app" id="app-calendar">
+                <!-- Load component -->                
+            </div>
+
+            <div class="app" id="app-settings">
+                <div class="title">Settings</div>
+
+                <ons-page class="list">                  
+                    <ons-list>
+                      <ons-list-header>Sections</ons-list-header>
+                      <ons-list-item modifier="chevron" tappable class="general">General</ons-list-item>
+                      <ons-list-item modifier="chevron" tappable class="guides">Guides</ons-list-item>
+                    </ons-list>                  
+                </ons-page>
+
+                <div id="sections">
+                    <div class="section general">
+                        <div class="paragraphs">
+                            <div class="paragraph">
+                                <div class="title">Introduction</div>
+                                Welcome in MakeItHome settings. This is a preview of the widgets side which will be implemented in MakeItHome 2. <br>
+                                At this moment are missing many features including widgets' translations, but we appreciate your feedback about your experience.
+                            </div>
+
+                            <div class="paragraph">
+                                <div class="title">General</div>
+                                <ons-list>
+                                    <ons-list-item tappable>
+                                        <label class="left">
+                                            <ons-checkbox input-id="check-detectDragAndDrop"></ons-checkbox>
+                                        </label>
+                                        <label for="check-detectDragAndDrop" class="center">
+                                            Enable Widgets Zone drag and drop detection
+                                        </label>
+                                    </ons-list-item>
+                                </ons-list>
+                            </div>
+
+                            <div class="paragraph">
+                                <div class="title">Share your feedback</div>
+                                Soon will be available the messaging system internally in the widgets zone. <br>
+                                For the moment, to share your feedback about the product, you can contact <a href="mailto:makeithome@geckos.ink">makeithome@geckos.ink</a>.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section guides">
+                        <div class="paragraphs">
+                            <div class="paragraph">
+                                <div class="title">How works the Clipboard</div>
+                                The clipboard allows you to manage the history of your copied items. <br>
+                                The basics concepts are: <br>
+                                - Click on the element for copying it again on the clipboard <br>
+                                - After you have clicked on the item, if it's red, you can drag it int the app you want <br>
+                                - You can drag an element on the clipboard bringing the file on the top menu bar <br>
+                                - You can delete an element in the clipboard by clicking it with the right button of the mouse <br>
+                            </div>
+
+                            <div class="paragraph">
+                                <div class="title">How to show notifications</div>
+                                By default, due to the using of screen recording, the notifications are disabled. <br>
+                                You can enable it going in Settings > Notification settings and enabling "Allow notifications when mirroring or sharing the display".
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+            
+        </div>
+
+        <div class="extension">
+            <div class="webSearch">
+                <iframe id="webSearchFrame" src=""></iframe>
+            </div>
+        </div>
+
+        <!-- Free elements -->
+        <div class="webSearchTips">
+
+        </div>
+    </body>
+</html>
+
+<script>
+    let onApp = false;
+    function sendMessage(message) {
+        if(!onApp) return;
+
+        if(typeof(message) == 'object')
+            message = JSON.stringify(message)
+
+        window.location.href = "myapp://message?text=" + encodeURIComponent(message);
+    }
+
+    /// Errors handler
+    window.onerror = (msg, url, line, column, error) => {
+        const message = {
+            message: msg,
+            url: url,
+            line: line,
+            column: column,
+            error: JSON.stringify(error)
+        }
+
+        sendMessage({type: 'jsError', value: JSON.stringify(message)})
+    };
+        
+    /*let draggingWhat = ""
+    
+    document.getElementById("draggableElement").addEventListener("click", function(event) {
+        sendMessage("my love")
+        
+        setTimeout(()=>{
+            sendMessage("dragOut")
+        }, 10)
+    });
+    
+    document.getElementById("draggableElement").addEventListener("mousedown", function(event) {
+        draggingWhat = "this two"
+    });
+    
+    document.getElementById("draggableElement").addEventListener("dragstart", function(event) {
+        var fileURL = "file:///Users/riccardo/Sources/GitHub/Extension-Twitch-LowLatency/stuff/forward.png"; // Replace with the actual file URL
+        
+        //event.dataTransfer.setData("image/png", "forward.png");
+        //event.dataTransfer.setData("DownloadURL", "application/octet-stream:forward.png:" + fileURL);
+        
+        draggingWhat = "this one"
+    });
+    
+    document.getElementById("draggableElement").addEventListener("dragend", function(event) {
+        console.log(event)
+        
+        var fileURL = "file:///Users/riccardo/Sources/GitHub/Extension-Twitch-LowLatency/stuff/forward.png"; // Replace with the actual file URL
+        
+        //event.dataTransfer.setData("image/png", "forward.png");
+        //event.dataTransfer.setData("DownloadURL", "application/octet-stream:forward.png:" + fileURL);
+    });*/
+    
+</script>
+
+<script src="./script.js"></script>
+
+<script>
+    loadComponent("calendar", $("#app-calendar"))
+</script>

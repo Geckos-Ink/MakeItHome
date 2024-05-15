@@ -1,0 +1,30 @@
+<script>
+
+function readyForClick(){
+    // Select all anchor elements on the page
+    var anchorElements = document.querySelectorAll("a");
+
+    // Add a click event listener to each anchor element
+    anchorElements.forEach(function(anchorElement) {
+        anchorElement.addEventListener("click", function(event) {
+            // Your custom code to execute when any anchor is clicked
+            console.log("Anchor clicked!");
+
+            window.parent.postMessage(anchorElement.href, "*");
+        });
+    });
+}
+
+window.addEventListener('message', function(event) {
+    console.log("Message received from the parent: " + event.data); // Message received from parent
+
+    // Create a new DOMParser instance
+    //var parser = new DOMParser();
+    //var doc = parser.parseFromString(event.data, 'text/html');
+
+    //document.body.innerHTML = event.data
+    document.querySelector('html').innerHTML = event.data;
+
+    readyForClick();
+});
+</script>

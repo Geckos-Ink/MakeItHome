@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSAppSleepDisabled</key>
+	<true/>
+	<key>SCNPreferredRenderingAPI</key>
+	<integer>2</integer>
+	<key>NSSupportsAutomaticGraphicsSwitching</key>
+	<false/>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>MakeItHome accesses to your calendar to show your events in the widgets zone.</string>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>MakeItHome wants to write your new event on your Calendar.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>MakeItHome accesses to your calendar to show your events in the widgets zone.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>MakeItHome uses AppleEvents to retrieve some system information, like the background image.</string>
+	<key>NSLocalUsageDescription</key>
+	<string>MakeItHome need to check if you&apos;re the owner of your computer.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>MakeItHome requires access to your camera for face recognition.</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>Application is background only</key>
+	<false/>
+	<key>LSUIElement</key>
+	<true/>
+</dict>
+</plist>

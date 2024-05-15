@@ -1,0 +1,3 @@
+npm install --cache /tmp/empty-cache
+
+ng build -c=development

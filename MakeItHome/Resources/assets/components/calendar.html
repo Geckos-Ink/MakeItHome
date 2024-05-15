@@ -1,0 +1,464 @@
+
+<style>
+    .body {
+        font-family: 'Arial', sans-serif;
+        background-color: rgba(64,64,64, 0.4);
+        color: white;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100%;
+        width: 100%;
+        margin: 0;
+    }
+
+    .calendar {
+        /*width: 80%;
+        max-width: 600px;*/
+        border: 1px solid rgba(100,100,100, 0.4);
+    }
+
+    .month-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 5px;
+        background-color: rgba(80,80,80, 0.4);
+    }
+
+    .month-year {
+        font-size: 20px;
+    }
+
+    .navigation .nav-button {
+        background-color: #555;
+        border: none;
+        color: white;
+        padding: 5px 10px;
+        cursor: pointer;
+    }
+
+    .navigation .nav-button:focus {
+        outline: none;
+    }
+
+    :root {
+        --height-fraction: 0px; /* Set the height you want to match here */
+        --width-fraction: 0px
+    }
+
+    .weekdays {
+        display: grid;
+        grid-template-columns: repeat(7, var(--width-fraction));
+        background-color: #555;
+        padding: 5px 0;
+        text-align: center;
+        font-size: 12px;
+    }
+
+    .days-grid {
+        display: grid;
+        grid-template-columns: repeat(7, var(--width-fraction));
+        grid-template-rows: repeat(5, calc(var(--height-fraction) - 13px));
+    }
+
+    .day {
+        padding: 5px;
+        border-bottom: 1px solid #555;
+        border-right: 1px solid #555;
+        text-align: right;
+        position: relative;
+    }
+
+    .day:last-child {
+        border-right: none;
+    }
+
+    .day.other-month {
+        background-color: #222;
+    }
+
+    .day:not(.other-month):hover {
+        background-color: #555;
+        cursor: pointer;
+    }
+
+    /*.day::after {
+        content: '';
+        display: block;
+        margin-top: 100%;
+    }*/
+
+    .day.today {
+        background-color: red;
+        border-radius: 50%;
+        color: white;
+    }
+
+    /* Special days with events */
+    .day.special-day::before {
+        content: attr(data-event);
+        display: block;
+        position: absolute;
+        bottom: 5px;
+        left: 5px;
+        background-color: #5c5;
+        color: black;
+        padding: 2px 5px;
+        border-radius: 5px;
+        font-size: 0.7em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: calc(100% - 10px);
+    }
+
+    .dayNumber {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+    }
+
+    .dayNumber.isToday {
+        background-color: rgba(255,0,0,1);
+        border-radius: 10px;
+
+        padding:5px;
+        font-weight: bold;
+    }
+
+    .dayContent {
+        position: absolute;
+        top: 0px;
+        left: 0px;
+        right: 0px;
+        bottom: 0px;
+
+        text-align: left;
+
+        overflow-y:scroll;
+    }
+
+    .event {
+        display:block;
+        width:fit-content;
+
+        background-color: rgba(64,64,64,0.6);
+        border-radius: 5px;
+        font-size: 12px;
+        padding: 3px;
+        margin: 2px;
+        text-align: left;
+    }
+
+</style>
+
+<div class="body">
+    <div class="calendar">
+        <div class="month-header">
+            <span class="month-year">January 2024</span>
+            <div class="navigation">
+                <button class="nav-button" onclick="prevMonth()">❮</button>
+                <button class="nav-button" onclick="calendarLoadToday()">Today</button>
+                <button class="nav-button" onclick="nextMonth()">❯</button>
+            </div>
+        </div>
+        <div class="weekdays">
+            <div>Mon</div>
+            <div>Tue</div>
+            <div>Wed</div>
+            <div>Thu</div>
+            <div>Fri</div>
+            <div>Sat</div>
+            <div>Sun</div>
+        </div>
+        <div class="days-grid">
+            <!-- Weeks and Days go here -->
+            <!-- First week with placeholders for previous month days -->
+            <div class="day other-month"></div>
+            <div class="day other-month"></div>
+            <div class="day other-month"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+
+    <script>
+        function convertDateFromString(dateString) {
+            const parts = dateString.split('/');
+            
+            // Ensure that the date string has three parts (day, month, and year)
+            if (parts.length === 3) {
+                const day = parseInt(parts[0], 10);
+                const month = parseInt(parts[1], 10) - 1; // Months are zero-based (0-11)
+                const year = parseInt(parts[2], 10);
+
+                if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
+                    return new Date(year, month, day);
+                }
+            }
+
+            // Return null for invalid date strings
+            return null;
+        }
+
+        function getDay(n){
+            return $(".calendar .days-grid .day:eq("+n+")")
+        }
+
+        const gridDays = 7*5
+
+        function clearCalendar(){
+            for(let i=0; i<gridDays; i++){
+                let div = getDay(i);
+                div.removeClass("other-month")
+            }
+        }
+
+        function formatDateToCustomFormat(date, format) {
+            const day = String(date.getDate())
+            const dday = day.padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const year = date.getFullYear();
+
+            // Replace placeholders in the format string
+            return format                
+                .replace('dd', dday)
+                .replace('mm', month)
+                .replace('yyyy', year)
+                .replace('d', day)
+        }
+
+        function generateDay(div, date){
+            const now = new Date()
+            let isToday = (now.getDate()==date.getDate() && now.getMonth()==date.getMonth() && now.getFullYear() == now.getFullYear()) ? ' isToday' : ''
+
+            let set = '<div class="dayNumber'+isToday+'">'+formatDateToCustomFormat(date, 'd')+'</div><div class="dayContent"></div>'
+            div.html(set)            
+        }
+
+        const monthsFull = [
+            "January", "February", "March", "April", "May", "June",
+            "July", "August", "September", "October", "November", "December"
+        ];
+
+        let firstDate = null 
+        let lastDate = null
+
+        function generateMonth(year, month){
+            clearCalendar()
+
+            let firstDay = new Date(year,month,1)
+            let iday = firstDay.getDay() - 1
+
+            //let headerHeight = $(".month-header").height() + $(".weekdays").height()
+
+            $(".calendar .month-year").html(monthsFull[firstDay.getMonth()] + " " + firstDay.getFullYear())
+
+            let lastDay = new Date(year, month+1, 0)
+            const totalDays = lastDay.getDate();         
+
+            firstDate = lastDate = null
+
+            let day = 0
+
+            for(let i=0; i<iday; i++){
+                let div = getDay(day)
+                div.addClass("other-month")
+
+                let date = new Date(firstDay);
+                date.setDate(iday - day);
+                generateDay(div, date)
+
+                if(firstDate == null) firstDate = date                 
+
+                day++
+            }
+
+            for(let d=0; d<totalDays; d++){
+                let div = getDay(day)
+
+                let date = new Date(firstDay);
+                date.setDate(firstDay.getDate()+d);
+                generateDay(div, date)
+
+                if(firstDate == null) firstDate = date  
+                lastDate = date
+
+                day++
+            }
+
+            const nextMonth = new Date(year, month + 1, 1);
+            const curDay = day
+        
+            for(let i=day; day<gridDays; i++){
+                let div = getDay(day)
+                div.addClass("other-month")
+                
+                let date = new Date(nextMonth);
+                date.setDate(nextMonth.getDate()+(day-curDay));                
+                generateDay(div, date)
+
+                lastDate = date
+
+                day++
+            }            
+        }
+
+        let lastToday = null
+        function calendarLoadToday(){
+            let today = new Date()
+            lastToday = today
+
+            curYear = today.getFullYear()
+            curMonth = today.getMonth()
+            
+            generateMonth(curYear, curMonth)
+            if(curApp == 'calendar') retrieveMonth()
+        }
+
+        calendarLoadToday()
+
+        setInterval(()=>{
+            let today = new Date()
+
+            if(lastToday.getDate() != today.getDate())
+                calendarLoadToday()
+
+        }, 60*1000)
+
+        function prevMonth(){
+            curMonth--
+            if(curMonth < 0){                
+                curMonth = 11
+                curYear--
+            }
+
+            generateMonth(curYear, curMonth)
+            retrieveMonth()
+        }
+
+        function nextMonth(){
+            curMonth++
+            if(curMonth > 11){
+                curMonth = 0
+                curYear++
+            }
+
+            generateMonth(curYear, curMonth)
+            retrieveMonth()
+        }
+
+        function updateTableSize(){
+            // Get the root element (usually <html>)
+            const root = document.documentElement;
+            
+            let widthFraction = $("#app-calendar").width()/7
+            let heightFraction = $("#app-calendar").height()/5
+
+            root.style.setProperty('--width-fraction', `${widthFraction}px`);
+            root.style.setProperty('--height-fraction', `${heightFraction}px`);
+        }
+
+        function retrieveMonth(){
+            $(".calendar .dayContent").each(function(){
+                $(this).html('')
+            })
+
+            sendMessage({type: "calendar", value: "eventRange", 
+                firstDate: formatDateToCustomFormat(firstDate, 'dd/mm/yyyy'),
+                lastDate: formatDateToCustomFormat(lastDate, 'dd/mm/yyyy')
+            })
+        }
+
+        /// Set dimensions
+        /*$().ready(()=>{
+            setTimeout(()=>{
+                updateTableSize()
+            },250)
+        })*/
+
+        function openApp_calendar(){
+            setTimeout(()=>{
+                updateTableSize()
+
+                retrieveMonth()
+            },100)
+        }
+
+        setTimeout(()=>{
+            if(curApp == 'calendar') retrieveMonth()
+        }, 60*1000)
+
+        function getDateIndex(date){
+            const currentDate = new Date(firstDate);
+
+            for(let d=0; d<gridDays; d++){
+                if(date.getFullYear() == currentDate.getFullYear() && date.getMonth() == currentDate.getMonth() && date.getDate() == currentDate.getDate())
+                    return d
+
+                // Add 24 hours to the current date
+                currentDate.setHours(currentDate.getHours() + 24);
+            }
+
+            return -1
+        }
+
+        function appReceive_calendar(obj){
+            if(obj.op == 'setEvent'){
+                let day = new Date(obj.day + 'T00:00:00')
+                let index = getDateIndex(day)
+
+                let divDay = getDay(index)
+                let content = divDay.find(".dayContent")
+
+                let add = '<div class="event">'+obj.title+'</div>'
+                content.html(content.html()+add)
+            }
+        }
+        
+    </script>
+
+    <style>
+        .app-calendar {
+            padding: 0px !important;
+            margin: 0px;
+        }
+    </style>
+</div>
