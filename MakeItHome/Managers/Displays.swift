@@ -2192,7 +2192,8 @@ public class Display : Equatable {
     
     let useRelativePointer = false
     
-    var scarfWeight : CGFloat = 0.001 * Static.Sensivity
+    let sensivityBaseConstant = 0.002    
+    var scarfWeight : CGFloat = 0.002 * Static.Sensivity
     var activateOnPixelsLimit : CGFloat = 35
     var moveOnPixels : CGFloat = 0
     let decelerateAboveBy : CGFloat = 0.25
@@ -2274,7 +2275,7 @@ public class Display : Equatable {
     public var alongLine = AlongLine()
     
     func reSetDynamicSettings(){
-        self.scarfWeight = 0.001 * Static.Sensivity
+        self.scarfWeight = sensivityBaseConstant * Static.Sensivity
         self.batteryDivider = GeneralFuncs.ComputerIsConnectedToAdapter() ? 2 : 1
     }
     
