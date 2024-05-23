@@ -20,5 +20,7 @@ I try to make a to do list as memorandum:
 - Find a way to have the community advise about the development of the feature.
 - Find the new icon. And find a possible new name for the app.
 
+By the way, I'm currently working on branch 1.9.4 to publish the next release.
+
 ### Credits
 Riccardo Cecchini \<rcecchini.ds@gmail.com> cekkr@github
