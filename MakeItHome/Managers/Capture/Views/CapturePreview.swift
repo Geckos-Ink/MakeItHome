@@ -113,14 +113,14 @@ import OrderedCollections
         }
         
         if(side == 3){
-            DispatchQueue.main.async { 
+            DispatchQueue.main.async {
                 
-                if(aboveBy == 0){
+                /*if(aboveBy == 0){ // restart rendering only when effectively in over screen (moved directly in Display class)
                     Static.TopBarWebView?.stopRendering()
                 }
                 else {
                     Static.TopBarWebView?.restartRendering()
-                }
+                }*/
                 
                 var offYMul : CGFloat = 1
                 

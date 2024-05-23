@@ -18,7 +18,7 @@ public class Clipboard {
             return
         }               
         
-        Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { timer in
+        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { timer in
             self.checkClipboard()
         }
     }

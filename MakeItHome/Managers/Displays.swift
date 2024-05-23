@@ -2466,6 +2466,16 @@ public class Display : Equatable {
              
         //curSide = checkSide(point: mouseForecast)
         
+        // Restart widgets zone rendering when pointer is around the top zone
+        if curSide>0 && activateSide[curSide]{
+            if(curSide == 3){
+                Static.TopBarWebView?.restartRendering()
+            }
+            else {
+                Static.TopBarWebView?.stopRendering()
+            }
+        }
+        
         //MARK: Top side mouse
         if(curSide == 3 && activateSide[curSide] && self.aboveByPixels == 0){
             aroundTopSide = true

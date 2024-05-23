@@ -6,6 +6,12 @@
 //  Copyright © 2023 geckos.ink. All rights reserved.
 //
 
+/*
+ # Notes:
+ This page is full of unused content during its development.
+ It's necessary to try to remove stuff and check if it continues to work.
+*/
+
 import SwiftUI
 import WebKit
 import Cocoa
