@@ -56,10 +56,16 @@ public class Clipboard {
     }
     
     func checkElement(element : Element){
+        var num = 1
         for hEl in history{
             if hEl == element {
+                if num != history.count {
+                    hEl.alreadySent = hEl.sent
+                    hEl.sent = false
+                }
                 return
             }
+            num += 1
         }
                 
         history.insert(element, at: 0)
@@ -67,28 +73,37 @@ public class Clipboard {
     
     var totElements : Int = 0
     func checkElementsForSending(){
+        var num = 1
         for el in history{
             if el.wait || el.sent {
                 continue
             }
             
-            el.id = totElements
-            totElements += 1
-            
-            let cleanUpTo = totElements - Static.ClipboardForgetElementsOlderThan
-            if cleanUpTo >= 0 {
-                
+            if el.alreadySent {
                 var msg = JSMessage()
-                msg.type = "removeUpTo"
-                msg.value = String(cleanUpTo)
+                msg.type = "removeClipboardItem"
+                msg.value = String(el.id)
                 Static.topBarWebViewRepresentable?.sendMessage(obj: msg)
+            }
+            else {
+                el.id = totElements
+                totElements += 1
                 
-                for el in history{
-                    if el.id > cleanUpTo {
-                        break;
-                    }
+                let cleanUpTo = totElements - Static.ClipboardForgetElementsOlderThan
+                if cleanUpTo >= 0 {
                     
-                    history.remove(at: history.firstIndex(of: el)!)
+                    var msg = JSMessage()
+                    msg.type = "removeUpTo"
+                    msg.value = String(cleanUpTo)
+                    Static.topBarWebViewRepresentable?.sendMessage(obj: msg)
+                    
+                    for el in history{
+                        if el.id > cleanUpTo {
+                            break;
+                        }
+                        
+                        history.remove(at: history.firstIndex(of: el)!)
+                    }
                 }
             }
             
@@ -104,6 +119,7 @@ public class Clipboard {
             el.sent = true
             
             Static.topBarWebViewRepresentable?.sendMessage(obj: msg)
+            num += 1
         }
     }
     
@@ -119,7 +135,7 @@ public class Clipboard {
         
         var something = false
         
-        var el = Element()
+        let el = Element()
         var jump = false
         
         if let copiedString = pasteboard.string(forType: .string) {
@@ -229,6 +245,7 @@ public class Clipboard {
         
         public var wait = false
         public var sent = false
+        public var alreadySent : Bool = false
                  
         public func setUrl(url: URL){
             self.url = url

@@ -186,7 +186,8 @@ $grid.masonry({
     // set itemSelector so .grid-sizer is not used in layout
     itemSelector: '.item',
     // use element for option
-    columnWidth: 50,
+    columnWidth: 80,
+    gutter: 10,
     percentPosition: true,
     initLayout: true
 })   
@@ -225,9 +226,21 @@ function receiveMessage(message){
         if(obj.type == 'removeUpTo'){
             let upTo = parseInt(obj.value)
             $grid.find('.item').each(function(i, e){
-                $e = $(e)
+                let $e = $(e)
                 let id = $e.attr('id').split('-')[1]
                 if(parseInt(id) < upTo){
+                    $e.remove()
+                }
+            })
+        }
+
+        if (obj.type == 'removeClipboardItem') {
+            let itemId = parseInt(obj.value)
+
+            $grid.find('.item').each(function (i, e) {
+                let $e = $(e)
+                let id = $e.attr('id').split('-')[1]
+                if (parseInt(id) == itemId) {
                     $e.remove()
                 }
             })
