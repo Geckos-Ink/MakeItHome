@@ -360,9 +360,6 @@
         }
       }
     },
-    "%@ Activate Face ID" : {
-
-    },
     "%@ Close" : {
 
     },
@@ -544,9 +541,6 @@
       }
     },
     "%@ Don't ask anymore" : {
-
-    },
-    "%@ Face ID" : {
 
     },
     "%@ Help" : {
@@ -1332,9 +1326,6 @@
           }
         }
       }
-    },
-    "Activate MakeItHome's Face ID now!" : {
-
     },
     "And click to '+' selecting MakeItHome in your Applications folder." : {
       "localizations" : {
