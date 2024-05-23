@@ -158,7 +158,6 @@
     */
 
     #newEvent {
-        display: none;
         position: fixed;
         top: -600px;
         left: 0px;
@@ -167,7 +166,8 @@
 
     .form-container {       
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        padding: 20px;
+        padding: 10px;
+        padding-top: 30px;
         max-width: 600px;
         margin: 0 auto;
 
@@ -176,7 +176,7 @@
         border-top-right-radius: 0px;
 
         background-color: rgba(0, 0, 0, 0.5);
-        backdrop-filter: blur(10px);
+        -webkit-backdrop-filter: blur(10px);
 
         color: white;
     }
@@ -211,17 +211,24 @@
         border-radius: 6px;
         border: 1px solid #ccc;
         font-size: 14px;
-        color: #333;
+        color: white;
 
         margin-left: auto;
         margin-right: auto;
+
+        background-color: rgba(0, 0, 0, 0.25);
     }
+
+    .form-group input:hover {
+        background-color: rgba(0, 0, 0, 0.5);
+    }
+
     .form-group textarea {
         height: 50px;
     }
     .form-group button {
-        background-color: rgba(0,0,0, 0.5);
-        color: white;
+        background-color: rgba(255,255,255, 0.5);
+        color: black;
         padding: 5px 10px;
         border: none;
         border-radius: 6px;
@@ -232,7 +239,7 @@
         margin-top: 10px;
     }
     .form-group button:hover {
-        background-color: #005ecb;
+        background-color: rgba(255,255,255, 0.75);
     }
 
 </style>
@@ -578,8 +585,25 @@
         ///
         /// New/edit event
         ///
+
+        function showNewEvent(){
+            $("#newEvent").animate({top: 0}, 300, ()=>{
+
+            })
+        }
+
+        function hideNewEvent(){
+            $("#newEvent").animate({top: "-100%"}, 300, ()=>{
+
+            })
+        }
+
+        $(".eventDone").on('click', (e)=>{
+            hideNewEvent()
+        })
+
         $( ".day" ).on( "contextmenu", function(e) {
-            alert( "Hello World!" );
+            showNewEvent()
         } );
         
     </script>
