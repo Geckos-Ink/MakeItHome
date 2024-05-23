@@ -282,6 +282,7 @@
 
         let firstDate = null 
         let lastDate = null
+        let firstDateIndex = 0
 
         function generateMonth(year, month){
             clearCalendar()
@@ -312,6 +313,8 @@
 
                 day++
             }
+
+            firstDateIndex = iday
 
             for(let d=0; d<totalDays; d++){
                 let div = getDay(day)
@@ -445,7 +448,7 @@
         function appReceive_calendar(obj){
             if(obj.op == 'setEvent'){
                 let day = new Date(obj.day + 'T00:00:00')
-                let index = getDateIndex(day)
+                let index = getDateIndex(day) + firstDateIndex
 
                 let divDay = getDay(index)
                 let content = divDay.find(".dayContent")
