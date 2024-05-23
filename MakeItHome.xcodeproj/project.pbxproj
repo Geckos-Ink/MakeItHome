@@ -13,9 +13,6 @@
 		8B3D40592AD70F94003DFAC7 /* mrWhite.html in Resources */ = {isa = PBXBuildFile; fileRef = 8B3D40572AD70F93003DFAC7 /* mrWhite.html */; settings = {ASSET_TAGS = (New, ); }; };
 		8B60F6D92AEFDA8B00DA12A2 /* NavigateZoneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B60F6D82AEFDA8B00DA12A2 /* NavigateZoneView.swift */; };
 		8B73A9CE2A9267D10057F86B /* IWantYouView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B73A9CC2A9267D10057F86B /* IWantYouView.swift */; };
-		8B74407228E6A89B00E7AD36 /* MakeItHomeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B74407128E6A89B00E7AD36 /* MakeItHomeTests.swift */; };
-		8B74407C28E6A89B00E7AD36 /* MakeItHomeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B74407B28E6A89B00E7AD36 /* MakeItHomeUITests.swift */; };
-		8B74407E28E6A89B00E7AD36 /* MakeItHomeUITestsLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B74407D28E6A89B00E7AD36 /* MakeItHomeUITestsLaunchTests.swift */; };
 		8B76137A296D670A00425767 /* UpdateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B761379296D670A00425767 /* UpdateView.swift */; };
 		8B9E532C2B52F38B00D81833 /* CocoaManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B9E532A2B52F38B00D81833 /* CocoaManager.swift */; };
 		8B9E53302B52F3D100D81833 /* wallpaperDark.jpeg in Resources */ = {isa = PBXBuildFile; fileRef = 8B9E532E2B52F3D100D81833 /* wallpaperDark.jpeg */; settings = {ASSET_TAGS = (New, ); }; };
@@ -108,10 +105,7 @@
 		8B74406628E6A89B00E7AD36 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		8B74406828E6A89B00E7AD36 /* MakeItHome.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MakeItHome.entitlements; sourceTree = "<group>"; };
 		8B74406D28E6A89B00E7AD36 /* MakeItHomeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MakeItHomeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		8B74407128E6A89B00E7AD36 /* MakeItHomeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MakeItHomeTests.swift; sourceTree = "<group>"; };
 		8B74407728E6A89B00E7AD36 /* MakeItHomeUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MakeItHomeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		8B74407B28E6A89B00E7AD36 /* MakeItHomeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MakeItHomeUITests.swift; sourceTree = "<group>"; };
-		8B74407D28E6A89B00E7AD36 /* MakeItHomeUITestsLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MakeItHomeUITestsLaunchTests.swift; sourceTree = "<group>"; };
 		8B761379296D670A00425767 /* UpdateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateView.swift; sourceTree = "<group>"; };
 		8B81DDBE291B1D0A00B3E3CC /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
 		8B81DDC02927FF5300B3E3CC /* GeneralFuncs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralFuncs.swift; sourceTree = "<group>"; };
@@ -235,8 +229,6 @@
 				8B4B7D1829173171009B55FE /* MakeItHome.icns */,
 				8BE1B22B28F01E030037D132 /* Packages */,
 				8B74405E28E6A89800E7AD36 /* MakeItHome */,
-				8B74407028E6A89B00E7AD36 /* MakeItHomeTests */,
-				8B74407A28E6A89B00E7AD36 /* MakeItHomeUITests */,
 				8B74405D28E6A89800E7AD36 /* Products */,
 				8BE1B22628EFE9E60037D132 /* Frameworks */,
 			);
@@ -283,23 +275,6 @@
 				8B74406628E6A89B00E7AD36 /* Preview Assets.xcassets */,
 			);
 			path = "Preview Content";
-			sourceTree = "<group>";
-		};
-		8B74407028E6A89B00E7AD36 /* MakeItHomeTests */ = {
-			isa = PBXGroup;
-			children = (
-				8B74407128E6A89B00E7AD36 /* MakeItHomeTests.swift */,
-			);
-			path = MakeItHomeTests;
-			sourceTree = "<group>";
-		};
-		8B74407A28E6A89B00E7AD36 /* MakeItHomeUITests */ = {
-			isa = PBXGroup;
-			children = (
-				8B74407B28E6A89B00E7AD36 /* MakeItHomeUITests.swift */,
-				8B74407D28E6A89B00E7AD36 /* MakeItHomeUITestsLaunchTests.swift */,
-			);
-			path = MakeItHomeUITests;
 			sourceTree = "<group>";
 		};
 		8B9E53322B545D2600D81833 /* Widgets */ = {
@@ -546,7 +521,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				8B74407228E6A89B00E7AD36 /* MakeItHomeTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -554,8 +528,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				8B74407E28E6A89B00E7AD36 /* MakeItHomeUITestsLaunchTests.swift in Sources */,
-				8B74407C28E6A89B00E7AD36 /* MakeItHomeUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
