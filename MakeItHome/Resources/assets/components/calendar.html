@@ -536,6 +536,25 @@
             return new Date(year, month, day, hours, minutes);
         }
 
+        function parseDateString(dateTimeString) {
+            // Validate and extract parts using a regular expression
+            const regex = /^(\d{4})\/(\d{2})\/(\d{2})$/;
+            const match = dateTimeString.match(regex);
+
+            if (!match) {
+                throw new Error("Invalid date-time format. Expected format: yyyy/mm/dd hh:mm");
+            }
+
+            // Extract components from the regex match groups
+            const year = parseInt(match[1], 10);
+            const month = parseInt(match[2], 10) - 1; // Months are 0-based in JavaScript Date
+            const day = parseInt(match[3], 10);
+
+            // Create and return the Date object
+            return new Date(year, month, day);
+        }
+
+
         function parseTimeString(timeString){
             const regex = /^(\d{2}):(\d{2})$/;
             const match = timeString.match(regex);
@@ -937,9 +956,10 @@
             $("#calendarStartTime").val(event.startTime)
             $("#calendarEndTime").val(event.endTime)
             $("#eventNotes").val(event.notes)
-            $("#eventNotes").val(event.notes)
             $("#eventLocation").val(event.location)
             $("#eventUrl").val(event.url)
+
+            selectedCalendar(event.calendar)
             //$("#newEventCalendar").val(event.calendar)
 
             showNewEvent(strId)
@@ -954,8 +974,14 @@
             selectedCalendar(Object.keys(calendarsList)[0])
 
             if(!event){
-                $('#calendarStartTime').val(setCurrentDateTimeFormat())
-                $('#calendarEndTime').val(setCurrentDateTimeFormat())
+                $('#eventDay').val(setCurrentDateTimeFormat(null, 1))
+                $('#calendarStartTime').val(setCurrentDateTimeFormat(null, 2))
+                $('#calendarEndTime').val(setCurrentDateTimeFormat(null,2))
+
+                $("#eventName").val('')                
+                $("#eventNotes").val('')           
+                $("#eventLocation").val('')        
+                $("#eventUrl").val('')        
             }
 
             $("#newEvent").animate({top: 0}, 300, ()=>{
@@ -964,6 +990,42 @@
         }
 
         function hideNewEvent(){
+            let msg = {
+                type: "calendar",
+                title: $("#eventName").val(),
+                day: parseDateString($("#eventDay").val()),
+                startTime: $("#calendarStartTime").val(),
+                endTime: $("#calendarEndTime").val(),
+                calendar: selCalendar,
+                notes: $("#eventNotes").val(),
+                location: $("#eventLocation").val(),
+                url: $("#eventUrl").val(),
+            } 
+        
+            if(!editingEvent){
+                // create event
+                if(msg.title)
+                    msg.value = "newEvent"                
+            }
+            else {
+                if(msg.title){
+                    msg.value = "updateEvent"                
+                    msg.strId = editingEvent
+                }
+            }
+
+            if(msg.value){
+                console.log("edit/create calendar event", msg)                
+
+                setTimeout(()=>{
+                    sendMessage(msg)           
+                }, 25)   
+
+                setTimeout(()=>{
+                    retrieveMonth()                
+                }, 50)                
+            }
+
             $("#newEvent").animate({top: "-100%"}, 300, ()=>{
 
             })

@@ -253,7 +253,9 @@
         if(typeof(message) == 'object')
             message = JSON.stringify(message)
 
-        window.location.href = "myapp://message?text=" + encodeURIComponent(message);
+        console.log("sending message", message)
+        message = encodeURIComponent(message)        
+        window.location.href = "myapp://message?text=" + message;
     }
 
     /// Errors handler

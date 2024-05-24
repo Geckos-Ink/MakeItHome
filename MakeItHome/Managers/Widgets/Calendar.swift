@@ -9,6 +9,42 @@
 import Foundation
 import EventKit
 
+func combineDateWithTimeString(date: Date, withTime timeString: String) -> Date? {
+    // Date formatter to parse the time string
+    let timeFormatter = DateFormatter()
+    timeFormatter.dateFormat = "HH:mm"
+
+    // Get the time components from the time string
+    guard let timeDate = timeFormatter.date(from: timeString) else {
+        print("Invalid time format")
+        return nil
+    }
+
+    // Extract hour and minute components from the parsed time
+    let calendar = EventKit.Calendar.current
+    let timeComponents = calendar.dateComponents([.hour, .minute], from: timeDate)
+    guard let hour = timeComponents.hour, let minute = timeComponents.minute else {
+        print("Error extracting time components")
+        return nil
+    }
+
+    // Extract year, month, and day components from the original date
+    let dateComponents = calendar.dateComponents([.year, .month, .day], from: date)
+    
+    // Combine date and time components to create a new Date object
+    var combinedComponents = DateComponents()
+    combinedComponents.year = dateComponents.year
+    combinedComponents.month = dateComponents.month
+    combinedComponents.day = dateComponents.day
+    combinedComponents.hour = hour
+    combinedComponents.minute = minute
+
+    // Create the new Date object with combined components
+    let combinedDate = calendar.date(from: combinedComponents)
+    
+    return combinedDate
+}
+
 class Calendar {
     var calendars : [String:EKCalendar] = [:]
     
@@ -35,7 +71,56 @@ class Calendar {
         }
         
         if msg.value == "newEvent" {
-            //TODO
+            let eventStore = EKEventStore()
+            let event = EKEvent(eventStore: eventStore)
+            event.title = msg.title
+            
+            let dateFormatter = ISO8601DateFormatter()
+            let day = dateFormatter.date(from: msg.day!)
+            
+            event.startDate = combineDateWithTimeString(date: day!, withTime: msg.startTime!)
+            event.endDate = combineDateWithTimeString(date: day!, withTime: msg.endTime!)
+            
+            event.url = msg.url
+            event.location = msg.location
+            event.notes = msg.notes
+            
+            event.calendar = calendars[msg.calendar!]
+
+            do {
+                try eventStore.save(event, span: .thisEvent)
+                print("Event created")
+            } catch let error as NSError {
+                print("Failed to save event with error: \(error)")
+            }
+        }
+        
+        if msg.value == "updateEvent" {
+            let eventStore = EKEventStore()
+            if let event = eventStore.event(withIdentifier: msg.strId!) {
+                event.title = msg.title
+                
+                let dateFormatter = ISO8601DateFormatter()
+                let day = dateFormatter.date(from: msg.day!.replacingOccurrences(of: "\\.\\d+", with: "", options: .regularExpression))
+                
+                event.startDate = combineDateWithTimeString(date: day!, withTime: msg.startTime!)
+                event.endDate = combineDateWithTimeString(date: day!, withTime: msg.endTime!)
+                
+                event.url = msg.url
+                event.location = msg.location
+                event.notes = msg.notes
+                
+                event.calendar = calendars[msg.calendar!]
+
+                do {
+                    try eventStore.save(event, span: .thisEvent)
+                    print("Event updated")
+                } catch let error as NSError {
+                    print("Failed to save event with error: \(error)")
+                }
+            } else {
+                print("Event not found")
+            }
         }
     }
     
@@ -138,6 +223,7 @@ class Calendar {
         Static.TopBarWebView?.sendMessage(obj: msg)
     }
     
+    // Unused function, but it's a model example
     func createEvent(eventStore: EKEventStore, title: String, startDate: Date, endDate: Date) {
         let event = EKEvent(eventStore: eventStore)
         event.title = title
