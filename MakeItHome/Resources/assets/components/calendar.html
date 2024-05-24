@@ -463,7 +463,7 @@
         </ons-list>
     </ons-popover>
 
-    <ons-popover direction="up" id="calendarEventPopover">        
+    <ons-popover id="calendarEventPopover">        
         <div style="padding: 5px; max-width: 400px; max-height: 200px; overflow-y: scroll;">
             <table style="width: 100%; border-collapse: collapse;">
                 <tr>
@@ -495,7 +495,7 @@
                 </tr>
                 <tr>
                     <td>URL:</td>
-                    <td><a href="#" id="popoverURL">Event URL</a></td>
+                    <td><a href="#" id="popoverURL">URL</a></td>
                 </tr>
             </table>
         </div>
@@ -829,7 +829,7 @@
                 let content = divDay.find(".dayContent")
 
                 let calendar = calendarsList[obj.calendar]
-                let calendarColor = Math.floor(calendar.color[0]*255)+','+Math.floor(calendar.color[1]*255)+','+Math.floor(calendar.color[2]*255)                
+                let calendarColor = Math.floor(calendar.color[0]*255)+','+Math.floor(calendar.color[1]*255)+','+Math.floor(calendar.color[2]*255)                                
 
                 let add = '<div class="event" style="background-color:rgba('+calendarColor+',1)!important;" onclick="showCalendarEventPopover(\''+obj.strId+'\', event)" oncontextmenu="return calendarEditEvent(\''+obj.strId+'\', event)">'+obj.title+'</div>'
                 content.html(content.html()+add)
@@ -880,10 +880,50 @@
         var showCalendarEventPopover = function(event, e) {     
             if(e) e.stopPropagation()
             
+            event = events[event]
+            console.log('showCalendarEventPopover', event)
+
             $(calendarEventPopover).show()
             showingCalendarPopOver = true
 
-            calendarEventPopover.show(e.target);            
+            $("#popoverEventTitle").html(event.title)
+
+            let calendar = calendarsList[event.calendar]
+            $("#popoverCalendarName").html(event.calendar)
+            $("#popoverCalendarColor").css('background-color', 'rgb('+calendar.rgbColor+')')
+
+            $("#popoverNotes").html(event.notes)
+            $("#popoverLocation").html(event.location)
+            
+            event.url = event.url || ''
+            $("#popoverURL").html(event.url)
+            $("#popoverURL").attr('src', event.url)
+
+            let date = event.day
+
+            date.setHours(event.startTime.split(':')[0])
+            date.setMinutes(event.startTime.split(':')[1])
+            $("#popoverStartDate").html(setCurrentDateTimeFormat(date))
+
+            date.setHours(event.endTime.split(':')[0])
+            date.setMinutes(event.endTime.split(':')[1])
+            $("#popoverEndDate").html(setCurrentDateTimeFormat(date))
+
+            calendarEventPopover.show(e.target);   
+            
+            let $target = $(e.target)
+            let $popover = $(calendarEventPopover).find('.popover')
+
+            setTimeout(()=>{
+                let goToLeft = $target.offset().left - $popover.width()/2 + $target.width()/2
+                goToLeft -= $(".left").width()
+                if(goToLeft < 0) goToLeft = 0
+
+                console.log("popover correction", $popover, goToLeft)
+
+                $popover.animate({'left': goToLeft}, 100)
+                //$popover.css('left', goToLeft+'px')
+            }, 300)            
         };
 
         var hideCalendarEventPopover = function() {            
