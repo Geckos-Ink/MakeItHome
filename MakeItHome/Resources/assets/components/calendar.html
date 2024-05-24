@@ -242,6 +242,34 @@
         background-color: rgba(255,255,255, 0.75);
     }
 
+    #calendarColorCanvas {
+        height: 25px;
+        margin-top: 10px;
+
+        /*border: 1px solid #ccc;*/
+        transition: filter 0.3s ease; /* Adding a transition effect */
+        filter: brightness(1);
+    }
+
+    #calendarColorCanvas:hover {
+        filter: brightness(1.5); /* Making the canvas 50% brighter on hover */
+    }
+
+    #selectCalendarsPopover {
+        font-size: 12px;
+    }
+
+    #selectCalendarsPopover ons-list {
+        max-height: 200px;
+        overflow-y: scroll;
+    }
+
+    #selectCalendarsPopover .circleColor{
+        width: 15px;
+        height: 15px;
+        border-radius: 100%;
+    }
+
 </style>
 
 <div class="body">
@@ -310,42 +338,67 @@
 
     <div id="newEvent">
         <div class="form-container">
-        <!--<div class="form-title">Create New Event</div>-->
-        <form>
-            <div class="form-group">
-                <label for="eventName">Event Name</label>
-                <input type="text" id="eventName" name="eventName" required>
-            </div>
-            <div class="form-group double">
-                <label for="startTime">Start Time</label>
-                <input type="datetime-local" id="startTime" name="startTime" required>
-            </div>
-            <div class="form-group double">
-                <label for="endTime">End Time</label>
-                <input type="datetime-local" id="endTime" name="endTime" required>
-            </div>
-            <div class="form-group">
-                <label for="location">Location</label>
-                <input type="text" id="location" name="location">
-            </div>
-            <div class="form-group">
-                <label for="notes">Notes</label>
-                <textarea id="notes" name="notes"></textarea>
-            </div>
-            <div class="form-group">
-                <label for="url">URL</label>
-                <input type="url" id="url" name="url">
-            </div>
-            <div class="form-group">
-                <button type="submit" class="eventDone">Done</button>
-            </div>
-        </form>
+            <!--<div class="form-title">Create New Event</div>-->
+            <form>
+                <div class="form-group">
+                    <label for="eventName">Event Name</label>
+                    <input type="text" id="eventName" name="eventName" required>
+                </div>
+                <div class="form-group double">
+                    <label for="startTime">Start Time</label>
+                    <input type="datetime-local" id="startTime" name="startTime" required>
+                </div>
+                <div class="form-group double">
+                    <label for="endTime">End Time</label>
+                    <input type="datetime-local" id="endTime" name="endTime" required>
+                </div>
+                <div class="form-group">
+                    <label for="location">Location</label>
+                    <input type="text" id="location" name="location">
+                </div>
+                <div class="form-group">
+                    <label for="notes">Notes</label>
+                    <textarea id="notes" name="notes"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="url">URL</label>
+                    <input type="url" id="url" name="url">
+                </div>
+                <div class="form-group double">
+                    <button type="submit" class="eventDone">Done</button>
+                </div>
+                <div class="form-group double" style="text-align:right;">
+                    <canvas id="calendarColorCanvas" onclick="showCalendarsPopover(event)"></canvas>                
+                </div>
+            </form>
+        </div>
     </div>
-    </div>
+
+    <ons-popover direction="up" id="selectCalendarsPopover">
+        <ons-list>
+            <!--<ons-list-header>Thumbnails and titles</ons-list-header>-->
+            <ons-list-item>
+                <div class="left">
+                    <img class="list-item__thumbnail" src="https://placekitten.com/g/40/40">
+                </div>
+                <div class="center">
+                    <span class="list-item__title">Home</span>
+                </div>
+            </ons-list-item>                        
+        </ons-list>
+    </ons-popover>
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 
     <script>
+        ///
+        /// Global vars
+        ///
+        let calendarsList = {}
+
+        ///
+        ///
+        ///
         function convertDateFromString(dateString) {
             const parts = dateString.split('/');
             
@@ -525,11 +578,13 @@
             root.style.setProperty('--height-fraction', `${heightFraction}px`);
         }
 
+        let events = []
         function retrieveMonth(){
             $(".calendar .dayContent").each(function(){
                 $(this).html('')
             })
 
+            events = []
             sendMessage({type: "calendar", value: "eventRange", 
                 firstDate: formatDateToCustomFormat(firstDate, 'dd/mm/yyyy'),
                 lastDate: formatDateToCustomFormat(lastDate, 'dd/mm/yyyy')
@@ -546,7 +601,6 @@
         function openApp_calendar(){
             setTimeout(()=>{
                 updateTableSize()
-
                 retrieveMonth()
             },100)
         }
@@ -568,37 +622,98 @@
 
             return -1
         }
-
-        let calendars = []        
+             
         function appReceive_calendar(obj){
             if(obj.op == 'setEvent'){
-                let day = new Date(obj.day + 'T00:00:00')
+                let day = obj.day = new Date(obj.day + 'T00:00:00')
                 let index = getDateIndex(day) + firstDateIndex
 
                 let divDay = getDay(index)
                 let content = divDay.find(".dayContent")
 
-                let calendar = calendars[obj.calendar]
-                let calendarColor = Math.floor(calendar.color[0]*255)+','+Math.floor(calendar.color[1]*255)+','+Math.floor(calendar.color[2]*255)
+                let calendar = calendarsList[obj.calendar]
+                let calendarColor = Math.floor(calendar.color[0]*255)+','+Math.floor(calendar.color[1]*255)+','+Math.floor(calendar.color[2]*255)                
 
-                let add = '<div class="event" style="background-color:rgba('+calendarColor+',1)!important;">'+obj.title+'</div>'
+                let add = '<div class="event" style="background-color:rgba('+calendarColor+',1)!important;" oncontextmenu="calendarEditEvent(\''+obj.strId+'\', event)">'+obj.title+'</div>'
                 content.html(content.html()+add)
+
+                events[obj.strId] = obj
             }
 
             if(obj.op == 'calendarsList'){
-                calendars = []
+                let $onsList = $("#selectCalendarsPopover ons-list")
+                let onsListHtml = ''
+
+                console.log('calendarsList', obj.calendarsTitles.length, $onsList)
+
+                calendarsList = {}
                 for(let c=0; c<obj.calendarsTitles.length; c++){
-                    calendars[obj.calendarsTitles[c]] = {
-                        title: obj.calendarsTitles[c],
-                        color: obj.calendarsColors[c]
+                    let title = obj.calendarsTitles[c]
+
+                    let color = obj.calendarsColors[c]
+                    let rgbColor = Math.floor(color[0]*255)+','+Math.floor(color[1]*255)+','+Math.floor(color[2]*255)                
+        
+                    let cal = calendarsList[title] = {
+                        title: title,
+                        color: color,
+                        rgbColor: rgbColor
                     }
+
+                    console.log("added calendar", cal)
+
+                    onsListHtml +=  `
+                        <ons-list-item>
+                            <div class="left">
+                                <div class="circleColor" style="background-color: rgb(`+rgbColor+`);"></div>
+                            </div>
+                            <div class="center">
+                                <span class="list-item__title">`+title+`</span>
+                            </div>
+                        </ons-list-item> `
                 }
+
+                $onsList.html(onsListHtml)
             }
         }
 
         ///
         /// New/edit event
         ///
+
+        const calendarColorCanvas = document.getElementById('calendarColorCanvas')
+        const calendarPopOver = document.getElementById('selectCalendarsPopover')
+        let showingCalendarPopOver = false
+        var showCalendarsPopover = function(e) {     
+            if(e)
+                e.stopPropagation()
+            
+            $(calendarPopOver).show()
+            showingCalendarPopOver = true
+
+            calendarPopOver.show(calendarColorCanvas);
+        };
+
+        var hideCalendarsPopover = function() {            
+            calendarPopOver.hide();
+            showingCalendarPopOver = false
+
+            setTimeout(()=>{
+                $(calendarPopOver).hide()
+            }, 500)
+        };
+
+        function calendarEditEvent(strI, e=null){
+            if(e){
+                e.stopPropagation()
+            }
+
+            let event = events[strId]
+
+            $("#eventName").val(event.title)
+            //$("#newEventCalendar").val(event.calendar)
+
+            showNewEvent()
+        }        
 
         function showNewEvent(){
             $("#newEvent").animate({top: 0}, 300, ()=>{
@@ -611,6 +726,24 @@
 
             })
         }
+        
+        let $selectCalendarsPopover = $("#selectCalendarsPopover .popover")
+        let $newEventForm = $("#newEvent form")
+
+        $('body').on('click', (e)=>{
+            let $target = $(e.target)
+            console.log("document click (calendar)", $target)                        
+
+            if(!$.contains($selectCalendarsPopover[0], $target[0]) && !$target.is($selectCalendarsPopover)){            
+                if(!showingCalendarPopOver){
+                    if(!$.contains($newEventForm[0], $target[0]) && !$target.is($newEventForm)){                
+                        hideNewEvent()
+                    }
+                }
+
+                hideCalendarsPopover()
+            }
+        })
 
         $(".eventDone").on('click', (e)=>{
             sendMessage({
@@ -626,7 +759,50 @@
         $( ".day" ).on( "contextmenu", function(e) {
             showNewEvent()
         } );
-        
+
+        const calendarColorCanvasCtx = calendarColorCanvas.getContext('2d');
+
+        function setCalendarColorCanvas(radius, color) {
+            const paddingTop = 5;
+            const canvas = calendarColorCanvas
+            const ctx = calendarColorCanvasCtx
+
+            const diameter = radius * 2;
+            const totalHeight = diameter + paddingTop;
+
+            // Set canvas size
+            canvas.width = diameter;
+            canvas.height = totalHeight;
+
+            // Clear the canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw the circle with gradient
+            ctx.beginPath();
+            ctx.arc(radius, radius + paddingTop, radius, 0, Math.PI * 2, false); // x, y, radius, startAngle, endAngle
+            ctx.fillStyle = color;
+            ctx.fill();
+
+            // Create the semi-transparent gradient overlay
+            const gradient = ctx.createRadialGradient(radius, radius + paddingTop, radius / 4, radius, radius + paddingTop, radius);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.25)'); // Light reflection color with transparency
+            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)'); // Fully transparent at the edge
+
+            // Apply the gradient overlay
+            ctx.beginPath();
+            ctx.arc(radius, radius + paddingTop, radius, 0, Math.PI * 2, false);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = 'white';
+            ctx.stroke();
+        }
+
+        // Example usage:
+        setCalendarColorCanvas(25, 'red'); // Creates a red circle with a radius of 50px
+                
     </script>
 
     <style>
