@@ -45,6 +45,30 @@ func combineDateWithTimeString(date: Date, withTime timeString: String) -> Date?
     return combinedDate
 }
 
+func deleteEvent(eventIdentifier: String) {
+    let eventStore = EKEventStore()
+    
+    // Request access to the calendar
+    eventStore.requestAccess(to: .event) { (granted, error) in
+        if granted && error == nil {
+            // Fetch the event with the given identifier
+            if let event = eventStore.event(withIdentifier: eventIdentifier) {
+                do {
+                    // Delete the event
+                    try eventStore.remove(event, span: .thisEvent, commit: true)
+                    print("Event deleted successfully!")
+                } catch let error as NSError {
+                    print("Failed to delete event with error: \(error)")
+                }
+            } else {
+                print("Event not found")
+            }
+        } else {
+            print("Access denied or error: \(String(describing: error))")
+        }
+    }
+}
+
 class Calendar {
     var calendars : [String:EKCalendar] = [:]
     
@@ -68,6 +92,10 @@ class Calendar {
             else {
                 print("debug")
             }
+        }
+        
+        if msg.value == "deleteEvent" {
+            deleteEvent(eventIdentifier: msg.strId!)
         }
         
         if msg.value == "newEvent" {

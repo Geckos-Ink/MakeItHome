@@ -249,6 +249,16 @@
         background-color: rgba(255,255,255, 0.75);
     }
 
+    #newEvent .delete {
+        background-color: rgba(255,0,0,0.5);
+        color: white;
+        margin-left: 10px;
+    }
+
+    #newEvent .delete:hover {
+        background-color: rgba(255,0,0,0.75);
+    }
+
     #calendarColorCanvas {
         height: 25px;
         margin-top: 10px;
@@ -429,6 +439,7 @@
                 </div>
                 <div class="form-group double">
                     <button type="submit" class="eventDone">Done</button>
+                    <button class="delete">Delete</button>
                 </div>
                 <div class="form-group double" style="text-align:right;">
                     <span id="calendarName">Work</span>
@@ -675,7 +686,7 @@
                 day++
             }
 
-            firstDateIndex = iday
+            firstDateIndex = day == 0 ? 0 : (day * 2)-1
 
             for(let d=0; d<totalDays; d++){
                 let div = getDay(day)
@@ -800,7 +811,7 @@
 
             for(let d=0; d<gridDays; d++){
                 if(date.getFullYear() == currentDate.getFullYear() && date.getMonth() == currentDate.getMonth() && date.getDate() == currentDate.getDate())
-                    return d
+                    return d + firstDateIndex
 
                 // Add 24 hours to the current date
                 currentDate.setHours(currentDate.getHours() + 24);
@@ -812,7 +823,7 @@
         function appReceive_calendar(obj){
             if(obj.op == 'setEvent'){
                 let day = obj.day = new Date(obj.day + 'T00:00:00')
-                let index = getDateIndex(day) + firstDateIndex
+                let index = getDateIndex(day)
 
                 let divDay = getDay(index)
                 let content = divDay.find(".dayContent")
@@ -821,7 +832,7 @@
                 let calendarColor = Math.floor(calendar.color[0]*255)+','+Math.floor(calendar.color[1]*255)+','+Math.floor(calendar.color[2]*255)                
 
                 let add = '<div class="event" style="background-color:rgba('+calendarColor+',1)!important;" onclick="showCalendarEventPopover(\''+obj.strId+'\', event)" oncontextmenu="return calendarEditEvent(\''+obj.strId+'\', event)">'+obj.title+'</div>'
-                content.html(content.html()+add+1)
+                content.html(content.html()+add)
 
                 events[obj.strId] = obj
             }
@@ -959,7 +970,9 @@
                 e.stopPropagation()
             }
 
-            let event = events[strId]            
+            let event = events[strId]   
+            
+            console.log("edit event", event)
 
             $("#eventName").val(event.title)
             $("#eventDay").val(setCurrentDateTimeFormat(event.day, 1))
@@ -969,8 +982,9 @@
             $("#eventLocation").val(event.location)
             $("#eventUrl").val(event.url)
 
-            selectedCalendar(event.calendar)
-            //$("#newEventCalendar").val(event.calendar)
+            setTimeout(()=>{
+                selectedCalendar(event.calendar)
+            }, 50)
 
             showNewEvent(strId)
 
@@ -1071,14 +1085,27 @@
         })
 
         $(".eventDone").on('click', (e)=>{
-            sendMessage({
-                type: "calendar",                
-                op: "newEvent",
-                title: $("#eventName").val(),
-                //calendar: $("#newEventCalendar").val()
-            })
-
             hideNewEvent()
+        })
+
+        $(".delete").on('click', (e)=>{
+            setTimeout(()=>{
+                sendMessage({
+                    type: "calendar",                
+                    value: "deleteEvent",
+                    strId: editingEvent
+                })
+
+                $("#eventName").val('')
+
+                setTimeout(()=>{
+                    hideNewEvent()           
+                }, 10)
+
+                setTimeout(()=>{
+                    retrieveMonth()
+                }, 250)
+            }, 10)                         
         })
 
         let $days = $('.day')
