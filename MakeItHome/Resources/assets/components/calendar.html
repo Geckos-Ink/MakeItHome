@@ -197,7 +197,12 @@
         display: inline-block;
     }
 
-    .double input {
+    .triple {
+        width: 32%;
+        display: inline-block;
+    }
+
+    .double input, .triple input {
         width: 90% !important;          
     }
 
@@ -398,25 +403,29 @@
                     <label for="eventName">Event Name</label>
                     <input type="text" id="eventName" name="eventName" required>
                 </div>
-                <div class="form-group double">
+                <div class="form-group triple">
+                    <label for="endTime">Date</label>
+                    <input type="input" id="eventDay" name="eventDay" class="datepicker" required>
+                </div>
+                <div class="form-group triple">
                     <label for="startTime">Start Time</label>
                     <input type="input" id="calendarStartTime" name="startTime" class="datepicker" required>
                 </div>
-                <div class="form-group double">
+                <div class="form-group triple">
                     <label for="endTime">End Time</label>
-                    <input type="input" id="endTime" name="calendarEndTime" class="datepicker" required>
-                </div>
+                    <input type="input" id="calendarEndTime" name="endTime" class="datepicker" required>
+                </div>                
                 <div class="form-group">
                     <label for="location">Location</label>
-                    <input type="text" id="location" name="location">
+                    <input type="text" id="eventLocation" name="location">
                 </div>
                 <div class="form-group">
                     <label for="notes">Notes</label>
-                    <textarea id="notes" name="notes"></textarea>
+                    <textarea id="eventNotes" name="notes"></textarea>
                 </div>
                 <div class="form-group">
                     <label for="url">URL</label>
-                    <input type="url" id="url" name="url">
+                    <input type="eventUrl" id="url" name="url">
                 </div>
                 <div class="form-group double">
                     <button type="submit" class="eventDone">Done</button>
@@ -493,14 +502,17 @@
         ///
         ///        
 
-        function setCurrentDateTimeFormat() {
-            const now = new Date();
+        function setCurrentDateTimeFormat(now=null, show=0) {
+            if(!now) now = new Date();
             const year = now.getFullYear();
             const month = String(now.getMonth() + 1).padStart(2, '0');
             const day = String(now.getDate()).padStart(2, '0');
             const hours = String(now.getHours()).padStart(2, '0');
             const minutes = String(now.getMinutes()).padStart(2, '0');
-            const formattedDateTime = `${year}/${month}/${day} ${hours}:${minutes}`;
+            let formattedDateTime =  ''
+            if(show == 0 || show == 1) formattedDateTime += `${year}/${month}/${day}`;
+            if(show == 0) formattedDateTime += ' '
+            if(show == 0 || show == 2) formattedDateTime += `${hours}:${minutes}`;
             return formattedDateTime;
         }
 
@@ -522,6 +534,22 @@
 
             // Create and return the Date object
             return new Date(year, month, day, hours, minutes);
+        }
+
+        function parseTimeString(timeString){
+            const regex = /^(\d{2}):(\d{2})$/;
+            const match = timeString.match(regex);
+
+            if (!match) {
+                throw new Error("Invalid date-time format. Expected format: yyyy/mm/dd hh:mm");
+            }
+
+            // Extract components from the regex match groups
+            const hours = parseInt(match[1], 10);
+            const minutes = parseInt(match[2], 10);
+
+            // Create and return the Date object
+            return new Date(1994, 9, 30, hours, minutes);
         }
 
 
@@ -763,7 +791,7 @@
                 let calendar = calendarsList[obj.calendar]
                 let calendarColor = Math.floor(calendar.color[0]*255)+','+Math.floor(calendar.color[1]*255)+','+Math.floor(calendar.color[2]*255)                
 
-                let add = '<div class="event" style="background-color:rgba('+calendarColor+',1)!important;" onclick="showCalendarEventPopover(\''+obj.strId+'\', event)" oncontextmenu="calendarEditEvent(\''+obj.strId+'\', event)">'+obj.title+'</div>'
+                let add = '<div class="event" style="background-color:rgba('+calendarColor+',1)!important;" onclick="showCalendarEventPopover(\''+obj.strId+'\', event)" oncontextmenu="return calendarEditEvent(\''+obj.strId+'\', event)">'+obj.title+'</div>'
                 content.html(content.html()+add)
 
                 events[obj.strId] = obj
@@ -838,14 +866,15 @@
             }
         }
 
-        $('#calendarStartTime').datetimepicker({allowTimes:allowedTimes, theme:'dark'})
-        $('#calendarEndTime').datetimepicker({allowTimes:allowedTimes, theme:'dark'})  
+        $('#eventDay').datetimepicker({theme:'dark', mask:true, timepicker: false, format: 'd/m/Y'})
+        $('#calendarStartTime').datetimepicker({allowTimes:allowedTimes, theme:'dark', mask:true, datepicker: false, format: 'H:i'})
+        $('#calendarEndTime').datetimepicker({allowTimes:allowedTimes, theme:'dark', mask:true, datepicker: false, format: 'H:i'})  
         
         let calendarStartTime = new Date()
         let calendarEndTime = new Date()
         $("#calendarStartTime").on('change', ()=>{
-            calendarStartTime = parseDateTimeString($("#calendarStartTime").val())
-            calendarEndTime = parseDateTimeString($("#calendarEndTime").val())
+            calendarStartTime = parseTimeString($("#calendarStartTime").val())
+            calendarEndTime = parseTimeString($("#calendarEndTime").val())
 
             if(calendarStartTime > calendarEndTime){
                 calendarEndTime = calendarStartTime
@@ -896,24 +925,38 @@
             hideCalendarsPopover()
         }
 
-        function calendarEditEvent(strI, e=null){
+        function calendarEditEvent(strId, e=null){
             if(e){
                 e.stopPropagation()
             }
 
-            let event = events[strId]
+            let event = events[strId]            
 
             $("#eventName").val(event.title)
+            $("#eventDay").val(setCurrentDateTimeFormat(event.day, 1))
+            $("#calendarStartTime").val(event.startTime)
+            $("#calendarEndTime").val(event.endTime)
+            $("#eventNotes").val(event.notes)
+            $("#eventNotes").val(event.notes)
+            $("#eventLocation").val(event.location)
+            $("#eventUrl").val(event.url)
             //$("#newEventCalendar").val(event.calendar)
 
-            showNewEvent()
+            showNewEvent(strId)
+
+            return false
         }        
 
-        function showNewEvent(){
+        let editingEvent = ''
+        function showNewEvent(event=null){
+            editingEvent = event 
+
             selectedCalendar(Object.keys(calendarsList)[0])
 
-            $('#calendarStartTime').val(setCurrentDateTimeFormat())
-            $('#calendarEndTime').val(setCurrentDateTimeFormat())
+            if(!event){
+                $('#calendarStartTime').val(setCurrentDateTimeFormat())
+                $('#calendarEndTime').val(setCurrentDateTimeFormat())
+            }
 
             $("#newEvent").animate({top: 0}, 300, ()=>{
 

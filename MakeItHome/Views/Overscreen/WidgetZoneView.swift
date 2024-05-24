@@ -812,7 +812,7 @@ public struct JSMessage: Codable {
     var location : String?
     var notes : String?
     var calendar : String?
-    var color: [CGFloat]?
+    var color: [CGFloat]?    
     
     // Calendars
     var calendarsTitles : [String]?

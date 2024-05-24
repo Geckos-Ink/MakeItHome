@@ -133,6 +133,7 @@ class Calendar {
         msg.notes = notes
         msg.calendar = event.calendar.title
         msg.color = event.calendar.cgColor.components
+        msg.url = event.url
         
         Static.TopBarWebView?.sendMessage(obj: msg)
     }
