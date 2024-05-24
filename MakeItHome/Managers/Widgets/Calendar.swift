@@ -76,7 +76,7 @@ class Calendar {
             event.title = msg.title
             
             let dateFormatter = ISO8601DateFormatter()
-            let day = dateFormatter.date(from: msg.day!)
+            let day = dateFormatter.date(from: msg.day!.replacingOccurrences(of: "\\.\\d+", with: "", options: .regularExpression))
             
             event.startDate = combineDateWithTimeString(date: day!, withTime: msg.startTime!)
             event.endDate = combineDateWithTimeString(date: day!, withTime: msg.endTime!)
