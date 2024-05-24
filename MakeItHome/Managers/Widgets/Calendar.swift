@@ -10,6 +10,8 @@ import Foundation
 import EventKit
 
 class Calendar {
+    var calendars : [String:EKCalendar] = [:]
+    
     func receive(msg : JSMessage){
         if msg.value == "eventRange"{
             // Create a DateFormatter with the desired date format
@@ -31,9 +33,16 @@ class Calendar {
                 print("debug")
             }
         }
+        
+        if msg.value == "newEvent" {
+            //TODO
+        }
     }
     
     func fetchEvents(from startDate: Date, to endDate: Date) {
+        // Update calendars
+        listCalendars()
+        
         // Create an instance of the event store
         let eventStore = EKEventStore()
 
@@ -58,6 +67,32 @@ class Calendar {
                 self.extractEventDetails(event: e)
             }
         }
+    }
+    
+    func listCalendars() {
+        self.calendars = [:]
+        let eventStore = EKEventStore()
+        
+        var msg = JSMessage()
+        msg.type = "toApp"
+        msg.value = "calendar"
+        msg.op = "calendarsList"
+        
+        msg.calendarsTitles = []
+        msg.calendarsColors = []
+        
+        let calendars = eventStore.calendars(for: .event)
+        for calendar in calendars {
+            print("Calendar Title: \(calendar.title)")
+            print("Calendar Color: \(calendar.cgColor)")
+            
+            self.calendars[calendar.title] = calendar
+            
+            msg.calendarsTitles?.append(calendar.title)
+            msg.calendarsColors?.append(calendar.cgColor.components ?? [200,200,200])
+        }
+        
+        Static.TopBarWebView?.sendMessage(obj: msg)
     }
     
     func extractEventDetails(event: EKEvent) {
@@ -87,6 +122,8 @@ class Calendar {
         msg.value = "calendar"
         msg.op = "setEvent"
         
+        msg.strId = event.eventIdentifier
+        
         msg.title = title
         msg.day = day
         msg.startTime = startDate
@@ -94,7 +131,39 @@ class Calendar {
         msg.allDay = isAllDay
         msg.location = location
         msg.notes = notes
+        msg.calendar = event.calendar.title
+        msg.color = event.calendar.cgColor.components
         
         Static.TopBarWebView?.sendMessage(obj: msg)
+    }
+    
+    func createEvent(eventStore: EKEventStore, title: String, startDate: Date, endDate: Date) {
+        let event = EKEvent(eventStore: eventStore)
+        event.title = title
+        event.startDate = startDate
+        event.endDate = endDate
+        event.calendar = eventStore.defaultCalendarForNewEvents
+
+        do {
+            try eventStore.save(event, span: .thisEvent)
+            print("Event created")
+        } catch let error as NSError {
+            print("Failed to save event with error: \(error)")
+        }
+    }
+    
+    func editEvent(eventStore: EKEventStore, eventIdentifier: String, newTitle: String) {
+        if let event = eventStore.event(withIdentifier: eventIdentifier) {
+            event.title = newTitle
+
+            do {
+                try eventStore.save(event, span: .thisEvent)
+                print("Event updated")
+            } catch let error as NSError {
+                print("Failed to save event with error: \(error)")
+            }
+        } else {
+            print("Event not found")
+        }
     }
 }

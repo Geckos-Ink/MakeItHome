@@ -416,6 +416,8 @@ public class Coordinator: NSObject, WKUIDelegate, WKNavigationDelegate, NSDraggi
                     Static.calendar?.receive(msg: json!)
                 }
                 
+                //todo: type == "widget", where to redirect the request directly to widget core(?)
+                
                 decisionHandler(.cancel)
                 return
             }
@@ -785,6 +787,7 @@ public struct JSMessage: Codable {
     var imgBase : String?
     
     var id : Int?
+    var strId : String?
     
     var data : Data?
     
@@ -808,6 +811,12 @@ public struct JSMessage: Codable {
     var allDay : Bool?
     var location : String?
     var notes : String?
+    var calendar : String?
+    var color: [CGFloat]?
+    
+    // Calendars
+    var calendarsTitles : [String]?
+    var calendarsColors : [[CGFloat]]?
 }
 
 extension URL {

@@ -569,6 +569,7 @@
             return -1
         }
 
+        let calendars = []        
         function appReceive_calendar(obj){
             if(obj.op == 'setEvent'){
                 let day = new Date(obj.day + 'T00:00:00')
@@ -577,8 +578,21 @@
                 let divDay = getDay(index)
                 let content = divDay.find(".dayContent")
 
-                let add = '<div class="event">'+obj.title+'</div>'
+                let calendar = calendars[obj.calendar]
+                let calendarColor = Math.floor(calendar.color[0]*255)+','+Math.floor(calendar.color[1]*255)+','+Math.floor(calendar.color[2]*255)
+
+                let add = '<div class="event" style="background-color:rgba('+calendarColor+',1)!important;">'+obj.title+'</div>'
                 content.html(content.html()+add)
+            }
+
+            if(obj.op == 'calendarsList'){
+                calendars = []
+                for(let c=0; c<obj.calendarsTitles.length; c++){
+                    calendars[obj.calendarsTitles[c]] = {
+                        title: obj.calendarsTitles[c],
+                        color: obj.calendarsColors[c]
+                    }
+                }
             }
         }
 
@@ -599,6 +613,13 @@
         }
 
         $(".eventDone").on('click', (e)=>{
+            sendMessage({
+                type: "calendar",                
+                op: "newEvent",
+                title: $("#eventName").val(),
+                //calendar: $("#newEventCalendar").val()
+            })
+
             hideNewEvent()
         })
 
