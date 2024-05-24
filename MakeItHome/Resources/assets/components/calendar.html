@@ -1,3 +1,5 @@
+<script src="jqueries/jquery.datetimepicker.full.min.js"></script>
+<link rel="stylesheet" href="jqueries/jquery.datetimepicker.min.css">
 
 <style>
     .body {
@@ -306,6 +308,22 @@
         width: 80%;
     }
 
+    /*::-webkit-datetime-edit {
+        border-radius: 5px;
+        padding: 5px;
+
+        background-color: rgba(255,255,255, 0.5);
+        -webkit-backdrop-filter: blur(10px);
+    }*/
+
+    input::-webkit-calendar-picker-indicator{
+        display: none;
+    }
+
+    input[type="date"]::-webkit-input-placeholder{ 
+        visibility: hidden !important;
+    }
+
 </style>
 
 <div class="body">
@@ -382,11 +400,11 @@
                 </div>
                 <div class="form-group double">
                     <label for="startTime">Start Time</label>
-                    <input type="datetime-local" id="startTime" name="startTime" required>
+                    <input type="input" id="startTime" name="startTime" class="datepicker" required>
                 </div>
                 <div class="form-group double">
                     <label for="endTime">End Time</label>
-                    <input type="datetime-local" id="endTime" name="endTime" required>
+                    <input type="input" id="endTime" name="endTime" class="datepicker" required>
                 </div>
                 <div class="form-group">
                     <label for="location">Location</label>
@@ -776,6 +794,16 @@
         ///
         /// New/edit event
         ///
+
+        let allowedTimes = []
+        for(let h=0; h<24; h++){
+            for(let m=0; m<60; m+=15){
+                allowedTimes.push(h+':'+m)
+            }
+        }
+
+        $('#startTime').datetimepicker({allowTimes:allowedTimes})
+        $('#endTime').datetimepicker({allowTimes:allowedTimes})
 
         const calendarColorCanvas = document.getElementById('calendarColorCanvas')
         const calendarPopOver = document.getElementById('selectCalendarsPopover')
