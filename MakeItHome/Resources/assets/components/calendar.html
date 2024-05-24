@@ -400,11 +400,11 @@
                 </div>
                 <div class="form-group double">
                     <label for="startTime">Start Time</label>
-                    <input type="input" id="startTime" name="startTime" class="datepicker" required>
+                    <input type="input" id="calendarStartTime" name="startTime" class="datepicker" required>
                 </div>
                 <div class="form-group double">
                     <label for="endTime">End Time</label>
-                    <input type="input" id="endTime" name="endTime" class="datepicker" required>
+                    <input type="input" id="endTime" name="calendarEndTime" class="datepicker" required>
                 </div>
                 <div class="form-group">
                     <label for="location">Location</label>
@@ -488,6 +488,42 @@
         /// Global vars
         ///
         let calendarsList = {}
+
+        ///
+        ///
+        ///        
+
+        function setCurrentDateTimeFormat() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const formattedDateTime = `${year}/${month}/${day} ${hours}:${minutes}`;
+            return formattedDateTime;
+        }
+
+        function parseDateTimeString(dateTimeString) {
+            // Validate and extract parts using a regular expression
+            const regex = /^(\d{4})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2})$/;
+            const match = dateTimeString.match(regex);
+
+            if (!match) {
+                throw new Error("Invalid date-time format. Expected format: yyyy/mm/dd hh:mm");
+            }
+
+            // Extract components from the regex match groups
+            const year = parseInt(match[1], 10);
+            const month = parseInt(match[2], 10) - 1; // Months are 0-based in JavaScript Date
+            const day = parseInt(match[3], 10);
+            const hours = parseInt(match[4], 10);
+            const minutes = parseInt(match[5], 10);
+
+            // Create and return the Date object
+            return new Date(year, month, day, hours, minutes);
+        }
+
 
         ///
         ///
@@ -681,7 +717,7 @@
             sendMessage({type: "calendar", value: "eventRange", 
                 firstDate: formatDateToCustomFormat(firstDate, 'dd/mm/yyyy'),
                 lastDate: formatDateToCustomFormat(lastDate, 'dd/mm/yyyy')
-            })
+            })            
         }
 
         /// Set dimensions
@@ -779,7 +815,7 @@
             $(calendarEventPopover).show()
             showingCalendarPopOver = true
 
-            calendarEventPopover.show(e.target);
+            calendarEventPopover.show(e.target);            
         };
 
         var hideCalendarEventPopover = function() {            
@@ -802,8 +838,30 @@
             }
         }
 
-        $('#startTime').datetimepicker({allowTimes:allowedTimes})
-        $('#endTime').datetimepicker({allowTimes:allowedTimes})
+        $('#calendarStartTime').datetimepicker({allowTimes:allowedTimes, theme:'dark'})
+        $('#calendarEndTime').datetimepicker({allowTimes:allowedTimes, theme:'dark'})  
+        
+        let calendarStartTime = new Date()
+        let calendarEndTime = new Date()
+        $("#calendarStartTime").on('change', ()=>{
+            calendarStartTime = parseDateTimeString($("#calendarStartTime").val())
+            calendarEndTime = parseDateTimeString($("#calendarEndTime").val())
+
+            if(calendarStartTime > calendarEndTime){
+                calendarEndTime = calendarStartTime
+                $("#calendarEndTime").val($("#calendarStartTime").val())
+            }
+        })
+
+        $("#calendarEndTime").on('change', ()=>{
+            calendarStartTime = parseDateTimeString($("#calendarStartTime").val())
+            calendarEndTime = parseDateTimeString($("#calendarEndTime").val())
+
+            if(calendarStartTime > calendarEndTime){
+                calendarStartTime = calendarEndTime
+                $("#calendarStartTime").val($("#calendarEndTime").val())
+            }
+        })
 
         const calendarColorCanvas = document.getElementById('calendarColorCanvas')
         const calendarPopOver = document.getElementById('selectCalendarsPopover')
@@ -815,7 +873,7 @@
             $(calendarPopOver).show()
             showingCalendarPopOver = true
 
-            calendarPopOver.show(calendarColorCanvas);
+            calendarPopOver.show(calendarColorCanvas);            
         };
 
         var hideCalendarsPopover = function() {            
@@ -853,6 +911,9 @@
 
         function showNewEvent(){
             selectedCalendar(Object.keys(calendarsList)[0])
+
+            $('#calendarStartTime').val(setCurrentDateTimeFormat())
+            $('#calendarEndTime').val(setCurrentDateTimeFormat())
 
             $("#newEvent").animate({top: 0}, 300, ()=>{
 
@@ -899,9 +960,16 @@
             hideNewEvent()
         })
 
-        $( ".day" ).on( "contextmenu", function(e) {
-            showNewEvent()
-        } );
+        function setCurrentMonthEvents(){
+            $(".day").on( "contextmenu", function(e) {
+                console.log("calendar .day contextmenu")
+                showNewEvent()
+            });
+        }
+
+        setTimeout(()=>{
+            setCurrentMonthEvents()
+        }, 100)
 
         const calendarColorCanvasCtx = calendarColorCanvas.getContext('2d');
 
