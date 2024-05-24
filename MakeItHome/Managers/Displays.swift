@@ -1386,8 +1386,8 @@ public class Display : Equatable {
                     }
                     
                     //spaceHolderFound = -2 // force "space changing" status
-                    
-                    if !self.spaceIsChanging {
+                                    
+                    if spaceHolderFound < 0 && !self.spaceIsChanging {
                         print("space changing")
                         self.spaceIsChanging = true
                         self.spaceInChanging()
@@ -1427,6 +1427,10 @@ public class Display : Equatable {
                             }
                         }
                     }
+                }
+                
+                if spaceHolderFound >= 0 {
+                    self.spaceIsChanging = false
                 }
             }
             
@@ -2179,6 +2183,8 @@ public class Display : Equatable {
         curPlaceholder = nil
         currentSpaceId = -1
         samePlaceholderSince = 0
+        
+        self.spaceIsChanging = false
     }
     
     func spaceInChanging(){
