@@ -245,6 +245,7 @@
     #calendarColorCanvas {
         height: 25px;
         margin-top: 10px;
+        margin-bottom: -5px;
 
         /*border: 1px solid #ccc;*/
         transition: filter 0.3s ease; /* Adding a transition effect */
@@ -264,10 +265,45 @@
         overflow-y: scroll;
     }
 
+    #selectCalendarsPopover ons-list ons-list-item:hover {
+        -webkit-backdrop-filter: brightness(1.5);
+    }
+
     #selectCalendarsPopover .circleColor{
         width: 15px;
         height: 15px;
         border-radius: 100%;
+    }
+
+    #calendarName {
+        display: inline-block;
+
+        font-size: 12px;
+        padding-bottom: 5px;
+        padding-right: 10px;
+    }
+
+    #calendarEventPopover .popover--bottom__content{
+        width: 400px;
+    }
+
+    #calendarEventPopover table {
+        color: white !important;
+        font-size: 12px;  
+        width: 400px;     
+        
+        margin: 5px;
+    }
+
+    #calendarEventPopover table td:nth-child(1){
+        width: 20%;
+        text-align: right;
+        font-weight: bold;
+        padding-right: 5px;
+    }
+
+    #calendarEventPopover table td:nth-child(2){
+        width: 80%;
     }
 
 </style>
@@ -368,6 +404,7 @@
                     <button type="submit" class="eventDone">Done</button>
                 </div>
                 <div class="form-group double" style="text-align:right;">
+                    <span id="calendarName">Work</span>
                     <canvas id="calendarColorCanvas" onclick="showCalendarsPopover(event)"></canvas>                
                 </div>
             </form>
@@ -386,6 +423,44 @@
                 </div>
             </ons-list-item>                        
         </ons-list>
+    </ons-popover>
+
+    <ons-popover direction="up" id="calendarEventPopover">        
+        <div style="padding: 5px; max-width: 400px; max-height: 200px; overflow-y: scroll;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <td>Title:</td>
+                    <td id="popoverEventTitle">Event Title</td>
+                </tr>
+                <tr>
+                    <td>Calendar:</td>
+                    <td>
+                        <span id="popoverCalendarName">Calendar Name</span>
+                        <span id="popoverCalendarColor" style="display: inline-block; width: 15px; height: 15px; border-radius: 50%; background-color: red;"></span>
+                    </td>
+                </tr>
+                <tr>
+                    <td>Start Date:</td>
+                    <td id="popoverStartDate">Start Date</td>
+                </tr>
+                <tr>
+                    <td>End Date:</td>
+                    <td id="popoverEndDate">End Date</td>
+                </tr>
+                <tr>
+                    <td>Location:</td>
+                    <td id="popoverLocation">Location</td>
+                </tr>
+                <tr>
+                    <td>Notes:</td>
+                    <td id="popoverNotes">Notes</td>
+                </tr>
+                <tr>
+                    <td>URL:</td>
+                    <td><a href="#" id="popoverURL">Event URL</a></td>
+                </tr>
+            </table>
+        </div>
     </ons-popover>
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
@@ -634,7 +709,7 @@
                 let calendar = calendarsList[obj.calendar]
                 let calendarColor = Math.floor(calendar.color[0]*255)+','+Math.floor(calendar.color[1]*255)+','+Math.floor(calendar.color[2]*255)                
 
-                let add = '<div class="event" style="background-color:rgba('+calendarColor+',1)!important;" oncontextmenu="calendarEditEvent(\''+obj.strId+'\', event)">'+obj.title+'</div>'
+                let add = '<div class="event" style="background-color:rgba('+calendarColor+',1)!important;" onclick="showCalendarEventPopover(\''+obj.strId+'\', event)" oncontextmenu="calendarEditEvent(\''+obj.strId+'\', event)">'+obj.title+'</div>'
                 content.html(content.html()+add)
 
                 events[obj.strId] = obj
@@ -662,7 +737,7 @@
                     console.log("added calendar", cal)
 
                     onsListHtml +=  `
-                        <ons-list-item>
+                        <ons-list-item onclick="selectedCalendar('`+title+`')">
                             <div class="left">
                                 <div class="circleColor" style="background-color: rgb(`+rgbColor+`);"></div>
                             </div>
@@ -675,6 +750,28 @@
                 $onsList.html(onsListHtml)
             }
         }
+
+        ///
+        /// Show event
+        ///
+        const calendarEventPopover = document.getElementById('calendarEventPopover')
+        var showCalendarEventPopover = function(event, e) {     
+            if(e) e.stopPropagation()
+            
+            $(calendarEventPopover).show()
+            showingCalendarPopOver = true
+
+            calendarEventPopover.show(e.target);
+        };
+
+        var hideCalendarEventPopover = function() {            
+            calendarEventPopover.hide();
+            showingCalendarPopOver = false
+
+            setTimeout(()=>{
+                $(calendarEventPopover).hide()
+            }, 500)
+        };
 
         ///
         /// New/edit event
@@ -702,6 +799,17 @@
             }, 500)
         };
 
+        let selCalendar = ''
+        function selectedCalendar(title){
+            selCalendar = title 
+            let calendar = calendarsList[title]
+            setCalendarColorCanvas(25, 'rgb('+calendar.rgbColor+')');
+
+            $("#calendarName").html(calendar.title)
+
+            hideCalendarsPopover()
+        }
+
         function calendarEditEvent(strI, e=null){
             if(e){
                 e.stopPropagation()
@@ -716,6 +824,8 @@
         }        
 
         function showNewEvent(){
+            selectedCalendar(Object.keys(calendarsList)[0])
+
             $("#newEvent").animate({top: 0}, 300, ()=>{
 
             })
@@ -729,6 +839,7 @@
         
         let $selectCalendarsPopover = $("#selectCalendarsPopover .popover")
         let $newEventForm = $("#newEvent form")
+        let $calendarEventPopover = $("#calendarEventPopover .popover")
 
         $('body').on('click', (e)=>{
             let $target = $(e.target)
@@ -742,6 +853,10 @@
                 }
 
                 hideCalendarsPopover()
+            }
+
+            if(!$.contains($calendarEventPopover[0], $target[0]) && !$target.is($calendarEventPopover[0])){        
+                hideCalendarEventPopover()
             }
         })
 
