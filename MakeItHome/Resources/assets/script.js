@@ -1437,6 +1437,8 @@ function initColorPicker(elId) {
     }).on('swatchselect', (color, instance) => {
         console.log('Event: "swatchselect"', color, instance);
     });
+
+    return pickr
 }
 
 ///
@@ -1444,37 +1446,88 @@ function initColorPicker(elId) {
 ///
 
 // Use of the local storage to save the personal widgets. This is not the best way to do it, but it works for my lazyness.
-let myWidgets = localStorage.getItem("myWidgets") || []
-
+let myWidgets = []
+let pickers = []
 function loadMyWidgets() {
+    let _myWidgets = localStorage.getItem("myWidgets")
+    if (_myWidgets) {
+        _myWidgets = JSON.parse(_myWidgets)
+    }
+    else {
+        _myWidgets = []
+    }
 
+    for (let widget of _myWidgets) {
+        console.log("loading", widget)
+        let res = newWidget(widget)        
+
+        let $widget = res[1]
+        $widget.find('.name').html(widget.title)
+        $widget.find('.url').val(widget.url)
+
+        let picker = res[2]
+        pickers.push(picker)
+
+        setTimeout(() => {
+            picker.setColor(widget.color)
+        }, 100)        
+    }
 }
+
+loadMyWidgets()
 
 function saveMyWidgets() {
-    localStorage.setItem("myWidgets", JSON.stringify(myWidgets))
+    let json = JSON.stringify(myWidgets)
+    console.log("saving", json)
+    localStorage.setItem("myWidgets", json)
 }
 
-function newWidget() {
+function newWidget(widget=null) {
+    console.log("new widget")
     let $widget = $(".myWidget.template").clone()
     $widget.removeClass("template")
-
-    $("#myWidgetsList").append($widget)
-
+    
     let num = myWidgets.length
+    console.log("wiget num", num)
+
+    widget = widget || { title: "My widget", color: "#0000ff" }
+    myWidgets.push(widget)
+
     let id = 'myWidget' + num
     $widget.attr('id', id)
+
+    $("#myWidgetsList").append($widget)
     
     $widget.find('.colorPicker').attr('id','myWidgetColorPicker' + num)
-    initColorPicker('myWidgetColorPicker' + num)
+    let picker = initColorPicker('myWidgetColorPicker' + num)
 
     $widget.find('.delete').on('click', () => {
         $widget.remove()
-        let out = myWidgets.splice(i, myWidgets.length - id)
-        for (let i = 1; i < out.length; i++) 
-            myWidgets.append(out[i])
-        
+
+        let out = myWidgets.splice(num-myWidgets.length)
+        console.log("myWidgets", myWidgets)
+        console.log("outs", out)
+        for (let i = 1; i < out.length; i++) {
+            myWidgets.push(out[i])
+        }
+        console.log("myWidgets", myWidgets)
+
         saveMyWidgets()
     })
 
-    return $widget
+    picker.on('change', (color, source, instance) => {
+        widget.color = picker.getColor().toRGBA().toString(0)
+        saveMyWidgets()
+    })
+
+    console.log('inputs', $widget.find('input'))
+
+    $widget.find('input, .name').on('keyup', (e) => { 
+        console.log("input keydown")
+        widget.title = $widget.find('.name').html()
+        widget.url = $widget.find('.url').val()
+        saveMyWidgets()
+    })    
+
+    return [widget, $widget, picker]
 }
