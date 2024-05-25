@@ -1485,7 +1485,7 @@ function loadMyWidgets() {
 
         setTimeout(() => {
             picker.setColor(widget.color)
-        }, 100)        
+        }, 250)        
     }
 }
 
