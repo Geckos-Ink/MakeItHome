@@ -80,10 +80,12 @@ public class Clipboard {
             }
             
             if el.alreadySent {
-                var msg = JSMessage()
-                msg.type = "removeClipboardItem"
-                msg.value = String(el.id)
-                Static.topBarWebViewRepresentable?.sendMessage(obj: msg)
+                if false { // don't remove it, simply go on
+                    var msg = JSMessage()
+                    msg.type = "removeClipboardItem"
+                    msg.value = String(el.id)
+                    Static.topBarWebViewRepresentable?.sendMessage(obj: msg)
+                }
             }
             else {
                 el.id = totElements
