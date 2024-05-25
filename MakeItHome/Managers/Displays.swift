@@ -1373,6 +1373,7 @@ public class Display : Equatable {
                 
                 if (spaceHolderId == -1 || spaceHolderFound > -1 || spaceHolderFound == -2) {
                     
+                    // this cause crashes...
                     if false && (!spaceIsChanging && !activateNewApp) && spaceHolderId >= 0 && spaceHolderId != currentSpaceId {
                         for placeholder in self.placeholders {
                             if curPlaceholder?.id != spaceHolderId {
@@ -1430,7 +1431,7 @@ public class Display : Equatable {
                 }
                 
                 if spaceHolderFound == -1 {
-                    if false && !self.spaceIsChanging && !self.activateNewApp{
+                    if !self.spaceIsChanging && !self.activateNewApp{
                         for win in windows!{
                             if let dict = win as? [String: AnyObject] {
                                 let winId = dict["kCGWindowNumber"] as? Int ?? -1
