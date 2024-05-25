@@ -592,6 +592,11 @@ function openApp(app, animateExit=true){
     } catch {}
 }
 
+/// Menu
+$(document).on('mouseenter', '.appItem', function (ev) {
+    sendMessage({type:'haptic'})    
+ })
+
 /// Scrolling
 
 function goAppsYourself(){

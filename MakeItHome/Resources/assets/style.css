@@ -261,6 +261,12 @@ input {
   border-bottom-left-radius: 5px;
 
   cursor: pointer;
+
+  transition: background 1s;
+}
+
+.leftMenu .appItem:hover {
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.3) 0%, rgba(0, 0, 0, 0.05) 100%);
 }
 
 .leftMenu .appItem.selected {
