@@ -1417,7 +1417,7 @@ public class Display : Equatable {
                         }
                     }
                     
-                    if !self.spaceIsChanging {
+                    if !self.spaceIsChanging && !self.activateNewApp {
                         for win in windows!{
                             if let dict = win as? [String: AnyObject] {
                                 let winId = dict["kCGWindowNumber"] as? Int ?? -1
@@ -1591,7 +1591,7 @@ public class Display : Equatable {
                 
                 appWin.isFullscreen = self.isFullscreen
                 
-                if !self.spaceIsChanging {
+                if !self.spaceIsChanging && !self.activateNewApp  {
                     appWin.spaceId = spaceHolderId
                 }
                 
