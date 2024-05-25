@@ -247,6 +247,8 @@ input {
 
   padding-top: 10px;
   padding-left: 10px;
+
+  overflow-y: scroll;
 }
 
 .leftMenu .appItem {
@@ -739,4 +741,20 @@ ons-list-item label:nth-child(1) {
 
 .myWidget .name {
   display: inline-block;
+}
+
+#app-myWidget-template {
+  display: none;
+}
+
+.myWidgetApp iframe {
+  width: 100%;
+  height: 100%;
+
+  border: none;
+  background-color: rgba(0, 0, 0, 0);
+}
+
+.myWidgetsItem .img {
+  text-shadow: rgb(255, 255, 255) 0px 0 5px !important;
 }

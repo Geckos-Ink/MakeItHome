@@ -465,8 +465,11 @@ let apps = [
     'clipboard',
     'board-notes',
     'board-tasks',
+    'calendar',
     //'board-scrumboard'
 ]
+
+let baseApps = [...apps]
 
 let selApp = 1
 
@@ -625,10 +628,12 @@ let disableScroll = 0
 let goToScroll = 0
 let curScroll = 0
 
+let onLeftMenu = false
+
 const $appPhantom = $("#app-phantom")
 
-$('.overscreen').bind('wheel', function(e){
-
+$('.overscreen').bind('wheel', function (e) {        
+    if (!onLeftMenu && curApp.startsWith('myWidget')) return;
     if(disableScroll) return;
 
     e.preventDefault()
@@ -905,7 +910,15 @@ function hasScrollBar($el, direction){
     return false;
 }
 
-$(document).on("mousemove", "div", function(){
+$(document).on("mousemove", "div", function (e) {
+    let $target = $(e.target)
+    onLeftMenu = false
+    while ($target.length > 0) {
+        if ($target.is('.leftMenu'))
+            onLeftMenu = true
+        $target = $target.parent()
+    }    
+
     try {
         if(hasScrollBar($(this))){             
             if(divWithScrollbar.indexOf(this) == -1){
@@ -1361,7 +1374,9 @@ $(document).ready(function() {
 function loadComponent(componentName, $targetElementSelector) {
     $.get("components/" + componentName + ".html", function(data) {
         $targetElementSelector.html(data);
-        apps.push(componentName)
+
+        if (apps.indexOf(componentName) == -1)
+            apps.push(componentName)
     }).fail(function() {
         console.error("Error loading component: " + componentName);
     });
@@ -1474,6 +1489,15 @@ function loadMyWidgets() {
     }
 }
 
+function clearMyWidgets() {
+    saveMyWidgets()
+    $("#myWidgetsList").html('')
+    $(".myWidgetsItem").remove()
+    myWidgets = []
+    apps = [...baseApps]
+    loadMyWidgets()
+}
+
 loadMyWidgets()
 
 function saveMyWidgets() {
@@ -1497,12 +1521,24 @@ function newWidget(widget=null) {
     $widget.attr('id', id)
 
     $("#myWidgetsList").append($widget)
-    
+
+    apps.push('myWidget' + num)
+
+    let $leftMenu = $('<div class="appItem myWidgetsItem" id="appItem-myWidget'+num+'" onclick="openApp(\'myWidget'+num+'\')"><div class="img"><i class="fa-solid fa-circle"></i></div> <div class="text">'+widget.title+'</div></div>')
+    $leftMenu.find('.img').css('color', widget.color)
+
+    let $app = $("#app-myWidget-template").clone()
+    $app.addClass('myWidgetApp')
+    $app.attr('id', 'app-myWidget' + num)
+    $app.find('iframe').attr('src', widget.url)
+
     $widget.find('.colorPicker').attr('id','myWidgetColorPicker' + num)
     let picker = initColorPicker('myWidgetColorPicker' + num)
 
     $widget.find('.delete').on('click', () => {
         $widget.remove()
+        $app.remove()
+        $leftMenu.remove()
 
         let out = myWidgets.splice(num-myWidgets.length)
         console.log("myWidgets", myWidgets)
@@ -1512,22 +1548,36 @@ function newWidget(widget=null) {
         }
         console.log("myWidgets", myWidgets)
 
-        saveMyWidgets()
+        clearMyWidgets()
     })
 
     picker.on('change', (color, source, instance) => {
         widget.color = picker.getColor().toRGBA().toString(0)
+
+        $leftMenu.find('.img').css('color', widget.color)
+
         saveMyWidgets()
     })
 
     console.log('inputs', $widget.find('input'))
 
     $widget.find('input, .name').on('keyup', (e) => { 
-        console.log("input keydown")
+        console.log("input keydown", e)
         widget.title = $widget.find('.name').html()
-        widget.url = $widget.find('.url').val()
+        $leftMenu.find('.text').html(widget.title)
+
+        let newUrl = $widget.find('.url').val()
+        if (newUrl != widget.url)
+            $app.find('iframe').attr('src', newUrl)
+
+        widget.url = newUrl
+
         saveMyWidgets()
     })    
+
+    // Create app
+    $('.leftMenu').append($leftMenu)
+    $('.overscreen').append($app)
 
     return [widget, $widget, picker]
 }

@@ -384,7 +384,10 @@ public class Coordinator: NSObject, WKUIDelegate, WKNavigationDelegate, NSDraggi
                 }
                 
                 if json?.type == "frameOpen" {
-                    frameOpenUrl(url: URL(string: json!.value!)!)
+                    let url = URL(string: json!.value!)
+                    if url != nil{
+                        frameOpenUrl(url: url!)
+                    }
                 }
                 
                 if json?.type == "navUrl" {
