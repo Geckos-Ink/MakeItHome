@@ -67,7 +67,7 @@ public class DisplaysManager {
                 
         Timer.scheduledTimer(withTimeInterval: Static.UpdateWallpaperEvery, repeats: true) { timer in
             Task {
-                if self.curDekstop == nil || self.curDisplay?.isMain ?? false {
+                if self.curDekstop == nil || self.curDisplay?.isMain ?? false || true{
                     self.curDisplay?.updatDesktopImage()
                 }
                 
@@ -1880,7 +1880,7 @@ public class Display : Equatable {
 
         var deskUrl : URL? = nil // MyAppleEvents.getCurrentWallpaperURL()
         
-        if deskUrl == nil && false {
+        if deskUrl == nil {
             let deskUrlFunc = NSWorkspace.desktopImageURL(NSWorkspace.shared)
             deskUrl = deskUrlFunc(screen)
         }
