@@ -416,6 +416,10 @@ public class Coordinator: NSObject, WKUIDelegate, WKNavigationDelegate, NSDraggi
                     Static.calendar?.receive(msg: json!)
                 }
                 
+                if json?.type == "haptic"{
+                    performHaptic()
+                }
+                
                 //todo: type == "widget", where to redirect the request directly to widget core(?)
                 
                 decisionHandler(.cancel)

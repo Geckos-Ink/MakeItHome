@@ -7,6 +7,7 @@
 
 import Foundation
 import IOKit.ps
+import AppKit
 
 public class GeneralFuncs {
     public static func ComputerIsConnectedToAdapter() -> Bool{
@@ -34,4 +35,11 @@ func delay(ms: Int, closure: @escaping () -> Void) {
             closure()
         }
     }
+}
+
+func performHaptic(){
+    NSHapticFeedbackManager.defaultPerformer.perform(
+        NSHapticFeedbackManager.FeedbackPattern.levelChange,
+        performanceTime: NSHapticFeedbackManager.PerformanceTime.now
+    )
 }

@@ -2824,6 +2824,10 @@ public class Display : Equatable {
             lastMouseChanged = alterMouse > 0
             
             self.timerHideWindowStarted = false
+            
+            if prevAboveBy == 0 && aboveBy > 0 {
+                performHaptic()
+            }
         }
         else { //MARK: outside side
             

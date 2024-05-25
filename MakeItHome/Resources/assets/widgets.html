@@ -221,18 +221,14 @@
                             <div class="paragraph">
                                 <div class="title">My Widgets <ons-button class="add excludeFromTitle" onclick="newWidget()">+</ons-button></div>                                           
                                 <ons-card class="myWidget template">
-                                    <span class="notification close"><i class="fa-regular fa-circle-xmark"></i></span>
+                                    <span class="notification delete"><i class="fa-regular fa-circle-xmark"></i></span>
                                     <div class="title">
-                                        <div id="myWidgetColorPicker0" class="colorPicker"></div> <div class="name" contenteditable="true">My widget name</div>
+                                        <div class="colorPicker"></div> <div class="name" contenteditable="true">My widget name</div>
                                     </div>
                                     <div class="content">
-                                        Go to url:
+                                        Go to website:
                                         <!--<input class="url" type="text" value="https://geckos.ink/">-->
                                         <br><ons-input id="url" modifier="underbar" placeholder="URL" float></ons-input>
-
-                                        <script>
-                                            initColorPicker('myWidgetColorPicker0')                                       
-                                        </script>
                                     </div>
                                 </ons-card>
                                 <div id="myWidgetsList"></div>                     

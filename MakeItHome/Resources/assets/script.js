@@ -1443,9 +1443,38 @@ function initColorPicker(elId) {
 /// My Widgets
 ///
 
+// Use of the local storage to save the personal widgets. This is not the best way to do it, but it works for my lazyness.
+let myWidgets = localStorage.getItem("myWidgets") || []
+
+function loadMyWidgets() {
+
+}
+
+function saveMyWidgets() {
+    localStorage.setItem("myWidgets", JSON.stringify(myWidgets))
+}
+
 function newWidget() {
     let $widget = $(".myWidget.template").clone()
     $widget.removeClass("template")
 
     $("#myWidgetsList").append($widget)
+
+    let num = myWidgets.length
+    let id = 'myWidget' + num
+    $widget.attr('id', id)
+    
+    $widget.find('.colorPicker').attr('id','myWidgetColorPicker' + num)
+    initColorPicker('myWidgetColorPicker' + num)
+
+    $widget.find('.delete').on('click', () => {
+        $widget.remove()
+        let out = myWidgets.splice(i, myWidgets.length - id)
+        for (let i = 1; i < out.length; i++) 
+            myWidgets.append(out[i])
+        
+        saveMyWidgets()
+    })
+
+    return $widget
 }

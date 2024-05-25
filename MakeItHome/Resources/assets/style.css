@@ -698,7 +698,7 @@ ons-list-item label:nth-child(1) {
   display: none;
 }
 
-.myWidget .close{
+.myWidget .delete{
   position: absolute;
   top: -10px;
   right: -10px;
