@@ -675,3 +675,68 @@ ons-list-item label:nth-child(1) {
 #appItem-board-scrumboard {
   display: none;
 }
+
+/*
+  My Widgets
+*/
+
+.myWidgets .add {
+  padding: 0px;
+  padding-left: 10px;
+  padding-right: 10px;
+  margin: 5px;
+  height: 30px;
+  font-size: 20px;
+  line-height: 28px;
+}
+
+.myWidget {
+  position: relative;
+}
+
+.myWidget.template {
+  display: none;
+}
+
+.myWidget .close{
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  padding: 0px;
+  font-size: 25px;
+  height: 25px;
+
+  cursor: pointer;
+}
+
+.myWidget input.url {
+  width: 100%;
+  padding: 5px;
+  border-radius: 5px;
+  margin: 3px;
+
+  color: white;
+  font-size: 16px;
+  background-color: rgba(0,0,0,0.2);
+  backdrop-filter: blur(10px);
+  border: 2px solid rgba(255,255,255,0);
+  box-shadow: 0px 0px 5px 0px rgba(255, 255, 255, 1);
+  transition: box-shadow 0.5s;
+}
+
+.myWidget input.url:hover {
+  box-shadow: 0px 0px 10px 0px rgba(255, 255, 255, 1);
+}
+
+.myWidget .colorPicker {
+  display: inline-block;
+}
+
+.myWidget .colorPicker button {
+  height: 40px;
+  width: 5px;
+}
+
+.myWidget .name {
+  display: inline-block;
+}

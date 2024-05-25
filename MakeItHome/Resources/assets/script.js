@@ -1219,7 +1219,10 @@ function renderParagraph(id){
 
     for(p=0; p<$pars.length; p++){
         $par = $($pars[p])
-        let title = $par.find('.title').html();
+
+        let $baseTitle = $par.find('.title').clone()
+        $baseTitle.find('.excludeFromTitle').remove()
+        let title = $baseTitle.html();
 
         let $title = $('<div class="title">'+title+'</div>')
         let $content = $('<div class="paragraph">' + $par.html() + '</div>')
@@ -1281,6 +1284,7 @@ $sections.css("left", $setsList.width()+"px")
 
 renderParagraph(".section.general .paragraphs")
 renderParagraph(".section.guides .paragraphs")
+renderParagraph(".section.myWidgets .paragraphs")
 
 function showSettingsSection(sect){
     const wait = 250
@@ -1299,12 +1303,17 @@ function showSettingsSection(sect){
     }, wait)    
 }
 
+/// Showing settings in Settings menu
 $("ons-list-item.general").on('click', ()=>{
     showSettingsSection("general")
 })
 
 $("ons-list-item.guides").on('click', ()=>{
     showSettingsSection("guides")
+})
+
+$("ons-list-item.myWidgets").on('click', () => {
+    showSettingsSection("myWidgets")
 })
 
 ///
@@ -1356,4 +1365,87 @@ function loadComponent(componentName, $targetElementSelector) {
     }).fail(function() {
         console.error("Error loading component: " + componentName);
     });
+}
+
+///
+/// Color picker
+///
+function initColorPicker(elId) {
+    const theme = {
+        swatches: [
+            'rgba(244, 67, 54, 1)',
+            'rgba(233, 30, 99, 0.95)',
+            'rgba(156, 39, 176, 0.9)',
+            'rgba(103, 58, 183, 0.85)',
+            'rgba(63, 81, 181, 0.8)',
+            'rgba(33, 150, 243, 0.75)',
+            'rgba(3, 169, 244, 0.7)'
+        ],
+
+        defaultRepresentation: 'HEXA',
+        components: {
+            preview: true,
+            opacity: true,
+            hue: true,
+
+            interaction: {
+                hex: false,
+                rgba: false,
+                hsva: false,
+                input: true,
+                clear: true,
+                save: true
+            }
+        }
+    }
+
+    const container = document.getElementById(elId);
+
+    let pickr = null;
+
+    const el = document.createElement('p');
+    container.appendChild(el);
+
+    // Delete previous instance
+    if (pickr) {
+        pickr.destroyAndRemove();
+    }
+
+    // Create fresh instance
+    pickr = new Pickr(Object.assign({
+        el, theme: 'nano',
+        default: '#0000ff'
+    }, theme));
+
+    // Set events
+    pickr.on('init', instance => {
+        console.log('Event: "init"', instance);
+    }).on('hide', instance => {
+        console.log('Event: "hide"', instance);
+    }).on('show', (color, instance) => {
+        console.log('Event: "show"', color, instance);
+    }).on('save', (color, instance) => {
+        console.log('Event: "save"', color, instance);
+    }).on('clear', instance => {
+        console.log('Event: "clear"', instance);
+    }).on('change', (color, source, instance) => {
+        console.log('Event: "change"', color, source, instance);
+    }).on('changestop', (source, instance) => {
+        console.log('Event: "changestop"', source, instance);
+    }).on('cancel', instance => {
+        console.log('cancel', pickr.getColor().toRGBA().toString(0));
+    }).on('swatchselect', (color, instance) => {
+        console.log('Event: "swatchselect"', color, instance);
+    });
+}
+
+///
+/// My Widgets
+///
+
+function newWidget() {
+    let $widget = $(".myWidget.template").clone()
+    $widget.removeClass("template")
+
+    $("#myWidgetsList").append($widget)
 }
