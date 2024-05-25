@@ -38,8 +38,14 @@ func delay(ms: Int, closure: @escaping () -> Void) {
 }
 
 func performHaptic(){
-    NSHapticFeedbackManager.defaultPerformer.perform(
-        NSHapticFeedbackManager.FeedbackPattern.levelChange,
-        performanceTime: NSHapticFeedbackManager.PerformanceTime.now
-    )
+    print("haptic")
+    
+    for var i in 0...4{
+        delay(ms: 10*i){
+            NSHapticFeedbackManager.defaultPerformer.perform(
+                NSHapticFeedbackManager.FeedbackPattern.generic,
+                performanceTime: NSHapticFeedbackManager.PerformanceTime.now
+            )
+        }
+    }
 }

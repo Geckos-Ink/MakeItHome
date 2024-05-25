@@ -422,6 +422,7 @@ import OrderedCollections
         }*/
                 
         //MARK: Mouse move
+        var mouseOnApp : AppNode?
         func mouseMove(display: Display){
             
             if listApp != nil && curDisplay != nil {
@@ -443,17 +444,28 @@ import OrderedCollections
                 let point = self.unprojectPoint(SCNVector3(x: cursor.x-curDisplay!.frame.minX, y: cursor.y-curDisplay!.frame.minY, z: self.projectPoint(SCNVector3Zero).z+windowsZ))
                 
                 var onApp : AppNode? = clickedOnApp
-                
+                var mouseOnApp : AppNode? = nil
                 for app in listApp! {
                     if(app.value.isInPoint(point: point)){ //old: app.value.isInPoint(point: point)
                         //print("mouse on app", NSDate().timeIntervalSince1970)
                         app.value.moveEmissionAlpha(to: 1)
                         //onApp = app.value
+                                                                        
+                        mouseOnApp = app.value
+                        if mouseOnApp != self.mouseOnApp {
+                            NSHapticFeedbackManager.defaultPerformer.perform(
+                                NSHapticFeedbackManager.FeedbackPattern.generic,
+                                performanceTime: NSHapticFeedbackManager.PerformanceTime.now
+                            )
+                        }
                     }
                     else {
                         app.value.moveEmissionAlpha(to: 0)
                     }
                 }
+                
+                self.mouseOnApp = mouseOnApp
+                
                 
                 // Set offset to default
                 for app in listApp!{

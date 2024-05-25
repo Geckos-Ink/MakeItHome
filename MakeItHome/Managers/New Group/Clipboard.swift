@@ -59,7 +59,7 @@ public class Clipboard {
         var num = 1
         for hEl in history{
             if hEl == element {
-                if num != history.count {
+                if num != history.count && num > 10 {
                     hEl.alreadySent = hEl.sent
                     hEl.sent = false
                 }
