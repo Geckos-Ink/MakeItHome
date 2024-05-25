@@ -71,9 +71,9 @@ public class Static {
         }
     }
     
-    public static let MouseHertz : Double = 60 // previous 45
-    public static let SceneKitPreferredFPS = 45
-    public static let SceneKitSleepPreferredFPS = 20
+    public static let MouseHertz : Double = 45 // previous 60
+    public static let SceneKitPreferredFPS = 30 // prev 45
+    public static let SceneKitSleepPreferredFPS = 10
     
     public static let EnableCloseMainWindowAfterInactivity = false
     

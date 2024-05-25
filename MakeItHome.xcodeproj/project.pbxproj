@@ -81,7 +81,6 @@
 		8B4B7CEC2915AC32009B55FE /* TestView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestView.swift; sourceTree = "<group>"; };
 		8B4B7CEE2915AC60009B55FE /* SwifterPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwifterPanel.swift; sourceTree = "<group>"; };
 		8B4B7CF02915B7B0009B55FE /* SwifterWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwifterWindow.swift; sourceTree = "<group>"; };
-		8B4B7D1829173171009B55FE /* MakeItHome.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; name = MakeItHome.icns; path = ../../../../../../Volumes/AirUSB/Pictures/MakeItHome/MakeItHome.icns; sourceTree = "<group>"; };
 		8B4B7D1C29180A27009B55FE /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		8B4B7D2029181373009B55FE /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions.swift; sourceTree = "<group>"; };
 		8B557444292AA647009D645D /* info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = info.plist; sourceTree = "<group>"; };
@@ -226,7 +225,6 @@
 			isa = PBXGroup;
 			children = (
 				8BB5D7FF2AA0A156007453F0 /* Localizable.xcstrings */,
-				8B4B7D1829173171009B55FE /* MakeItHome.icns */,
 				8BE1B22B28F01E030037D132 /* Packages */,
 				8B74405E28E6A89800E7AD36 /* MakeItHome */,
 				8B74405D28E6A89800E7AD36 /* Products */,

@@ -6,6 +6,12 @@
 //  Copyright © 2023 geckos.ink. All rights reserved.
 //
 
+/*
+ # Notes:
+ This page is full of unused content during its development.
+ It's necessary to try to remove stuff and check if it continues to work.
+*/
+
 import SwiftUI
 import WebKit
 import Cocoa
@@ -378,7 +384,10 @@ public class Coordinator: NSObject, WKUIDelegate, WKNavigationDelegate, NSDraggi
                 }
                 
                 if json?.type == "frameOpen" {
-                    frameOpenUrl(url: URL(string: json!.value!)!)
+                    let url = URL(string: json!.value!)
+                    if url != nil{
+                        frameOpenUrl(url: url!)
+                    }
                 }
                 
                 if json?.type == "navUrl" {
@@ -409,6 +418,15 @@ public class Coordinator: NSObject, WKUIDelegate, WKNavigationDelegate, NSDraggi
                 if json?.type == "calendar" {
                     Static.calendar?.receive(msg: json!)
                 }
+                
+                if json?.type == "haptic"{
+                    NSHapticFeedbackManager.defaultPerformer.perform(
+                        NSHapticFeedbackManager.FeedbackPattern.generic,
+                        performanceTime: NSHapticFeedbackManager.PerformanceTime.now
+                    )
+                }
+                
+                //todo: type == "widget", where to redirect the request directly to widget core(?)
                 
                 decisionHandler(.cancel)
                 return
@@ -779,6 +797,7 @@ public struct JSMessage: Codable {
     var imgBase : String?
     
     var id : Int?
+    var strId : String?
     
     var data : Data?
     
@@ -802,6 +821,12 @@ public struct JSMessage: Codable {
     var allDay : Bool?
     var location : String?
     var notes : String?
+    var calendar : String?
+    var color: [CGFloat]?    
+    
+    // Calendars
+    var calendarsTitles : [String]?
+    var calendarsColors : [[CGFloat]]?
 }
 
 extension URL {

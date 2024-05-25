@@ -67,7 +67,7 @@ public class DisplaysManager {
                 
         Timer.scheduledTimer(withTimeInterval: Static.UpdateWallpaperEvery, repeats: true) { timer in
             Task {
-                if self.curDekstop == nil || self.curDisplay?.isMain ?? false {
+                if self.curDekstop == nil || self.curDisplay?.isMain ?? false || true{
                     self.curDisplay?.updatDesktopImage()
                 }
                 
@@ -557,9 +557,18 @@ public class Display : Equatable {
             }
             
             Timer.scheduledTimer(withTimeInterval: Static.ChangeSpaceAfter / 2, repeats: false) { timer in
-                let space = self.spaces[win!.spaceId]
+                var space = self.spaces[win!.spaceId]
+                
+                if space == nil {
+                    for ph in self.placeholders{
+                        if ph.id == win!.spaceId{
+                            space = ph
+                            break
+                        }
+                    }
+                }
                                 
-                if(space != nil && win!.spaceId != self.currentSpaceId && !self.spaceIsChanging){
+                if(space != nil && win!.spaceId != self.currentSpaceId){
                     print("activating space with id", win!.spaceId)
                     
                     self.spaceIsChanging = true
@@ -574,6 +583,8 @@ public class Display : Equatable {
                 }
                 else {
                     self.goToSpace = -1
+                    print(win!.spaceId)
+                    print(self.spaces)
                     print("space not found")
                     
                     win!.app?.activate(win: win, force: forceByDefault) // just do it
@@ -1195,6 +1206,7 @@ public class Display : Equatable {
             
             //var spaceHolder : [String: AnyObject]? = nil
             var spaceHolderId = -1
+            var sameSpaceHolderId : Int = 0
             
             func cycleWindows(windows : [CFDictionary]?){
                 
@@ -1225,6 +1237,7 @@ public class Display : Equatable {
                 let orderedWindows = windows //windows?.sorted(by: sortWinByLayer)
                 
                 var winnerTitle = ""
+                var _curSpaceholder : SwifterPlaceholder?
                 
                 for win in orderedWindows!{
                     if let dict = win as? [String: AnyObject] {
@@ -1276,9 +1289,7 @@ public class Display : Equatable {
                             spaceHolderId = winId
                             
                             if self.currentSpaceId == winId {
-                                if self.curPlaceholder != nil {
-                                    self.spaces[spaceHolderId] = self.curPlaceholder
-                                }
+                                // ...
                             }
                             else {
                                 print("space holder found")
@@ -1360,13 +1371,10 @@ public class Display : Equatable {
                 //MARK: spaceHolder MGMT
                 samePlaceholderSince += 1
                 
-                if currentSpaceId < 0 {
-                    currentSpaceId = spaceHolderId
-                }
-                
                 if (spaceHolderId == -1 || spaceHolderFound > -1 || spaceHolderFound == -2) {
                     
-                    if spaceHolderId >= 0 && spaceHolderId != currentSpaceId {
+                    // this cause crashes...
+                    if false && (!spaceIsChanging && !activateNewApp) && spaceHolderId >= 0 && spaceHolderId != currentSpaceId {
                         for placeholder in self.placeholders {
                             if curPlaceholder?.id != spaceHolderId {
                                 if placeholder.numWindows == curPlaceholder?.numWindows && spaceHolderId != currentSpaceId {
@@ -1377,17 +1385,22 @@ public class Display : Equatable {
                         }
                     }
                     
-                    if self.currentSpaceId != spaceHolderId {
-                        samePlaceholderSince = 0
+                    if self.currentSpaceId != spaceHolderId || (spaceHolderFound < 0 && self.currentSpaceId > 0){
+                        if sameSpaceHolderId != spaceHolderId{
+                            samePlaceholderSince = 0
+                        }
+                        
+                        sameSpaceHolderId = spaceHolderId
                     }
+                    
                     
                     if spaceHolderFound >= 0 {
                         self.currentSpaceId = spaceHolderId
                     }
                     
                     //spaceHolderFound = -2 // force "space changing" status
-                    
-                    if !self.spaceIsChanging {
+                                    
+                    if spaceHolderFound < 0 && !self.spaceIsChanging {
                         print("space changing")
                         self.spaceIsChanging = true
                         self.spaceInChanging()
@@ -1396,37 +1409,42 @@ public class Display : Equatable {
                     curPlaceholder = nil
                 }
                 
-                if spaceHolderFound == -1 {
-                    if self.spaceIsChanging {
-                        if samePlaceholderSince > Static.WaitAfterSpaceChange {
-                            self.spaceIsChanging = false
-                        }
+                if self.spaceIsChanging {
+                    if samePlaceholderSince > Static.WaitAfterSpaceChange { // not working. Duck you
+                        self.spaceIsChanging = false
                     }
-                    else {
-                        if curPlaceholder == nil {
-                            for placeholder in placeholders {
-                                if(placeholder.id == -1){
-                                    placeholder.id = currentSpaceId
-                                }
-                                
-                                if(placeholder.id == currentSpaceId){
-                                    curPlaceholder = placeholder
-                                    break;
-                                }
+                }
+                else {
+                    if curPlaceholder == nil {
+                        for placeholder in placeholders {
+                            if(placeholder.id == -1){
+                                placeholder.id = currentSpaceId
+                            }
+                            
+                            if(placeholder.id == currentSpaceId){
+                                curPlaceholder = placeholder
+                                self.spaces[currentSpaceId] = self.curPlaceholder
+                                break;
                             }
                         }
                     }
-                    
-                    if !self.spaceIsChanging {
+                }
+                
+                if spaceHolderFound == -1 {
+                    if !self.spaceIsChanging && !self.activateNewApp{
                         for win in windows!{
                             if let dict = win as? [String: AnyObject] {
                                 let winId = dict["kCGWindowNumber"] as? Int ?? -1
                                 
                                 let appWin = getWindow(winId: winId)
-                                appWin?.spaceId = self.currentSpaceId // update every time
+                                appWin?.spaceId = curPlaceholder?.id ?? currentSpaceId // update every time
                             }
                         }
                     }
+                }
+                
+                if spaceHolderFound >= 0 {
+                    self.spaceIsChanging = false
                 }
             }
             
@@ -1587,8 +1605,11 @@ public class Display : Equatable {
                 
                 appWin.isFullscreen = self.isFullscreen
                 
-                if !self.spaceIsChanging {
-                    appWin.spaceId = spaceHolderId
+                if !self.spaceIsChanging && !self.activateNewApp && self.aboveBy == 0  {
+                    if currentSpaceId > 0 && appWin.spaceId != currentSpaceId {
+                        appWin.spaceId = currentSpaceId
+                        print("setted new spaceId")
+                    }
                 }
                 
                 appWin.inUsing = true
@@ -1859,7 +1880,7 @@ public class Display : Equatable {
 
         var deskUrl : URL? = nil // MyAppleEvents.getCurrentWallpaperURL()
         
-        if deskUrl == nil && false {
+        if deskUrl == nil {
             let deskUrlFunc = NSWorkspace.desktopImageURL(NSWorkspace.shared)
             deskUrl = deskUrlFunc(screen)
         }
@@ -2179,6 +2200,8 @@ public class Display : Equatable {
         curPlaceholder = nil
         currentSpaceId = -1
         samePlaceholderSince = 0
+        
+        self.spaceIsChanging = false
     }
     
     func spaceInChanging(){
@@ -2192,7 +2215,8 @@ public class Display : Equatable {
     
     let useRelativePointer = false
     
-    var scarfWeight : CGFloat = 0.001 * Static.Sensivity
+    let sensivityBaseConstant = 0.002    
+    var scarfWeight : CGFloat = 0.002 * Static.Sensivity
     var activateOnPixelsLimit : CGFloat = 35
     var moveOnPixels : CGFloat = 0
     let decelerateAboveBy : CGFloat = 0.25
@@ -2274,7 +2298,7 @@ public class Display : Equatable {
     public var alongLine = AlongLine()
     
     func reSetDynamicSettings(){
-        self.scarfWeight = 0.001 * Static.Sensivity
+        self.scarfWeight = sensivityBaseConstant * Static.Sensivity
         self.batteryDivider = GeneralFuncs.ComputerIsConnectedToAdapter() ? 2 : 1
     }
     
@@ -2465,6 +2489,16 @@ public class Display : Equatable {
         let absForecastMouse = NSPoint(x: mouseForecast.x + frame.origin.x, y: mouseForecast.y + frame.origin.y)
              
         //curSide = checkSide(point: mouseForecast)
+        
+        // Restart widgets zone rendering when pointer is around the top zone
+        if curSide>0 && activateSide[curSide]{
+            if(curSide == 3){
+                Static.TopBarWebView?.restartRendering()
+            }
+            else {
+                Static.TopBarWebView?.stopRendering()
+            }
+        }
         
         //MARK: Top side mouse
         if(curSide == 3 && activateSide[curSide] && self.aboveByPixels == 0){
@@ -2807,6 +2841,10 @@ public class Display : Equatable {
             lastMouseChanged = alterMouse > 0
             
             self.timerHideWindowStarted = false
+            
+            if prevAboveBy == 0 && aboveBy > 0 {
+                performHaptic()
+            }
         }
         else { //MARK: outside side
             

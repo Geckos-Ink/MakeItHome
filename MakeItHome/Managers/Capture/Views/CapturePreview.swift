@@ -113,14 +113,14 @@ import OrderedCollections
         }
         
         if(side == 3){
-            DispatchQueue.main.async { 
+            DispatchQueue.main.async {
                 
-                if(aboveBy == 0){
+                /*if(aboveBy == 0){ // restart rendering only when effectively in over screen (moved directly in Display class)
                     Static.TopBarWebView?.stopRendering()
                 }
                 else {
                     Static.TopBarWebView?.restartRendering()
-                }
+                }*/
                 
                 var offYMul : CGFloat = 1
                 
@@ -422,6 +422,7 @@ import OrderedCollections
         }*/
                 
         //MARK: Mouse move
+        var mouseOnApp : AppNode?
         func mouseMove(display: Display){
             
             if listApp != nil && curDisplay != nil {
@@ -443,17 +444,29 @@ import OrderedCollections
                 let point = self.unprojectPoint(SCNVector3(x: cursor.x-curDisplay!.frame.minX, y: cursor.y-curDisplay!.frame.minY, z: self.projectPoint(SCNVector3Zero).z+windowsZ))
                 
                 var onApp : AppNode? = clickedOnApp
-                
+                var mouseOnApp : AppNode? = nil
                 for app in listApp! {
                     if(app.value.isInPoint(point: point)){ //old: app.value.isInPoint(point: point)
                         //print("mouse on app", NSDate().timeIntervalSince1970)
                         app.value.moveEmissionAlpha(to: 1)
                         //onApp = app.value
+                                                                        
+                        mouseOnApp = app.value
                     }
                     else {
                         app.value.moveEmissionAlpha(to: 0)
                     }
                 }
+                
+                if mouseOnApp != self.mouseOnApp {
+                    NSHapticFeedbackManager.defaultPerformer.perform(
+                        NSHapticFeedbackManager.FeedbackPattern.generic,
+                        performanceTime: NSHapticFeedbackManager.PerformanceTime.now
+                    )
+                }
+                
+                self.mouseOnApp = mouseOnApp
+                
                 
                 // Set offset to default
                 for app in listApp!{

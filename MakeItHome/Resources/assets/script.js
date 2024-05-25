@@ -186,7 +186,8 @@ $grid.masonry({
     // set itemSelector so .grid-sizer is not used in layout
     itemSelector: '.item',
     // use element for option
-    columnWidth: 50,
+    columnWidth: 80,
+    gutter: 10,
     percentPosition: true,
     initLayout: true
 })   
@@ -225,9 +226,21 @@ function receiveMessage(message){
         if(obj.type == 'removeUpTo'){
             let upTo = parseInt(obj.value)
             $grid.find('.item').each(function(i, e){
-                $e = $(e)
+                let $e = $(e)
                 let id = $e.attr('id').split('-')[1]
                 if(parseInt(id) < upTo){
+                    $e.remove()
+                }
+            })
+        }
+
+        if (obj.type == 'removeClipboardItem') {
+            let itemId = parseInt(obj.value)
+
+            $grid.find('.item').each(function (i, e) {
+                let $e = $(e)
+                let id = $e.attr('id').split('-')[1]
+                if (parseInt(id) == itemId) {
                     $e.remove()
                 }
             })
@@ -452,8 +465,11 @@ let apps = [
     'clipboard',
     'board-notes',
     'board-tasks',
+    'calendar',
     //'board-scrumboard'
 ]
+
+let baseApps = [...apps]
 
 let selApp = 1
 
@@ -576,6 +592,11 @@ function openApp(app, animateExit=true){
     } catch {}
 }
 
+/// Menu
+$(document).on('mouseenter', '.appItem', function (ev) {
+    sendMessage({type:'haptic'})    
+ })
+
 /// Scrolling
 
 function goAppsYourself(){
@@ -612,10 +633,12 @@ let disableScroll = 0
 let goToScroll = 0
 let curScroll = 0
 
+let onLeftMenu = false
+
 const $appPhantom = $("#app-phantom")
 
-$('.overscreen').bind('wheel', function(e){
-
+$('.overscreen').bind('wheel', function (e) {        
+    if (!onLeftMenu && curApp.startsWith('myWidget')) return;
     if(disableScroll) return;
 
     e.preventDefault()
@@ -892,7 +915,15 @@ function hasScrollBar($el, direction){
     return false;
 }
 
-$(document).on("mousemove", "div", function(){
+$(document).on("mousemove", "div", function (e) {
+    let $target = $(e.target)
+    onLeftMenu = false
+    while ($target.length > 0) {
+        if ($target.is('.leftMenu'))
+            onLeftMenu = true
+        $target = $target.parent()
+    }    
+
     try {
         if(hasScrollBar($(this))){             
             if(divWithScrollbar.indexOf(this) == -1){
@@ -1206,7 +1237,10 @@ function renderParagraph(id){
 
     for(p=0; p<$pars.length; p++){
         $par = $($pars[p])
-        let title = $par.find('.title').html();
+
+        let $baseTitle = $par.find('.title').clone()
+        $baseTitle.find('.excludeFromTitle').remove()
+        let title = $baseTitle.html();
 
         let $title = $('<div class="title">'+title+'</div>')
         let $content = $('<div class="paragraph">' + $par.html() + '</div>')
@@ -1268,6 +1302,7 @@ $sections.css("left", $setsList.width()+"px")
 
 renderParagraph(".section.general .paragraphs")
 renderParagraph(".section.guides .paragraphs")
+renderParagraph(".section.myWidgets .paragraphs")
 
 function showSettingsSection(sect){
     const wait = 250
@@ -1286,12 +1321,17 @@ function showSettingsSection(sect){
     }, wait)    
 }
 
+/// Showing settings in Settings menu
 $("ons-list-item.general").on('click', ()=>{
     showSettingsSection("general")
 })
 
 $("ons-list-item.guides").on('click', ()=>{
     showSettingsSection("guides")
+})
+
+$("ons-list-item.myWidgets").on('click', () => {
+    showSettingsSection("myWidgets")
 })
 
 ///
@@ -1339,8 +1379,210 @@ $(document).ready(function() {
 function loadComponent(componentName, $targetElementSelector) {
     $.get("components/" + componentName + ".html", function(data) {
         $targetElementSelector.html(data);
-        apps.push(componentName)
+
+        if (apps.indexOf(componentName) == -1)
+            apps.push(componentName)
     }).fail(function() {
         console.error("Error loading component: " + componentName);
     });
+}
+
+///
+/// Color picker
+///
+function initColorPicker(elId) {
+    const theme = {
+        swatches: [
+            'rgba(244, 67, 54, 1)',
+            'rgba(233, 30, 99, 0.95)',
+            'rgba(156, 39, 176, 0.9)',
+            'rgba(103, 58, 183, 0.85)',
+            'rgba(63, 81, 181, 0.8)',
+            'rgba(33, 150, 243, 0.75)',
+            'rgba(3, 169, 244, 0.7)'
+        ],
+
+        defaultRepresentation: 'HEXA',
+        components: {
+            preview: true,
+            opacity: true,
+            hue: true,
+
+            interaction: {
+                hex: false,
+                rgba: false,
+                hsva: false,
+                input: true,
+                clear: true,
+                save: true
+            }
+        }
+    }
+
+    const container = document.getElementById(elId);
+
+    let pickr = null;
+
+    const el = document.createElement('p');
+    container.appendChild(el);
+
+    // Delete previous instance
+    if (pickr) {
+        pickr.destroyAndRemove();
+    }
+
+    // Create fresh instance
+    pickr = new Pickr(Object.assign({
+        el, theme: 'nano',
+        default: '#0000ff'
+    }, theme));
+
+    // Set events
+    pickr.on('init', instance => {
+        console.log('Event: "init"', instance);
+    }).on('hide', instance => {
+        console.log('Event: "hide"', instance);
+    }).on('show', (color, instance) => {
+        console.log('Event: "show"', color, instance);
+    }).on('save', (color, instance) => {
+        console.log('Event: "save"', color, instance);
+    }).on('clear', instance => {
+        console.log('Event: "clear"', instance);
+    }).on('change', (color, source, instance) => {
+        console.log('Event: "change"', color, source, instance);
+    }).on('changestop', (source, instance) => {
+        console.log('Event: "changestop"', source, instance);
+    }).on('cancel', instance => {
+        console.log('cancel', pickr.getColor().toRGBA().toString(0));
+    }).on('swatchselect', (color, instance) => {
+        console.log('Event: "swatchselect"', color, instance);
+    });
+
+    return pickr
+}
+
+///
+/// My Widgets
+///
+
+// Use of the local storage to save the personal widgets. This is not the best way to do it, but it works for my lazyness.
+let myWidgets = []
+let pickers = []
+function loadMyWidgets() {
+    let _myWidgets = localStorage.getItem("myWidgets")
+    if (_myWidgets) {
+        _myWidgets = JSON.parse(_myWidgets)
+    }
+    else {
+        _myWidgets = []
+    }
+
+    for (let widget of _myWidgets) {
+        console.log("loading", widget)
+        let res = newWidget(widget)        
+
+        let $widget = res[1]
+        $widget.find('.name').html(widget.title)
+        $widget.find('.url').val(widget.url)
+
+        let picker = res[2]
+        pickers.push(picker)
+
+        setTimeout(() => {
+            picker.setColor(widget.color)
+        }, 250)        
+    }
+}
+
+function clearMyWidgets() {
+    saveMyWidgets()
+    $("#myWidgetsList").html('')
+    $(".myWidgetsItem").remove()
+    myWidgets = []
+    apps = [...baseApps]
+    loadMyWidgets()
+}
+
+loadMyWidgets()
+
+function saveMyWidgets() {
+    let json = JSON.stringify(myWidgets)
+    console.log("saving", json)
+    localStorage.setItem("myWidgets", json)
+}
+
+function newWidget(widget=null) {
+    console.log("new widget")
+    let $widget = $(".myWidget.template").clone()
+    $widget.removeClass("template")
+    
+    let num = myWidgets.length
+    console.log("wiget num", num)
+
+    widget = widget || { title: "My widget", color: "#0000ff" }
+    myWidgets.push(widget)
+
+    let id = 'myWidget' + num
+    $widget.attr('id', id)
+
+    $("#myWidgetsList").append($widget)
+
+    apps.push('myWidget' + num)
+
+    let $leftMenu = $('<div class="appItem myWidgetsItem" id="appItem-myWidget'+num+'" onclick="openApp(\'myWidget'+num+'\')"><div class="img"><i class="fa-solid fa-circle"></i></div> <div class="text">'+widget.title+'</div></div>')
+    $leftMenu.find('.img').css('color', widget.color)
+
+    let $app = $("#app-myWidget-template").clone()
+    $app.addClass('myWidgetApp')
+    $app.attr('id', 'app-myWidget' + num)
+    $app.find('iframe').attr('src', widget.url)
+
+    $widget.find('.colorPicker').attr('id','myWidgetColorPicker' + num)
+    let picker = initColorPicker('myWidgetColorPicker' + num)
+
+    $widget.find('.delete').on('click', () => {
+        $widget.remove()
+        $app.remove()
+        $leftMenu.remove()
+
+        let out = myWidgets.splice(num-myWidgets.length)
+        console.log("myWidgets", myWidgets)
+        console.log("outs", out)
+        for (let i = 1; i < out.length; i++) {
+            myWidgets.push(out[i])
+        }
+        console.log("myWidgets", myWidgets)
+
+        clearMyWidgets()
+    })
+
+    picker.on('change', (color, source, instance) => {
+        widget.color = picker.getColor().toRGBA().toString(0)
+
+        $leftMenu.find('.img').css('color', widget.color)
+
+        saveMyWidgets()
+    })
+
+    console.log('inputs', $widget.find('input'))
+
+    $widget.find('input, .name').on('keyup', (e) => { 
+        console.log("input keydown", e)
+        widget.title = $widget.find('.name').html()
+        $leftMenu.find('.text').html(widget.title)
+
+        let newUrl = $widget.find('.url').val()
+        if (newUrl != widget.url)
+            $app.find('iframe').attr('src', newUrl)
+
+        widget.url = newUrl
+
+        saveMyWidgets()
+    })    
+
+    // Create app
+    $('.leftMenu').append($leftMenu)
+    $('.overscreen').append($app)
+
+    return [widget, $widget, picker]
 }

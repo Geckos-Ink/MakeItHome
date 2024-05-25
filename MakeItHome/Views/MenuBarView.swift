@@ -163,7 +163,7 @@ struct MenuBarView: View {
                     }
                     
                     Button(action: {
-                        let url = URL(string: "https://forum.geckos.ink/forumdisplay.php?fid=3")!
+                        let url = URL(string: "https://github.com/Geckos-Ink/MakeItHome/issues")!
                         if NSWorkspace.shared.open(url) {
                             print("default browser was successfully opened")
                         }

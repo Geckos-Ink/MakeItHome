@@ -7,6 +7,7 @@
 
 import Foundation
 import IOKit.ps
+import AppKit
 
 public class GeneralFuncs {
     public static func ComputerIsConnectedToAdapter() -> Bool{
@@ -32,6 +33,19 @@ func delay(ms: Int, closure: @escaping () -> Void) {
     DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(ms)) {
         DispatchQueue.main.async {
             closure()
+        }
+    }
+}
+
+func performHaptic(){
+    print("haptic")
+    
+    for var i in 0...4{
+        delay(ms: 5*i){
+            NSHapticFeedbackManager.defaultPerformer.perform(
+                NSHapticFeedbackManager.FeedbackPattern.generic,
+                performanceTime: NSHapticFeedbackManager.PerformanceTime.now
+            )
         }
     }
 }

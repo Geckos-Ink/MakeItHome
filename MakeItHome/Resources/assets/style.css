@@ -111,7 +111,9 @@ input {
   /*width: 80px;
   height: 60px;*/
   border: 1.5px solid hsla(0, 0%, 0%, 0);
-  margin: 5px;
+  margin-bottom: 10px;
+  margin-left: auto;
+  margin-right: auto;
 
   max-width: 40%;
   max-height: 150px;
@@ -245,6 +247,8 @@ input {
 
   padding-top: 10px;
   padding-left: 10px;
+
+  overflow-y: scroll;
 }
 
 .leftMenu .appItem {
@@ -257,6 +261,12 @@ input {
   border-bottom-left-radius: 5px;
 
   cursor: pointer;
+
+  transition: background 1s;
+}
+
+.leftMenu .appItem:hover {
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.3) 0%, rgba(0, 0, 0, 0.05) 100%);
 }
 
 .leftMenu .appItem.selected {
@@ -637,6 +647,8 @@ input {
   color: white;  
   text-align: center;
 
+  text-shadow: rgba(0, 0, 0, 1) 0px 0 5px;
+
   border-radius: 5px;
 
   cursor: pointer;
@@ -672,4 +684,85 @@ ons-list-item label:nth-child(1) {
 
 #appItem-board-scrumboard {
   display: none;
+}
+
+/*
+  My Widgets
+*/
+
+.myWidgets .add {
+  padding: 0px;
+  padding-left: 10px;
+  padding-right: 10px;
+  margin: 5px;
+  height: 30px;
+  font-size: 20px;
+  line-height: 28px;
+}
+
+.myWidget {
+  position: relative;
+}
+
+.myWidget.template {
+  display: none;
+}
+
+.myWidget .delete{
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  padding: 0px;
+  font-size: 25px;
+  height: 25px;
+
+  cursor: pointer;
+}
+
+.myWidget input.url {
+  width: 100%;
+  padding: 5px;
+  border-radius: 5px;
+  margin: 3px;
+
+  color: white;
+  font-size: 16px;
+  background-color: rgba(0,0,0,0.2);
+  backdrop-filter: blur(10px);
+  border: 2px solid rgba(255,255,255,0);
+  box-shadow: 0px 0px 5px 0px rgba(255, 255, 255, 1);
+  transition: box-shadow 0.5s;
+}
+
+.myWidget input.url:hover {
+  box-shadow: 0px 0px 10px 0px rgba(255, 255, 255, 1);
+}
+
+.myWidget .colorPicker {
+  display: inline-block;
+}
+
+.myWidget .colorPicker button {
+  height: 40px;
+  width: 5px;
+}
+
+.myWidget .name {
+  display: inline-block;
+}
+
+#app-myWidget-template {
+  display: none;
+}
+
+.myWidgetApp iframe {
+  width: 100%;
+  height: 100%;
+
+  border: none;
+  background-color: rgba(0, 0, 0, 0);
+}
+
+.myWidgetsItem .img {
+  text-shadow: rgb(255, 255, 255) 0px 0 5px !important;
 }

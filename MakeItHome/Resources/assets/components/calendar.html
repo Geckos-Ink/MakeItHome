@@ -1,3 +1,5 @@
+<script src="jqueries/jquery.datetimepicker.full.min.js"></script>
+<link rel="stylesheet" href="jqueries/jquery.datetimepicker.min.css">
 
 <style>
     .body {
@@ -16,6 +18,8 @@
         /*width: 80%;
         max-width: 600px;*/
         border: 1px solid rgba(100,100,100, 0.4);
+
+        border-radius: 5px;
     }
 
     .month-header {
@@ -75,11 +79,11 @@
     }
 
     .day.other-month {
-        background-color: #222;
+        background-color: rgba(29, 29, 29, 0.75);
     }
 
     .day:not(.other-month):hover {
-        background-color: #555;
+        background-color: rgba(72, 72, 72, 0.5);
         cursor: pointer;
     }
 
@@ -151,6 +155,202 @@
         text-align: left;
     }
 
+    /*
+        New event
+    */
+
+    #newEvent {
+        position: fixed;
+        top: -600px;
+        left: 0px;
+        right: 0px;
+    }
+
+    .form-container {       
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        padding: 10px;
+        padding-top: 30px;
+        max-width: 600px;
+        margin: 0 auto;
+
+        border-radius: 15px;
+        border-top-left-radius: 0px;
+        border-top-right-radius: 0px;
+
+        background-color: rgba(0, 0, 0, 0.5);
+        -webkit-backdrop-filter: blur(10px);
+
+        color: white;
+    }
+
+    .form-title {
+        font-size: 24px;
+        color: #333;
+        margin-bottom: 20px;
+    }
+    .form-group {
+        margin-bottom: 5px;
+    }
+
+    .double {
+        width: 49%;
+        display: inline-block;
+    }
+
+    .triple {
+        width: 32%;
+        display: inline-block;
+    }
+
+    .double input, .triple input {
+        width: 90% !important;          
+    }
+
+    .form-group label {
+        display: block;
+        margin-bottom: 0px;
+        font-size: 12px;
+        color: white;
+    }
+    .form-group input, .form-group textarea, .form-group select {
+        width: 95%;
+        padding: 3px;
+        border-radius: 6px;
+        border: 1px solid #ccc;
+        font-size: 14px;
+        color: white;
+
+        margin-left: auto;
+        margin-right: auto;
+
+        background-color: rgba(0, 0, 0, 0.25);
+    }
+
+    .form-group input:hover {
+        background-color: rgba(0, 0, 0, 0.5);
+    }
+
+    .form-group textarea {
+        height: 50px;
+    }
+    .form-group button {
+        background-color: rgba(255,255,255, 0.5);
+        color: black;
+        padding: 5px 10px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 12px;
+        transition: background-color 0.3s;
+
+        margin-top: 10px;
+    }
+    .form-group button:hover {
+        background-color: rgba(255,255,255, 0.75);
+    }
+
+    #newEvent label {
+        color: gray;
+        margin-bottom: 2px;
+
+        text-shadow: -1px -1px 3px rgba(255,255,255,0.25);
+    }
+
+    #newEvent .delete {
+        background-color: rgba(255,0,0,0.5);
+        color: white;
+        margin-left: 10px;
+    }
+
+    #newEvent .delete:hover {
+        background-color: rgba(255,0,0,0.75);
+    }
+
+    #calendarColorCanvas {
+        height: 25px;
+        margin-top: 10px;
+        margin-bottom: -5px;
+
+        /*border: 1px solid #ccc;*/
+        transition: filter 0.3s ease; /* Adding a transition effect */
+        filter: brightness(1);
+    }
+
+    #calendarColorCanvas:hover {
+        filter: brightness(1.5); /* Making the canvas 50% brighter on hover */
+    }
+
+    #selectCalendarsPopover {
+        font-size: 12px;
+    }
+
+    #selectCalendarsPopover ons-list {
+        max-height: 200px;
+        overflow-y: scroll;
+    }
+
+    #selectCalendarsPopover ons-list ons-list-item:hover {
+        -webkit-backdrop-filter: brightness(1.5);
+    }
+
+    #selectCalendarsPopover .circleColor{
+        width: 15px;
+        height: 15px;
+        border-radius: 100%;
+    }
+
+    #calendarName {
+        display: inline-block;
+
+        font-size: 12px;
+        padding-bottom: 5px;
+        padding-right: 10px;
+    }
+
+    #calendarEventPopover .popover--bottom__content{
+        width: 400px;
+    }
+
+    #calendarEventPopover table {
+        color: white !important;
+        font-size: 12px;  
+        width: 400px;     
+        
+        margin: 5px;
+    }
+
+    #calendarEventPopover table td:nth-child(1){
+        width: 20%;
+        text-align: right;
+        font-weight: bold;
+        padding-right: 5px;
+    }
+
+    #calendarEventPopover table td:nth-child(2){
+        width: 80%;
+    }
+
+    #calendarEventPopover #popoverEventTitle {
+        font-size: 14px;
+        font-weight: bold;
+    }
+
+    /*::-webkit-datetime-edit {
+        border-radius: 5px;
+        padding: 5px;
+
+        background-color: rgba(255,255,255, 0.5);
+        -webkit-backdrop-filter: blur(10px);
+    }*/
+
+    input::-webkit-calendar-picker-indicator{
+        display: none;
+    }
+
+    input[type="date"]::-webkit-input-placeholder{ 
+        visibility: hidden !important;
+    }
+
 </style>
 
 <div class="body">
@@ -217,9 +417,192 @@
         </div>
     </div>
 
+    <div id="newEvent">
+        <div class="form-container">
+            <!--<div class="form-title">Create New Event</div>-->
+            <form>
+                <div class="form-group">
+                    <label for="eventName">Event Name</label>
+                    <input type="text" id="eventName" name="eventName">
+                </div>
+                <div class="form-group triple">
+                    <label for="endTime">Date</label>
+                    <input type="input" id="eventDay" name="eventDay" class="datepicker">
+                </div>
+                <div class="form-group triple">
+                    <label for="startTime">Start Time</label>
+                    <input type="input" id="calendarStartTime" name="startTime" class="datepicker">
+                </div>
+                <div class="form-group triple">
+                    <label for="endTime">End Time</label>
+                    <input type="input" id="calendarEndTime" name="endTime" class="datepicker">
+                </div>                
+                <div class="form-group">
+                    <label for="location">Location</label>
+                    <input type="text" id="eventLocation" name="location">
+                </div>
+                <div class="form-group">
+                    <label for="notes">Notes</label>
+                    <textarea id="eventNotes" name="notes"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="url">URL</label>
+                    <input type="eventUrl" id="url" name="url">
+                </div>
+                <div class="form-group double">
+                    <button type="submit" class="eventDone">Done</button>
+                    <button class="delete">Delete</button>
+                </div>
+                <div class="form-group double" style="text-align:right;">
+                    <span id="calendarName">Work</span>
+                    <canvas id="calendarColorCanvas" onclick="showCalendarsPopover(event)"></canvas>                
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <ons-popover direction="up" id="selectCalendarsPopover">
+        <ons-list>
+            <!--<ons-list-header>Thumbnails and titles</ons-list-header>-->
+            <ons-list-item>
+                <div class="left">
+                    <img class="list-item__thumbnail" src="https://placekitten.com/g/40/40">
+                </div>
+                <div class="center">
+                    <span class="list-item__title">Home</span>
+                </div>
+            </ons-list-item>                        
+        </ons-list>
+    </ons-popover>
+
+    <ons-popover id="calendarEventPopover">        
+        <div style="padding: 5px; max-width: 400px; max-height: 200px; overflow-y: scroll;">
+            <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                    <td>Title:</td>
+                    <td id="popoverEventTitle">Event Title</td>
+                </tr>
+                <tr>
+                    <td>Calendar:</td>
+                    <td>
+                        <span id="popoverCalendarColor" style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background-color: red; margin:3px; vertical-align: middle;"></span>
+                        <span id="popoverCalendarName" style="margin-bottom: 4px;">Calendar Name</span>                        
+                    </td>
+                </tr>
+                <tr>
+                    <td>Start Date:</td>
+                    <td id="popoverStartDate">Start Date</td>
+                </tr>
+                <tr>
+                    <td>End Date:</td>
+                    <td id="popoverEndDate">End Date</td>
+                </tr>
+                <tr>
+                    <td>Location:</td>
+                    <td id="popoverLocation">Location</td>
+                </tr>
+                <tr>
+                    <td>Notes:</td>
+                    <td id="popoverNotes">Notes</td>
+                </tr>
+                <tr>
+                    <td>URL:</td>
+                    <td><a href="#" id="popoverURL">URL</a></td>
+                </tr>
+            </table>
+        </div>
+    </ons-popover>
+
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 
     <script>
+        ///
+        /// Global vars
+        ///
+        let calendarsList = {}
+
+        ///
+        ///
+        ///        
+
+        function setCurrentDateTimeFormat(now=null, show=0) {
+            if(!now) now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            let formattedDateTime =  ''
+            if(show == 0 || show == 1){ 
+                if(show==0) 
+                    formattedDateTime += `${year}/${month}/${day}`;
+                else
+                    formattedDateTime += `${day}/${month}/${year}`; 
+            }
+            if(show == 0) formattedDateTime += ' '
+            if(show == 0 || show == 2) formattedDateTime += `${hours}:${minutes}`;
+            return formattedDateTime;
+        }
+
+        function parseDateTimeString(dateTimeString) {
+            // Validate and extract parts using a regular expression
+            const regex = /^(\d{4})\/(\d{2})\/(\d{2}) (\d{2}):(\d{2})$/;
+            const match = dateTimeString.match(regex);
+
+            if (!match) {
+                throw new Error("Invalid date-time format. Expected format: yyyy/mm/dd hh:mm");
+            }
+
+            // Extract components from the regex match groups
+            const year = parseInt(match[1], 10);
+            const month = parseInt(match[2], 10) - 1; // Months are 0-based in JavaScript Date
+            const day = parseInt(match[3], 10);
+            const hours = parseInt(match[4], 10);
+            const minutes = parseInt(match[5], 10);
+
+            // Create and return the Date object
+            return new Date(year, month, day, hours, minutes);
+        }
+
+        function parseDateString(dateTimeString) {
+            // Validate and extract parts using a regular expression
+            const regex = /^(\d{2})\/(\d{2})\/(\d{4})$/;
+            const match = dateTimeString.match(regex);
+
+            if (!match) {
+                throw new Error("Invalid date-time format. Expected format: yyyy/mm/dd, given "+ dateTimeString);
+            }
+
+            // Extract components from the regex match groups
+            const year = parseInt(match[3], 10);
+            const month = parseInt(match[2], 10) - 1; // Months are 0-based in JavaScript Date
+            const day = parseInt(match[1], 10);
+
+            // Create and return the Date object
+            return new Date(year, month, day);
+        }
+
+
+        function parseTimeString(timeString){
+            const regex = /^(\d{2}):(\d{2})$/;
+            const match = timeString.match(regex);
+
+            if (!match) {
+                throw new Error("Invalid date-time format. Expected format: yyyy/mm/dd hh:mm");
+            }
+
+            // Extract components from the regex match groups
+            const hours = parseInt(match[1], 10);
+            const minutes = parseInt(match[2], 10);
+
+            // Create and return the Date object
+            return new Date(1994, 9, 30, hours, minutes);
+        }
+
+
+        ///
+        ///
+        ///
         function convertDateFromString(dateString) {
             const parts = dateString.split('/');
             
@@ -245,6 +628,7 @@
         const gridDays = 7*5
 
         function clearCalendar(){
+            days = []
             for(let i=0; i<gridDays; i++){
                 let div = getDay(i);
                 div.removeClass("other-month")
@@ -280,6 +664,8 @@
 
         let firstDate = null 
         let lastDate = null
+        let firstDateIndex = 0
+        let days = []
 
         function generateMonth(year, month){
             clearCalendar()
@@ -303,6 +689,7 @@
                 div.addClass("other-month")
 
                 let date = new Date(firstDay);
+                days.push(date)
                 date.setDate(iday - day);
                 generateDay(div, date)
 
@@ -311,11 +698,14 @@
                 day++
             }
 
+            firstDateIndex = day == 0 ? 0 : (day * 2)-1
+
             for(let d=0; d<totalDays; d++){
                 let div = getDay(day)
 
                 let date = new Date(firstDay);
                 date.setDate(firstDay.getDate()+d);
+                days.push(date)
                 generateDay(div, date)
 
                 if(firstDate == null) firstDate = date  
@@ -332,7 +722,8 @@
                 div.addClass("other-month")
                 
                 let date = new Date(nextMonth);
-                date.setDate(nextMonth.getDate()+(day-curDay));                
+                date.setDate(nextMonth.getDate()+(day-curDay));     
+                days.push(date)           
                 generateDay(div, date)
 
                 lastDate = date
@@ -396,15 +787,17 @@
             root.style.setProperty('--height-fraction', `${heightFraction}px`);
         }
 
+        let events = []
         function retrieveMonth(){
             $(".calendar .dayContent").each(function(){
                 $(this).html('')
             })
 
+            events = []
             sendMessage({type: "calendar", value: "eventRange", 
                 firstDate: formatDateToCustomFormat(firstDate, 'dd/mm/yyyy'),
                 lastDate: formatDateToCustomFormat(lastDate, 'dd/mm/yyyy')
-            })
+            })            
         }
 
         /// Set dimensions
@@ -417,7 +810,6 @@
         function openApp_calendar(){
             setTimeout(()=>{
                 updateTableSize()
-
                 retrieveMonth()
             },100)
         }
@@ -431,7 +823,7 @@
 
             for(let d=0; d<gridDays; d++){
                 if(date.getFullYear() == currentDate.getFullYear() && date.getMonth() == currentDate.getMonth() && date.getDate() == currentDate.getDate())
-                    return d
+                    return d + firstDateIndex
 
                 // Add 24 hours to the current date
                 currentDate.setHours(currentDate.getHours() + 24);
@@ -439,20 +831,403 @@
 
             return -1
         }
-
+             
         function appReceive_calendar(obj){
             if(obj.op == 'setEvent'){
-                let day = new Date(obj.day + 'T00:00:00')
+                let day = obj.day = new Date(obj.day + 'T00:00:00')
                 let index = getDateIndex(day)
 
                 let divDay = getDay(index)
                 let content = divDay.find(".dayContent")
 
-                let add = '<div class="event">'+obj.title+'</div>'
+                let calendar = calendarsList[obj.calendar]
+                let calendarColor = Math.floor(calendar.color[0]*255)+','+Math.floor(calendar.color[1]*255)+','+Math.floor(calendar.color[2]*255)                                
+
+                let add = '<div class="event" style="background-color:rgba('+calendarColor+',1)!important;" onclick="showCalendarEventPopover(\''+obj.strId+'\', event)" oncontextmenu="return calendarEditEvent(\''+obj.strId+'\', event)">'+obj.title+'</div>'
                 content.html(content.html()+add)
+
+                events[obj.strId] = obj
+            }
+
+            if(obj.op == 'calendarsList'){
+                let $onsList = $("#selectCalendarsPopover ons-list")
+                let onsListHtml = ''
+
+                console.log('calendarsList', obj.calendarsTitles.length, $onsList)
+
+                calendarsList = {}
+                for(let c=0; c<obj.calendarsTitles.length; c++){
+                    let title = obj.calendarsTitles[c]
+
+                    let color = obj.calendarsColors[c]
+                    let rgbColor = Math.floor(color[0]*255)+','+Math.floor(color[1]*255)+','+Math.floor(color[2]*255)                
+        
+                    let cal = calendarsList[title] = {
+                        title: title,
+                        color: color,
+                        rgbColor: rgbColor
+                    }
+
+                    console.log("added calendar", cal)
+
+                    onsListHtml +=  `
+                        <ons-list-item onclick="selectedCalendar('`+title+`')">
+                            <div class="left">
+                                <div class="circleColor" style="background-color: rgb(`+rgbColor+`);"></div>
+                            </div>
+                            <div class="center">
+                                <span class="list-item__title">`+title+`</span>
+                            </div>
+                        </ons-list-item> `
+                }
+
+                $onsList.html(onsListHtml)
             }
         }
+
+        ///
+        /// Show event
+        ///
+        const calendarEventPopover = document.getElementById('calendarEventPopover')
+        var showCalendarEventPopover = function(event, e) {     
+            if(e) e.stopPropagation()
+            
+            event = events[event]
+            console.log('showCalendarEventPopover', event)
+
+            $(calendarEventPopover).show()
+            showingCalendarPopOver = true
+
+            $("#popoverEventTitle").html(event.title)
+
+            let calendar = calendarsList[event.calendar]
+            $("#popoverCalendarName").html(event.calendar)
+            $("#popoverCalendarColor").css('background-color', 'rgb('+calendar.rgbColor+')')
+
+            $("#popoverNotes").html(event.notes)
+            $("#popoverLocation").html(event.location)
+            
+            event.url = event.url || ''
+            $("#popoverURL").html(event.url)
+            $("#popoverURL").attr('src', event.url)
+
+            let date = event.day
+
+            date.setHours(event.startTime.split(':')[0])
+            date.setMinutes(event.startTime.split(':')[1])
+            $("#popoverStartDate").html(setCurrentDateTimeFormat(date))
+
+            date.setHours(event.endTime.split(':')[0])
+            date.setMinutes(event.endTime.split(':')[1])
+            $("#popoverEndDate").html(setCurrentDateTimeFormat(date))
+
+            calendarEventPopover.show(e.target);   
+            
+            let $target = $(e.target)
+            let $popover = $(calendarEventPopover).find('.popover')
+
+            setTimeout(()=>{
+                let goToLeft = $target.offset().left - $popover.width()/2 + $target.width()/2
+                goToLeft -= $(".left").width()
+                if(goToLeft < 0) goToLeft = 0
+
+                console.log("popover correction", $popover, goToLeft)
+
+                $popover.animate({'left': goToLeft}, 100)
+                //$popover.css('left', goToLeft+'px')
+            }, 300)            
+        };
+
+        var hideCalendarEventPopover = function() {            
+            calendarEventPopover.hide();
+            showingCalendarPopOver = false
+
+            setTimeout(()=>{
+                $(calendarEventPopover).hide()
+            }, 500)
+        };
+
+        ///
+        /// New/edit event
+        ///
+
+        let allowedTimes = []
+        for(let h=0; h<24; h++){
+            for(let m=0; m<60; m+=15){
+                allowedTimes.push(h+':'+m)
+            }
+        }
+
+        $('#eventDay').datetimepicker({theme:'dark', mask:true, timepicker: false, format: 'd/m/Y'})
+        $('#calendarStartTime').datetimepicker({allowTimes:allowedTimes, theme:'dark', mask:true, datepicker: false, format: 'H:i'})
+        $('#calendarEndTime').datetimepicker({allowTimes:allowedTimes, theme:'dark', mask:true, datepicker: false, format: 'H:i'})  
         
+        let calendarStartTime = new Date()
+        let calendarEndTime = new Date()
+        $("#calendarStartTime").on('change', ()=>{
+            calendarStartTime = parseTimeString($("#calendarStartTime").val())
+            calendarEndTime = parseTimeString($("#calendarEndTime").val())
+
+            if(calendarStartTime > calendarEndTime){
+                calendarEndTime = calendarStartTime
+                $("#calendarEndTime").val($("#calendarStartTime").val())
+            }
+        })
+
+        $("#calendarEndTime").on('change', ()=>{
+            calendarStartTime = parseDateTimeString($("#calendarStartTime").val())
+            calendarEndTime = parseDateTimeString($("#calendarEndTime").val())
+
+            if(calendarStartTime > calendarEndTime){
+                calendarStartTime = calendarEndTime
+                $("#calendarStartTime").val($("#calendarEndTime").val())
+            }
+        })
+
+        const calendarColorCanvas = document.getElementById('calendarColorCanvas')
+        const calendarPopOver = document.getElementById('selectCalendarsPopover')
+        let showingCalendarPopOver = false
+        var showCalendarsPopover = function(e) {     
+            if(e)
+                e.stopPropagation()
+            
+            $(calendarPopOver).show()
+            showingCalendarPopOver = true
+
+            calendarPopOver.show(calendarColorCanvas);            
+        };
+
+        var hideCalendarsPopover = function() {            
+            calendarPopOver.hide();
+            showingCalendarPopOver = false
+
+            setTimeout(()=>{
+                $(calendarPopOver).hide()
+            }, 500)
+        };
+
+        let selCalendar = ''
+        function selectedCalendar(title){
+            selCalendar = title 
+            let calendar = calendarsList[title]
+            setCalendarColorCanvas(25, 'rgb('+calendar.rgbColor+')');
+
+            $("#calendarName").html(calendar.title)
+
+            hideCalendarsPopover()
+        }
+
+        function calendarEditEvent(strId, e=null){
+            if(e){
+                e.stopPropagation()
+            }
+
+            let event = events[strId]   
+            
+            console.log("edit event", event)
+
+            $("#eventName").val(event.title)
+            $("#eventDay").val(setCurrentDateTimeFormat(event.day, 1))
+            $("#calendarStartTime").val(event.startTime)
+            $("#calendarEndTime").val(event.endTime)
+            $("#eventNotes").val(event.notes)
+            $("#eventLocation").val(event.location)
+            $("#eventUrl").val(event.url)
+
+            setTimeout(()=>{
+                selectedCalendar(event.calendar)
+            }, 50)
+
+            showNewEvent(strId)
+
+            return false
+        }        
+
+        let editingEvent = ''
+        function showNewEvent(event=null, selectedDay=null){
+            editingEvent = event 
+
+            selectedCalendar(Object.keys(calendarsList)[0])
+
+            if(!event){
+                console.log("new event selected day", selectedDay)
+                $('#eventDay').val(setCurrentDateTimeFormat(selectedDay, 1))
+                $('#calendarStartTime').val('00:00')
+                $('#calendarEndTime').val('00:00')
+
+                $("#eventName").val('')                
+                $("#eventNotes").val('')           
+                $("#eventLocation").val('')        
+                $("#eventUrl").val('')        
+            }
+
+            $("#newEvent").animate({top: 0}, 300, ()=>{
+
+            })
+        }
+
+        function hideNewEvent(){
+            let msg = {}
+
+            let title = $("#eventName").val()
+            if(title){
+                msg = {
+                    type: "calendar",
+                    title: title,
+                    day: parseDateString($("#eventDay").val()),
+                    startTime: $("#calendarStartTime").val(),
+                    endTime: $("#calendarEndTime").val(),
+                    calendar: selCalendar,
+                    notes: $("#eventNotes").val(),
+                    location: $("#eventLocation").val(),
+                    url: $("#eventUrl").val(),
+                } 
+            }
+        
+            if(!editingEvent){
+                // create event
+                if(msg.title)
+                    msg.value = "newEvent"                
+            }
+            else {
+                if(msg.title){
+                    msg.value = "updateEvent"                
+                    msg.strId = editingEvent
+                }
+            }
+
+            if(msg.value){
+                console.log("edit/create calendar event", msg)                
+                $("#eventName").val('')
+
+                setTimeout(()=>{
+                    sendMessage(msg)           
+                }, 25)   
+
+                setTimeout(()=>{
+                    retrieveMonth()                
+                }, 50)                
+            }
+
+            $("#newEvent").animate({top: "-100%"}, 300, ()=>{
+
+            })
+        }
+        
+        let $selectCalendarsPopover = $("#selectCalendarsPopover .popover")
+        let $newEventForm = $("#newEvent form")
+        let $calendarEventPopover = $("#calendarEventPopover .popover")
+
+        $('body').on('click', (e)=>{
+            let $target = $(e.target)
+            console.log("document click (calendar)", $target)                        
+
+            if(!$.contains($selectCalendarsPopover[0], $target[0]) && !$target.is($selectCalendarsPopover)){            
+                if(!showingCalendarPopOver){
+                    if(!$.contains($newEventForm[0], $target[0]) && !$target.is($newEventForm)){                
+                        hideNewEvent()
+                    }
+                }
+
+                hideCalendarsPopover()
+            }
+
+            if(!$.contains($calendarEventPopover[0], $target[0]) && !$target.is($calendarEventPopover[0])){        
+                hideCalendarEventPopover()
+            }
+        })
+
+        $(".eventDone").on('click', (e)=>{
+            hideNewEvent()
+        })
+
+        $(".delete").on('click', (e)=>{
+            if(!editingEvent){
+                hideNewEvent()
+                return;
+            }
+
+            setTimeout(()=>{                
+                sendMessage({
+                    type: "calendar",                
+                    value: "deleteEvent",
+                    strId: editingEvent
+                })
+
+                $("#eventName").val('')
+
+                setTimeout(()=>{
+                    hideNewEvent()           
+                }, 10)
+
+                setTimeout(()=>{
+                    retrieveMonth()
+                }, 250)
+            }, 10)                         
+        })
+
+        let $days = $('.day')
+        function setCurrentMonthEvents(){
+            $days.on( "contextmenu", function(e) {
+                console.log("calendar .day contextmenu")
+
+                $t = $(e.target)
+                while($t && !$t.is('.day'))
+                    $t = $t.parent()
+
+                let iday = $days.index($t[0])               
+                let selDay = days[iday]
+                showNewEvent(null, selDay)
+            });
+        }
+
+        setTimeout(()=>{
+            setCurrentMonthEvents()
+        }, 100)
+
+        const calendarColorCanvasCtx = calendarColorCanvas.getContext('2d');
+
+        function setCalendarColorCanvas(radius, color) {
+            const paddingTop = 5;
+            const canvas = calendarColorCanvas
+            const ctx = calendarColorCanvasCtx
+
+            const diameter = radius * 2;
+            const totalHeight = diameter + paddingTop;
+
+            // Set canvas size
+            canvas.width = diameter;
+            canvas.height = totalHeight;
+
+            // Clear the canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Draw the circle with gradient
+            ctx.beginPath();
+            ctx.arc(radius, radius + paddingTop, radius, 0, Math.PI * 2, false); // x, y, radius, startAngle, endAngle
+            ctx.fillStyle = color;
+            ctx.fill();
+
+            // Create the semi-transparent gradient overlay
+            const gradient = ctx.createRadialGradient(radius, radius + paddingTop, radius / 4, radius, radius + paddingTop, radius);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.25)'); // Light reflection color with transparency
+            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)'); // Fully transparent at the edge
+
+            // Apply the gradient overlay
+            ctx.beginPath();
+            ctx.arc(radius, radius + paddingTop, radius, 0, Math.PI * 2, false);
+            ctx.fillStyle = gradient;
+            ctx.fill();
+
+
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = 'white';
+            ctx.stroke();
+        }
+
+        // Example usage:
+        setCalendarColorCanvas(25, 'red'); // Creates a red circle with a radius of 50px
+                
     </script>
 
     <style>

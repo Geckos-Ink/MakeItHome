@@ -76,6 +76,9 @@
         <link rel="stylesheet" href="./onsenui/css/onsenui.css">
         <link rel="stylesheet" href="./onsenui/css/dark-onsen-css-components.min.css">
         <script src="./onsenui/js/onsenui.min.js"></script>
+
+        <script src="./thirds/pickr.min.js"></script>
+        <link rel="stylesheet" href="./thirds/pickr.nano.min.css">
     </head>
     
     <body ondrop="drop(event)" ondragover="allowDrop(event)" ondragover="dragover_handler(event)" ondragend="dragend(event)" ondragenter="dragenter(event)" ondragleave="dragleave(event)">
@@ -172,6 +175,7 @@
                     <ons-list>
                       <ons-list-header>Sections</ons-list-header>
                       <ons-list-item modifier="chevron" tappable class="general">General</ons-list-item>
+                      <ons-list-item modifier="chevron" tappable class="myWidgets">My Widgets</ons-list-item>
                       <ons-list-item modifier="chevron" tappable class="guides">Guides</ons-list-item>
                     </ons-list>                  
                 </ons-page>
@@ -207,6 +211,32 @@
                         </div>
                     </div>
 
+                    <div class="section myWidgets">
+                        <div class="paragraphs">
+                            <div class="paragraph">
+                                <div class="title">Introduction</div>
+                                With My Widgets you can create your own custom widgets that point to your favorite website.<br>
+                                Websites are shown through an iframe (services like Google used to not work without a proxy) and cookies are not saved through the sessions.
+                            </div>
+
+                            <div class="paragraph">
+                                <div class="title">My Widgets <ons-button class="add excludeFromTitle" onclick="newWidget()">+</ons-button></div>                                           
+                                <ons-card class="myWidget template">
+                                    <span class="notification delete"><i class="fa-regular fa-circle-xmark"></i></span>
+                                    <div class="title">
+                                        <div class="colorPicker"></div> <div class="name" contenteditable="true">My widget name</div>
+                                    </div>
+                                    <div class="content">
+                                        Go to website:
+                                        <!--<input class="url" type="text" value="https://geckos.ink/">-->
+                                        <br><ons-input class="url" modifier="underbar" placeholder="URL" float></ons-input>
+                                    </div>
+                                </ons-card>
+                                <div id="myWidgetsList"></div>                     
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="section guides">
                         <div class="paragraphs">
                             <div class="paragraph">
@@ -224,10 +254,24 @@
                                 By default, due to the using of screen recording, the notifications are disabled. <br>
                                 You can enable it going in Settings > Notification settings and enabling "Allow notifications when mirroring or sharing the display".
                             </div>
+
+                            <div class="paragraph">
+                                <div class="title">How to change the theme</div>
+                                For the moment, the theme is strictly related to macOS' background. If the background is not available or not compatible, appears a default blue theme.
+                            </div>
+
+                            <div class="paragraph">
+                                <div class="title">How the calendar works</div>
+                                At this moment, the calendar provides a way to show events, their previews clicking on them or to rapidly edit them with a right click.
+                            </div>
                         </div>
                     </div>
                 </div>
 
+            </div>
+
+            <div class="app" id="app-myWidget-template" class="myWidgetApp">
+                <iframe src=""></iframe>
             </div>
             
         </div>
@@ -253,7 +297,9 @@
         if(typeof(message) == 'object')
             message = JSON.stringify(message)
 
-        window.location.href = "myapp://message?text=" + encodeURIComponent(message);
+        console.log("sending message", message)
+        message = encodeURIComponent(message)        
+        window.location.href = "myapp://message?text=" + message;
     }
 
     /// Errors handler
