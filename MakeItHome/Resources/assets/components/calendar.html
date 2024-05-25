@@ -249,6 +249,13 @@
         background-color: rgba(255,255,255, 0.75);
     }
 
+    #newEvent label {
+        color: gray;
+        margin-bottom: 2px;
+
+        text-shadow: -1px -1px 3px rgba(255,255,255,0.25);
+    }
+
     #newEvent .delete {
         background-color: rgba(255,0,0,0.5);
         color: white;
@@ -478,8 +485,8 @@
                 <tr>
                     <td>Calendar:</td>
                     <td>
-                        <span id="popoverCalendarName">Calendar Name</span>
-                        <span id="popoverCalendarColor" style="display: inline-block; width: 15px; height: 15px; border-radius: 50%; background-color: red;"></span>
+                        <span id="popoverCalendarColor" style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background-color: red; margin:3px;"></span>
+                        <span id="popoverCalendarName" style="margin-bottom: 4px;">Calendar Name</span>                        
                     </td>
                 </tr>
                 <tr>
@@ -1091,6 +1098,7 @@
 
             if(msg.value){
                 console.log("edit/create calendar event", msg)                
+                $("#eventName").val('')
 
                 setTimeout(()=>{
                     sendMessage(msg)           
@@ -1134,7 +1142,12 @@
         })
 
         $(".delete").on('click', (e)=>{
-            setTimeout(()=>{
+            if(!editingEvent){
+                hideNewEvent()
+                return;
+            }
+
+            setTimeout(()=>{                
                 sendMessage({
                     type: "calendar",                
                     value: "deleteEvent",
