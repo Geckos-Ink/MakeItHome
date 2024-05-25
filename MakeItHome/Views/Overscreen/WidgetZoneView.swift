@@ -420,7 +420,10 @@ public class Coordinator: NSObject, WKUIDelegate, WKNavigationDelegate, NSDraggi
                 }
                 
                 if json?.type == "haptic"{
-                    performHaptic()
+                    NSHapticFeedbackManager.defaultPerformer.perform(
+                        NSHapticFeedbackManager.FeedbackPattern.generic,
+                        performanceTime: NSHapticFeedbackManager.PerformanceTime.now
+                    )
                 }
                 
                 //todo: type == "widget", where to redirect the request directly to widget core(?)

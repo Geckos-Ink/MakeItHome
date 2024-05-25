@@ -452,16 +452,17 @@ import OrderedCollections
                         //onApp = app.value
                                                                         
                         mouseOnApp = app.value
-                        if mouseOnApp != self.mouseOnApp {
-                            NSHapticFeedbackManager.defaultPerformer.perform(
-                                NSHapticFeedbackManager.FeedbackPattern.generic,
-                                performanceTime: NSHapticFeedbackManager.PerformanceTime.now
-                            )
-                        }
                     }
                     else {
                         app.value.moveEmissionAlpha(to: 0)
                     }
+                }
+                
+                if mouseOnApp != self.mouseOnApp {
+                    NSHapticFeedbackManager.defaultPerformer.perform(
+                        NSHapticFeedbackManager.FeedbackPattern.generic,
+                        performanceTime: NSHapticFeedbackManager.PerformanceTime.now
+                    )
                 }
                 
                 self.mouseOnApp = mouseOnApp
