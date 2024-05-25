@@ -557,9 +557,18 @@ public class Display : Equatable {
             }
             
             Timer.scheduledTimer(withTimeInterval: Static.ChangeSpaceAfter / 2, repeats: false) { timer in
-                let space = self.spaces[win!.spaceId]
+                var space = self.spaces[win!.spaceId]
+                
+                if space == nil {
+                    for ph in self.placeholders{
+                        if ph.id == win!.spaceId{
+                            space = ph
+                            break
+                        }
+                    }
+                }
                                 
-                if(space != nil && win!.spaceId != self.currentSpaceId && !self.spaceIsChanging){
+                if(space != nil && win!.spaceId != self.currentSpaceId){
                     print("activating space with id", win!.spaceId)
                     
                     self.spaceIsChanging = true
@@ -574,6 +583,8 @@ public class Display : Equatable {
                 }
                 else {
                     self.goToSpace = -1
+                    print(win!.spaceId)
+                    print(self.spaces)
                     print("space not found")
                     
                     win!.app?.activate(win: win, force: forceByDefault) // just do it
@@ -1195,6 +1206,7 @@ public class Display : Equatable {
             
             //var spaceHolder : [String: AnyObject]? = nil
             var spaceHolderId = -1
+            var sameSpaceHolderId : Int = 0
             
             func cycleWindows(windows : [CFDictionary]?){
                 
@@ -1359,13 +1371,9 @@ public class Display : Equatable {
                 //MARK: spaceHolder MGMT
                 samePlaceholderSince += 1
                 
-                if currentSpaceId < 0 {
-                    currentSpaceId = spaceHolderId
-                }
-                
                 if (spaceHolderId == -1 || spaceHolderFound > -1 || spaceHolderFound == -2) {
                     
-                    if spaceHolderId >= 0 && spaceHolderId != currentSpaceId {
+                    if false && (!spaceIsChanging && !activateNewApp) && spaceHolderId >= 0 && spaceHolderId != currentSpaceId {
                         for placeholder in self.placeholders {
                             if curPlaceholder?.id != spaceHolderId {
                                 if placeholder.numWindows == curPlaceholder?.numWindows && spaceHolderId != currentSpaceId {
@@ -1377,8 +1385,13 @@ public class Display : Equatable {
                     }
                     
                     if self.currentSpaceId != spaceHolderId || (spaceHolderFound < 0 && self.currentSpaceId > 0){
-                        samePlaceholderSince = 0
+                        if sameSpaceHolderId != spaceHolderId{
+                            samePlaceholderSince = 0
+                        }
+                        
+                        sameSpaceHolderId = spaceHolderId
                     }
+                    
                     
                     if spaceHolderFound >= 0 {
                         self.currentSpaceId = spaceHolderId
@@ -1395,35 +1408,35 @@ public class Display : Equatable {
                     curPlaceholder = nil
                 }
                 
-                if spaceHolderFound == -1 {
-                    if self.spaceIsChanging {
-                        if samePlaceholderSince > Static.WaitAfterSpaceChange {
-                            self.spaceIsChanging = false
-                        }
+                if self.spaceIsChanging {
+                    if samePlaceholderSince > Static.WaitAfterSpaceChange { // not working. Duck you
+                        self.spaceIsChanging = false
                     }
-                    else {
-                        if curPlaceholder == nil {
-                            for placeholder in placeholders {
-                                if(placeholder.id == -1){
-                                    placeholder.id = currentSpaceId
-                                }
-                                
-                                if(placeholder.id == currentSpaceId){
-                                    curPlaceholder = placeholder
-                                    self.spaces[spaceHolderId] = self.curPlaceholder
-                                    break;
-                                }
+                }
+                else {
+                    if curPlaceholder == nil {
+                        for placeholder in placeholders {
+                            if(placeholder.id == -1){
+                                placeholder.id = currentSpaceId
+                            }
+                            
+                            if(placeholder.id == currentSpaceId){
+                                curPlaceholder = placeholder
+                                self.spaces[currentSpaceId] = self.curPlaceholder
+                                break;
                             }
                         }
                     }
-                    
-                    if !self.spaceIsChanging && !self.activateNewApp{
+                }
+                
+                if spaceHolderFound == -1 {
+                    if false && !self.spaceIsChanging && !self.activateNewApp{
                         for win in windows!{
                             if let dict = win as? [String: AnyObject] {
                                 let winId = dict["kCGWindowNumber"] as? Int ?? -1
                                 
                                 let appWin = getWindow(winId: winId)
-                                appWin?.spaceId = self.currentSpaceId // update every time
+                                appWin?.spaceId = curPlaceholder?.id ?? currentSpaceId // update every time
                             }
                         }
                     }
@@ -1592,8 +1605,8 @@ public class Display : Equatable {
                 appWin.isFullscreen = self.isFullscreen
                 
                 if !self.spaceIsChanging && !self.activateNewApp && self.aboveBy == 0  {
-                    if spaceHolderId > 0 && appWin.spaceId != spaceHolderId {
-                        appWin.spaceId = spaceHolderId
+                    if currentSpaceId > 0 && appWin.spaceId != currentSpaceId {
+                        appWin.spaceId = currentSpaceId
                         print("setted new spaceId")
                     }
                 }

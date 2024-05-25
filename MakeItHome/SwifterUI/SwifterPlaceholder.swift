@@ -12,7 +12,7 @@ import SwiftUI
 public class SwifterPlaceholder : NSWindow {
     
     public var numWindows = -1
-    public var id = -1
+    public var id : Int = -1
     
     init(){
         super.init(contentRect: NSRect(x: 100, y: 100, width: 0, height: 0), styleMask: [.utilityWindow, .closable, .titled], backing: .buffered, defer: true)
