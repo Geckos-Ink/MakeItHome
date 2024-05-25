@@ -62,6 +62,12 @@ public class Clipboard {
                 if num != history.count && num > 10 {
                     hEl.alreadySent = hEl.sent
                     hEl.sent = false
+                    
+                    let iEl = history.firstIndex(of: hEl)
+                    if iEl != nil{
+                        history.remove(at: iEl!)
+                        history.insert(element, at: 0)
+                    }
                 }
                 return
             }

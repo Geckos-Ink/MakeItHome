@@ -647,6 +647,8 @@ input {
   color: white;  
   text-align: center;
 
+  text-shadow: rgba(0, 0, 0, 1) 0px 0 5px;
+
   border-radius: 5px;
 
   cursor: pointer;
