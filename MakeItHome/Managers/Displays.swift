@@ -1225,6 +1225,7 @@ public class Display : Equatable {
                 let orderedWindows = windows //windows?.sorted(by: sortWinByLayer)
                 
                 var winnerTitle = ""
+                var _curSpaceholder : SwifterPlaceholder?
                 
                 for win in orderedWindows!{
                     if let dict = win as? [String: AnyObject] {
@@ -1276,9 +1277,7 @@ public class Display : Equatable {
                             spaceHolderId = winId
                             
                             if self.currentSpaceId == winId {
-                                if self.curPlaceholder != nil {
-                                    self.spaces[spaceHolderId] = self.curPlaceholder
-                                }
+                                // ...
                             }
                             else {
                                 print("space holder found")
@@ -1377,7 +1376,7 @@ public class Display : Equatable {
                         }
                     }
                     
-                    if self.currentSpaceId != spaceHolderId {
+                    if self.currentSpaceId != spaceHolderId || (spaceHolderFound < 0 && self.currentSpaceId > 0){
                         samePlaceholderSince = 0
                     }
                     
@@ -1411,13 +1410,14 @@ public class Display : Equatable {
                                 
                                 if(placeholder.id == currentSpaceId){
                                     curPlaceholder = placeholder
+                                    self.spaces[spaceHolderId] = self.curPlaceholder
                                     break;
                                 }
                             }
                         }
                     }
                     
-                    if !self.spaceIsChanging && !self.activateNewApp {
+                    if !self.spaceIsChanging && !self.activateNewApp{
                         for win in windows!{
                             if let dict = win as? [String: AnyObject] {
                                 let winId = dict["kCGWindowNumber"] as? Int ?? -1
@@ -1591,8 +1591,11 @@ public class Display : Equatable {
                 
                 appWin.isFullscreen = self.isFullscreen
                 
-                if !self.spaceIsChanging && !self.activateNewApp  {
-                    appWin.spaceId = spaceHolderId
+                if !self.spaceIsChanging && !self.activateNewApp && self.aboveBy == 0  {
+                    if spaceHolderId > 0 && appWin.spaceId != spaceHolderId {
+                        appWin.spaceId = spaceHolderId
+                        print("setted new spaceId")
+                    }
                 }
                 
                 appWin.inUsing = true
