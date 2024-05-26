@@ -251,6 +251,8 @@ import OrderedCollections
             self.alphaValue = 1
             self.isPlaying = false
             
+            self.layerContentsRedrawPolicy = .onSetNeedsDisplay
+            
             preferredFramesPerSecond = Static.SceneKitPreferredFPS
             
             // Make this a layer-hosting view. First set the layer, then set wantsLayer to true.
