@@ -334,86 +334,94 @@ import OrderedCollections
         var leftMouse = true
         
         public override func mouseDown(with evt: NSEvent) {
-            leftMouse = true
-            
-            let cursor = NSEvent.mouseLocation
-            let point = self.unprojectPoint(SCNVector3(x: cursor.x-curDisplay!.frame.minX, y: cursor.y-curDisplay!.frame.minY, z: self.projectPoint(SCNVector3Zero).z+windowsZ))
-            
-            leftMouse = true
-            
-            if curDisplay == nil || listApp == nil {
-                return
-            }
-            
-            for app in listApp! {
-                if(app.value.isInPoint(point: point)){
-                    print("clicked on app!", NSDate().timeIntervalSince1970)
-                    
-                    if clickStartedHere == NSPoint.zero {
-                        clickedOnApp = app.value
+            DispatchQueue.global(qos: .userInitiated).async {
+                self.leftMouse = true
+                
+                let cursor = NSEvent.mouseLocation
+                let point = self.unprojectPoint(SCNVector3(x: cursor.x-self.curDisplay!.frame.minX, y: cursor.y-self.curDisplay!.frame.minY, z: self.projectPoint(SCNVector3Zero).z+self.windowsZ))
+                
+                self.leftMouse = true
+                
+                if self.curDisplay == nil || self.listApp == nil {
+                    return
+                }
+                
+                for app in self.listApp! {
+                    if(app.value.isInPoint(point: point)){
+                        print("clicked on app!", NSDate().timeIntervalSince1970)
+                        
+                        if self.clickStartedHere == NSPoint.zero {
+                            self.clickedOnApp = app.value
+                        }
                     }
                 }
+                
+                self.draggedClickedApp = false
+                self.clickStartedHere = NSEvent.mouseLocation
+                self.clickStartTime = NSDate()
             }
-            
-            draggedClickedApp = false
-            clickStartedHere = NSEvent.mouseLocation
-            clickStartTime = NSDate()
         }
         
         override public func mouseUp(with event: NSEvent) {
-            let diff = NSDate().timeIntervalSince(clickStartTime as Date)
-            if(!draggedClickedApp && diff < Static.ClickMaximumDifference){
-                //Static.curDisplay?.activateNewApp = true
-                
-                if clickedOnApp?.lastClickedWindow != nil {
-                    clickedOnApp?.app.activate(win: clickedOnApp!.lastClickedWindow!.win)
+            DispatchQueue.global(qos: .userInitiated).async {
+                let diff = NSDate().timeIntervalSince(self.clickStartTime as Date)
+                if(!self.draggedClickedApp && diff < Static.ClickMaximumDifference){
+                    //Static.curDisplay?.activateNewApp = true
+                    
+                    if self.clickedOnApp?.lastClickedWindow != nil {
+                        self.clickedOnApp?.app.activate(win: self.clickedOnApp!.lastClickedWindow!.win)
+                    }
                 }
+                
+                self.clickStartedHere = CGPoint.zero
+                self.clickedOnApp = nil
             }
-            
-            clickStartedHere = CGPoint.zero
-            clickedOnApp = nil
         }
         
         override public func rightMouseDown(with event: NSEvent) {
-            leftMouse = false
-            
-            // Handle right mouse down event here
-            super.rightMouseDown(with: event)
-            
-            let cursor = NSEvent.mouseLocation
-            let point = self.unprojectPoint(SCNVector3(x: cursor.x-curDisplay!.frame.minX, y: cursor.y-curDisplay!.frame.minY, z: self.projectPoint(SCNVector3Zero).z+windowsZ))
-            
-            // Lock app
-            var appToLock : AppNode?
-            
-            for app in listApp! {
-                if(app.value.isInPoint(point: point)){
-                    print("clicked on app!", NSDate().timeIntervalSince1970)
-                    
-                    appToLock = app.value
-                }
-            }
-            
-            if appToLock != nil {
-                let win = appToLock!.lastClickedWindow!
-                if win.win.lockedBy == -1 {
-                    if !win.app!.asIcon {
-                        win.win.lockedBy = Static.curDisplay!.side
-                        win.selection.show()
-                        NSSound(contentsOf: Bundle.main.url(forResource: "lock", withExtension: "mov")!, byReference: true)?.play()
+            DispatchQueue.global(qos: .userInitiated).async {
+                self.leftMouse = false
+                
+                // Handle right mouse down event here
+                super.rightMouseDown(with: event)
+                
+                let cursor = NSEvent.mouseLocation
+                let point = self.unprojectPoint(SCNVector3(x: cursor.x-self.curDisplay!.frame.minX, y: cursor.y-self.curDisplay!.frame.minY, z: self.projectPoint(SCNVector3Zero).z+self.windowsZ))
+                
+                // Lock app
+                var appToLock : AppNode?
+                
+                for app in self.listApp! {
+                    if(app.value.isInPoint(point: point)){
+                        print("clicked on app!", NSDate().timeIntervalSince1970)
+                        
+                        appToLock = app.value
                     }
                 }
-                else {
-                    win.win.lockedBy = -1
-                    win.selection.hide()
-                    NSSound(contentsOf: Bundle.main.url(forResource: "release", withExtension: "mov")!, byReference: true)?.play()
+                
+                if appToLock != nil {
+                    let win = appToLock!.lastClickedWindow!
+                    if win.win.lockedBy == -1 {
+                        if !win.app!.asIcon {
+                            win.win.lockedBy = Static.curDisplay!.side
+                            win.selection.show()
+                            NSSound(contentsOf: Bundle.main.url(forResource: "lock", withExtension: "mov")!, byReference: true)?.play()
+                        }
+                    }
+                    else {
+                        win.win.lockedBy = -1
+                        win.selection.hide()
+                        NSSound(contentsOf: Bundle.main.url(forResource: "release", withExtension: "mov")!, byReference: true)?.play()
+                    }
                 }
             }
         }
             
         override public func rightMouseUp(with event: NSEvent) {
-            // Handle right mouse up event here
-            super.rightMouseUp(with: event)
+            DispatchQueue.global(qos: .userInitiated).async {
+                // Handle right mouse up event here
+                super.rightMouseUp(with: event)
+            }
         }
         
         /*override func rightMouseDragged(with event: NSEvent) {
@@ -424,99 +432,101 @@ import OrderedCollections
         //MARK: Mouse move
         var mouseOnApp : AppNode?
         func mouseMove(display: Display){
-            
-            if listApp != nil && curDisplay != nil {
+            DispatchQueue.global(qos: .userInitiated).async {
                 
-                // First check preview update
-                if curDisplay!.previewUpdated {
-                    for app in listApp! {
-                        for win in app.value.windows{
-                            win.setMaterial()
+                if self.listApp != nil && self.curDisplay != nil {
+                    
+                    // First check preview update
+                    if self.curDisplay!.previewUpdated {
+                        for app in self.listApp! {
+                            for win in app.value.windows{
+                                win.setMaterial()
+                            }
+                        }
+                        
+                        self.curDisplay!.previewUpdated = false
+                    }
+                    
+                    // Check mouse event
+                    let cursor = NSEvent.mouseLocation
+                    
+                    let point = self.unprojectPoint(SCNVector3(x: cursor.x-self.curDisplay!.frame.minX, y: cursor.y-self.curDisplay!.frame.minY, z: self.projectPoint(SCNVector3Zero).z+self.windowsZ))
+                    
+                    var onApp : AppNode? = self.clickedOnApp
+                    var mouseOnApp : AppNode? = nil
+                    for app in self.listApp! {
+                        if(app.value.isInPoint(point: point)){ //old: app.value.isInPoint(point: point)
+                            //print("mouse on app", NSDate().timeIntervalSince1970)
+                            app.value.moveEmissionAlpha(to: 1)
+                            //onApp = app.value
+                            
+                            mouseOnApp = app.value
+                        }
+                        else {
+                            app.value.moveEmissionAlpha(to: 0)
                         }
                     }
                     
-                    curDisplay!.previewUpdated = false
-                }
-                
-                // Check mouse event
-                let cursor = NSEvent.mouseLocation
-                
-                let point = self.unprojectPoint(SCNVector3(x: cursor.x-curDisplay!.frame.minX, y: cursor.y-curDisplay!.frame.minY, z: self.projectPoint(SCNVector3Zero).z+windowsZ))
-                
-                var onApp : AppNode? = clickedOnApp
-                var mouseOnApp : AppNode? = nil
-                for app in listApp! {
-                    if(app.value.isInPoint(point: point)){ //old: app.value.isInPoint(point: point)
-                        //print("mouse on app", NSDate().timeIntervalSince1970)
-                        app.value.moveEmissionAlpha(to: 1)
-                        //onApp = app.value
-                                                                        
-                        mouseOnApp = app.value
+                    if mouseOnApp != self.mouseOnApp {
+                        NSHapticFeedbackManager.defaultPerformer.perform(
+                            NSHapticFeedbackManager.FeedbackPattern.generic,
+                            performanceTime: NSHapticFeedbackManager.PerformanceTime.now
+                        )
                     }
-                    else {
-                        app.value.moveEmissionAlpha(to: 0)
+                    
+                    self.mouseOnApp = mouseOnApp
+                    
+                    
+                    // Set offset to default
+                    for app in self.listApp!{
+                        if app.value.app.runningApp != self.clickedOnApp?.app.runningApp {
+                            app.value.setOffset()
+                        }
                     }
-                }
-                
-                if mouseOnApp != self.mouseOnApp {
-                    NSHapticFeedbackManager.defaultPerformer.perform(
-                        NSHapticFeedbackManager.FeedbackPattern.generic,
-                        performanceTime: NSHapticFeedbackManager.PerformanceTime.now
-                    )
-                }
-                
-                self.mouseOnApp = mouseOnApp
-                
-                
-                // Set offset to default
-                for app in listApp!{
-                    if app.value.app.runningApp != clickedOnApp?.app.runningApp {
-                        app.value.setOffset()
-                    }
-                }
-                
-                //MARK: App dragging
-                if clickedOnApp != nil {
-                    if leftMouse {
-                        if onApp?.app.runningApp == clickedOnApp?.app.runningApp {
-                            var offset = cursor.y - clickStartedHere.y
-                            if sideVertical {
-                                offset = cursor.x - clickStartedHere.x
-                            }
-                            
-                            if(abs(offset) > 5){
-                                draggedClickedApp = true
-                            }
-                            
-                            var mul : CGFloat = 1
-                            if sidePair == 1 {
-                                mul *= -1
-                            }
-                            
-                            if offset * mul < 0 {
-                                if(abs(offset) > Static.OverscreenSize / 2){
-                                    // Close application
-                                    onApp?.goToOffset = -pixelsToScene(pixels: Static.OverscreenSize) * mul
-                                }
-                                else {
-                                    onApp?.goToOffset = 0
+                    
+                    //MARK: App dragging
+                    if self.clickedOnApp != nil {
+                        if self.leftMouse {
+                            if onApp?.app.runningApp == self.clickedOnApp?.app.runningApp {
+                                var offset = cursor.y - self.clickStartedHere.y
+                                if self.sideVertical {
+                                    offset = cursor.x - self.clickStartedHere.x
                                 }
                                 
-                                //MARK: TODO check if really depends on scale
-                                let goTo = pixelsToScene(pixels: offset)
-                                onApp?.setOffset(lOffset: goTo)
+                                if(abs(offset) > 5){
+                                    self.draggedClickedApp = true
+                                }
+                                
+                                var mul : CGFloat = 1
+                                if self.sidePair == 1 {
+                                    mul *= -1
+                                }
+                                
+                                if offset * mul < 0 {
+                                    if(abs(offset) > Static.OverscreenSize / 2){
+                                        // Close application
+                                        onApp?.goToOffset = -self.pixelsToScene(pixels: Static.OverscreenSize) * mul
+                                    }
+                                    else {
+                                        onApp?.goToOffset = 0
+                                    }
+                                    
+                                    //MARK: TODO check if really depends on scale
+                                    let goTo = self.pixelsToScene(pixels: offset)
+                                    onApp?.setOffset(lOffset: goTo)
+                                }
                             }
                         }
                     }
+                    
+                    // Update app
+                    for app in self.listApp!{
+                        app.value.update()
+                    }
+                    
+                    // Update windows position
+                    self.setWindowsPosition(animation: true)
                 }
-                
-                // Update app
-                for app in listApp!{
-                    app.value.update()
-                }
-                
-                // Update windows position
-                setWindowsPosition(animation: true)
             }
         }
          

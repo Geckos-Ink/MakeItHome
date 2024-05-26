@@ -2012,7 +2012,9 @@ public class Display : Equatable {
         
         if #available(macOS 12.3, *){
             if(self.side != 3){
-                (manager.capturePreview as? CapturePreview)?.captureView.setScreenApps(display: self)
+                DispatchQueue.global(qos: .userInitiated).async {
+                    (self.manager.capturePreview as? CapturePreview)?.captureView.setScreenApps(display: self)
+                }
             }
         }
         
@@ -2649,10 +2651,9 @@ public class Display : Equatable {
                         sideToClose = -1
                         
                         if #available(macOS 12.3, *){
-                            DispatchQueue.main.async {
-                                Task {
-                                    (self.manager.capturePreview as! CapturePreview).setCurrentAbove(side: s, aboveBy: 0, display: self)
-                                }
+                            let highPriorityQueue = DispatchQueue.global(qos: .userInitiated)
+                            highPriorityQueue.async {
+                                (self.manager.capturePreview as! CapturePreview).setCurrentAbove(side: s, aboveBy: 0, display: self)
                             }
                         }
                     }
