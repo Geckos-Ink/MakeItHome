@@ -11,14 +11,10 @@ This project deserve a better documentation, most of all seen the fact that soon
 
 I try to make a to do list as memorandum:
 
-- Complete Calendar widget
-- Add the possibility to create a widget with, by default, a web page.
-- By consequence, improve the settings zone and add the possibility to manage singular widgets, show or hide other ones etc.
-- Improve clipboard widget, it's aging badly: the grid often overlaps items. Remember to change the position of older items again copied.
-- Try to improve the detection sensibility and fix the fact that, when the app is not used for long time, its first activation is glitching.
 - Find a way to improve the performances.
 - Find a way to have the community advise about the development of the feature.
-- Find the new icon. And find a possible new name for the app.
+- Improve Notes and Tasks widgets. The most problem is about the saving way, that used to saves the entire database every time.
+- Correct the calendar permission request. The user is able to edit it even if he refused the permission. The in-using crashes are problematic, mostly in case of "Show in Dock" disabled.
 
 ## Development guide
 - The top widgets zone web assets if located at MakeItHome/Resources/assets/, instead the Swift controller is located at MakeItHome/Views/Overscreen/WidgetZoneView.swift
