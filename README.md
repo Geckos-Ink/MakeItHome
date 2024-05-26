@@ -3,7 +3,9 @@
   <a href="https://apps.apple.com/it/app/makeithome-screen-extender/id6444596296?l=en-GB&mt=12"><img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/download_mac_appstore.png?raw=true"/></a>
 </p>
 
-![](https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/icon.png?raw=true)
+<p align="center">
+  <img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/icon.png?raw=true" style="width: 250px"/>
+</p>
 
 ## The UI extender for macOS
 
