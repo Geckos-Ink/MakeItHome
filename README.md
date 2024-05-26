@@ -11,6 +11,25 @@
 
 <img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_0.gif?raw=true">
 
+## How to
+### How to lock an app
+<img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_1.gif?raw=true">
+
+### The Widgets Zone
+<img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_2.gif?raw=true">
+
+### Fast web search
+<img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_3.gif?raw=true">
+
+### Notes and Tasks
+<img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_4.gif?raw=true">
+
+### The Calendar
+<img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_5.gif?raw=true">
+
+### My Widgets
+<img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_6.gif?raw=true">
+
 ## Notes
 This project deserve a better documentation, most of all seen the fact that soon I should publish a new update, at least to improve the user experience and to complete the widgets zone. 
 
