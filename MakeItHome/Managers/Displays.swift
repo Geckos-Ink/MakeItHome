@@ -1375,13 +1375,14 @@ public class Display : Equatable {
                 
                 if (spaceHolderId == -1 || spaceHolderFound > -1 || spaceHolderFound == -2) {
                     
-                    // this cause crashes...
-                    if false && (!spaceIsChanging && !activateNewApp) && spaceHolderId >= 0 && spaceHolderId != currentSpaceId {
-                        for placeholder in self.placeholders {
-                            if curPlaceholder?.id != spaceHolderId {
-                                if placeholder.numWindows == curPlaceholder?.numWindows && spaceHolderId != currentSpaceId {
-                                    removeDuplicatePlaceholder(idNew: spaceHolderId, idOld: currentSpaceId)
-                                    spaceHolderId = currentSpaceId
+                    if true && (!spaceIsChanging && !activateNewApp) && spaceHolderId >= 0 && spaceHolderId != currentSpaceId {
+                        DispatchQueue.main.async {
+                            for placeholder in self.placeholders {
+                                if self.curPlaceholder?.id != spaceHolderId {
+                                    if placeholder.numWindows == self.curPlaceholder?.numWindows && spaceHolderId != self.currentSpaceId {
+                                        self.removeDuplicatePlaceholder(idNew: spaceHolderId, idOld: self.currentSpaceId)
+                                        spaceHolderId = self.currentSpaceId
+                                    }
                                 }
                             }
                         }
