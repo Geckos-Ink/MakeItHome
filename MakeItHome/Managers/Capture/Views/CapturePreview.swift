@@ -82,6 +82,8 @@ import OrderedCollections
         }
                 
         store.lastSide = side
+        
+        let closing = store.lastAboveBy > aboveBy
         store.lastAboveBy = aboveBy
         
         //print("setCurrentAbove", side, aboveBy)
@@ -122,10 +124,10 @@ import OrderedCollections
                     Static.TopBarWebView?.restartRendering()
                 }*/
                 
-                var offYMul : CGFloat = 1
+                let offYMul : CGFloat = 1
                 
                 let abpDiff = display.aboveByPixels-display.prevAboveByPixels
-                if(abpDiff < 0){
+                if abpDiff < 0 && closing{
                     self.view!.vars.overlayOpacity = (aboveBy / Static.OverscreenSize) * 0.8
                 }
                 else {
@@ -138,7 +140,7 @@ import OrderedCollections
                 self.view!.vars.overlaySizeY = Static.OverscreenSize
                 
                 self.view!.vars.overlayOffsetX = 0
-                self.view!.vars.overlayOffsetY = (offYMul * aboveBy * 1/2) - (display.frame.height / 2)
+                self.view!.vars.overlayOffsetY = ((offYMul * aboveBy) - (display.frame.height))/2
                 
                 if(aboveBy < 0.2){
                     self.view!.vars.overlayOffsetY = 10000
