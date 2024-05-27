@@ -12,23 +12,34 @@
 <img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_0.gif?raw=true">
 
 ## How to
-### How to lock an app
-<img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_1.gif?raw=true">
-
-### The Widgets Zone
-<img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_2.gif?raw=true">
-
-### Fast web search
-<img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_3.gif?raw=true">
-
-### Notes and Tasks
-<img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_4.gif?raw=true">
-
-### The Calendar
-<img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_5.gif?raw=true">
-
-### My Widgets
-<img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_6.gif?raw=true">
+<center>
+  <table>
+  	<tr>
+  		<td><b>How to lock an app</b></td>
+  		<td><b>The Widgets Zone</b></td>
+  	</tr>
+  	<tr>
+  		<td><a href="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_1.gif"><img stype="width: 25%" src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_mini_1.gif?raw=true"></a></td>
+  		<td><a href="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_2.gif"><img stype="width: 25%" src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_mini_2.gif?raw=true"></a></td>
+  	</tr>
+  	<tr>
+  		<td><b>Fast web search</b></td>
+  		<td><b>Notes and Tasks</b></td>
+  	</tr>
+  	<tr>
+  		<td><a href="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_3.gif"><img stype="width: 25%" src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_mini_3.gif?raw=true"></a></td>
+  		<td><a href="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_4.gif"><img stype="width: 25%" src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_mini_4.gif?raw=true"></a></td>
+  	</tr>
+  	<tr>
+  		<td><b>The Calendar</b></td>
+  		<td><b>My Widgets</b></td>
+  	</tr>
+  	<tr>
+  		<td><a href="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_5.gif"><img stype="width: 25%" src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_mini_5.gif?raw=true"></a></td>
+  		<td><a href="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_6.gif"><img stype="width: 25%" src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_mini_6.gif?raw=true"></a></td>
+  	</tr>
+  <table>
+</center>
 
 ## Notes
 This project deserve a better documentation, most of all seen the fact that soon I should publish a new update, at least to improve the user experience and to complete the widgets zone. 
