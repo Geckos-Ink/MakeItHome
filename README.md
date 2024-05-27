@@ -1,4 +1,3 @@
-# MakeItHome
 <p align="center">
   <img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/makeithome.png?raw=true" style="width: 40%"/><br>
   <img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/icon.png?raw=true" style="width: 40%"/>
@@ -52,6 +51,7 @@ I try to make a to do list as memorandum:
 - Improve Notes and Tasks widgets. The most problem is about the saving way, that used to saves the entire database every time.
 - Correct the calendar permission request. The user is able to edit it even if he refused the permission. The in-using crashes are problematic, mostly in case of "Show in Dock" disabled.
 - Correct the freeze happening while using MS RDP, probably due to the clipboard manager(?)
+- Find a solution for the lack of localization in the Widgets Zone (written in WebKit)
 
 ## Development guide
 - The top widgets zone web assets if located at MakeItHome/Resources/assets/, instead the Swift controller is located at MakeItHome/Views/Overscreen/WidgetZoneView.swift
