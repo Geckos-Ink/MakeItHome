@@ -1409,7 +1409,7 @@ public class Display : Equatable {
                     
                     if spaceHolderFound >= 0 {
                         self.currentSpaceId = spaceHolderId
-                        print("space holder found")
+                        print("unique space holder found", spaceHolderId)
                     }
                     
                     //spaceHolderFound = -2 // force "space changing" status (it means that two space holders were found)

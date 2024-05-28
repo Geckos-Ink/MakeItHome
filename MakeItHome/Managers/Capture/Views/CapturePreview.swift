@@ -339,6 +339,10 @@ import OrderedCollections
         
         public override func mouseDown(with evt: NSEvent) {
             DispatchQueue.global(qos: .userInitiated).async {
+                if self.curDisplay == nil || self.curDisplay?.aboveBy == 0 {
+                    return
+                }
+                
                 self.leftMouse = true
                 
                 let cursor = NSEvent.mouseLocation
