@@ -1065,6 +1065,7 @@ public class Display : Equatable {
             }
             prevMouseSpeed = self.mouseSpeed_10s
             
+            var restartRecording = false
             if self.aboveByPixels < 1 /*|| self.side == 3 (DUNNO Y)*/ {
                 
                 // Check if mouse is not moving
@@ -1081,10 +1082,7 @@ public class Display : Equatable {
                     }
                     else {
                         if self.recordingPaused {
-                            print("recorder restarted")
-                            self.setRecorderProfile(lowProfile: true)
-                            self.recordingPaused = false
-                            self.checkWindowStatus()
+                            restartRecording = true
                         }
                     }
                 }
@@ -1103,6 +1101,15 @@ public class Display : Equatable {
                 if(mouseMoveMultiplier < definitionMultiplier){
                     mouseMoveMultiplier += 1
                 }
+            } else {
+                restartRecording = true
+            }
+            
+            if restartRecording && self.recordingPaused {
+                print("recorder restarted")
+                self.setRecorderProfile(lowProfile: true)
+                self.recordingPaused = false
+                self.checkWindowStatus()
             }
             
             if prevRecorderUpdate >= self.lastRecorderUpdate{
