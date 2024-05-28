@@ -2557,37 +2557,39 @@ public class Display : Equatable {
                 checkedDragging = true
             }
             
-            let yDiff = relMouse.y - prevRelMouse.y
-            let absXDiff = abs(relMouse.x - prevRelMouse.x)
-            
-            if(yDiff > 0 && yDiff > absXDiff){
-                if(top > 0 && top < self.menuHeight){
-                    var dist = abs((self.menuHeight/2)-top) / (self.menuHeight/2)
-                    //dist += 1/self.scale
-                    
-                    dist = 1 - dist
-                    dist = pow(dist, 1/3)
-                    
-                    let mul =  mouseSpeed / maxSpeed
-                    
-                    var move = dist * yDiff * mul
-                                                            
-                    if(move > yDiff){
-                        move = yDiff / 2
+            if mouseSpeed > (maxSpeed*0.5){ // don't slow down the pointer if it's already slow.
+                let yDiff = relMouse.y - prevRelMouse.y
+                let absXDiff = abs(relMouse.x - prevRelMouse.x)
+                
+                if(yDiff > 0 && yDiff > absXDiff){
+                    if(top > 0 && top < self.menuHeight){
+                        var dist = abs((self.menuHeight/2)-top) / (self.menuHeight/2)
+                        //dist += 1/self.scale
+                        
+                        dist = 1 - dist
+                        dist = pow(dist, 1/3)
+                        
+                        let mul =  mouseSpeed / maxSpeed
+                        
+                        var move = dist * yDiff * mul
+                        
+                        if(move > yDiff){
+                            move = yDiff / 2
+                        }
+                        
+                        // this is a song about that time I used abs because I forgot the variables signs
+                        while(abs(move) > abs(self.menuHeight/2)){
+                            move /= 1.5;
+                        }
+                        
+                        //print(move, yDiff, mul)
+                        
+                        relMouse.y -= move
+                        
+                        accMouse.y -= move
+                        accMouse.y = self.frame.maxY - accMouse.y
+                        moveMouse(to: accMouse)
                     }
-                    
-                    // this is a song about that time I used abs because I forgot the variables signs
-                    while(abs(move) > abs(self.menuHeight/2)){
-                        move /= 1.5;
-                    }
-                    
-                    //print(move, yDiff, mul)
- 
-                    relMouse.y -= move
-                    
-                    accMouse.y -= move
-                    accMouse.y = self.frame.maxY - accMouse.y
-                    moveMouse(to: accMouse)
                 }
             }
         }
