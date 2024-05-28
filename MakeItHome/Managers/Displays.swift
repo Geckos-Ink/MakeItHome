@@ -556,38 +556,40 @@ public class Display : Equatable {
                 spaceIsChanging = true
             }
             
-            Timer.scheduledTimer(withTimeInterval: Static.ChangeSpaceAfter / 2, repeats: false) { timer in
-                var space = self.spaces[win!.spaceId]
-                
-                if space == nil {
-                    for ph in self.placeholders{
-                        if ph.id == win!.spaceId{
-                            space = ph
-                            break
+            DispatchQueue.main.async {
+                Timer.scheduledTimer(withTimeInterval: Static.ChangeSpaceAfter / 2, repeats: false) { timer in
+                    var space = self.spaces[win!.spaceId]
+                    
+                    if space == nil {
+                        for ph in self.placeholders{
+                            if ph.id == win!.spaceId{
+                                space = ph
+                                break
+                            }
                         }
                     }
-                }
-                                
-                if(space != nil && win!.spaceId != self.currentSpaceId){
-                    print("activating space with id", win!.spaceId)
                     
-                    self.spaceIsChanging = true
-                    self.currentSpaceId = -1
-                    
-                    space?.activate()
-                    self.activateNewApp = false // set fault to prevent "bouncing" effect when returning quiclky in overscreen
-                    
-                    Timer.scheduledTimer(withTimeInterval: Static.ChangeSpaceAfter, repeats: false) { timer in
-                        win!.app?.activate(win: win, force: forceByDefault)
+                    if(space != nil && win!.spaceId != self.currentSpaceId){
+                        print("activating space with id", win!.spaceId)
+                        
+                        self.spaceIsChanging = true
+                        self.currentSpaceId = -1
+                        
+                        space?.activate()
+                        self.activateNewApp = false // set fault to prevent "bouncing" effect when returning quiclky in overscreen
+                        
+                        Timer.scheduledTimer(withTimeInterval: Static.ChangeSpaceAfter, repeats: false) { timer in
+                            win!.app?.activate(win: win, force: forceByDefault)
+                        }
                     }
-                }
-                else {
-                    self.goToSpace = -1
-                    print(win!.spaceId)
-                    print(self.spaces)
-                    print("space not found")
-                    
-                    win!.app?.activate(win: win, force: forceByDefault) // just do it
+                    else {
+                        self.goToSpace = -1
+                        print(win!.spaceId)
+                        print(self.spaces)
+                        print("space not found")
+                        
+                        win!.app?.activate(win: win, force: forceByDefault) // just do it
+                    }
                 }
             }
         }
