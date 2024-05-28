@@ -14,6 +14,7 @@
 		8B60F6D92AEFDA8B00DA12A2 /* NavigateZoneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B60F6D82AEFDA8B00DA12A2 /* NavigateZoneView.swift */; };
 		8B73A9CE2A9267D10057F86B /* IWantYouView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B73A9CC2A9267D10057F86B /* IWantYouView.swift */; };
 		8B76137A296D670A00425767 /* UpdateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B761379296D670A00425767 /* UpdateView.swift */; };
+		8B8B557B2C069DFB001817EC /* howto_permissions.mov in Resources */ = {isa = PBXBuildFile; fileRef = 8B8B557A2C069DFA001817EC /* howto_permissions.mov */; };
 		8B9E532C2B52F38B00D81833 /* CocoaManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B9E532A2B52F38B00D81833 /* CocoaManager.swift */; };
 		8B9E53302B52F3D100D81833 /* wallpaperDark.jpeg in Resources */ = {isa = PBXBuildFile; fileRef = 8B9E532E2B52F3D100D81833 /* wallpaperDark.jpeg */; settings = {ASSET_TAGS = (New, ); }; };
 		8B9E53352B545D3900D81833 /* Calendar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B9E53332B545D3900D81833 /* Calendar.swift */; };
@@ -109,6 +110,8 @@
 		8B81DDBE291B1D0A00B3E3CC /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
 		8B81DDC02927FF5300B3E3CC /* GeneralFuncs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralFuncs.swift; sourceTree = "<group>"; };
 		8B81DDC229281B8A00B3E3CC /* ActivateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActivateView.swift; sourceTree = "<group>"; };
+		8B8B55752C069D89001817EC /* howto_basic.mov */ = {isa = PBXFileReference; lastKnownFileType = video.quicktime; path = howto_basic.mov; sourceTree = "<group>"; };
+		8B8B557A2C069DFA001817EC /* howto_permissions.mov */ = {isa = PBXFileReference; lastKnownFileType = video.quicktime; path = howto_permissions.mov; sourceTree = "<group>"; };
 		8B9E532A2B52F38B00D81833 /* CocoaManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CocoaManager.swift; sourceTree = "<group>"; };
 		8B9E532E2B52F3D100D81833 /* wallpaperDark.jpeg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = wallpaperDark.jpeg; sourceTree = "<group>"; };
 		8B9E53332B545D3900D81833 /* Calendar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Calendar.swift; path = MakeItHome/Managers/Widgets/Calendar.swift; sourceTree = SOURCE_ROOT; };
@@ -295,6 +298,8 @@
 		8BC56F922AD08BE8008B3788 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				8B8B557A2C069DFA001817EC /* howto_permissions.mov */,
+				8B8B55752C069D89001817EC /* howto_basic.mov */,
 				8BAFBF5D2AE2F40F000663AE /* assets */,
 				8BAFBF612AE47EBF000663AE /* lock.mov */,
 				8BAFBF652AE4AB2A000663AE /* release.mov */,
@@ -508,6 +513,7 @@
 				8BB0E3AD293DC881006DA326 /* wallpaper.jpeg in Resources */,
 				8BB5D8002AA0A2B4007453F0 /* Localizable.xcstrings in Resources */,
 				8BB0E3AE293DC881006DA326 /* Assets.xcassets in Resources */,
+				8B8B557B2C069DFB001817EC /* howto_permissions.mov in Resources */,
 				8BAFBF632AE47EBF000663AE /* lock.mov in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -784,7 +790,7 @@
 				CODE_SIGN_ENTITLEMENTS = MakeItHome/MakeItHome.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 119;
+				CURRENT_PROJECT_VERSION = 120;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"MakeItHome/Preview Content\"";
 				DEVELOPMENT_TEAM = UYSXKZ8U4Z;
@@ -821,7 +827,7 @@
 				CODE_SIGN_ENTITLEMENTS = MakeItHome/MakeItHome.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 119;
+				CURRENT_PROJECT_VERSION = 120;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"MakeItHome/Preview Content\"";
 				DEVELOPMENT_TEAM = UYSXKZ8U4Z;
