@@ -552,7 +552,7 @@ public class Display : Equatable {
             if differentSpace {
                 // This seems to change space. What a irony
                 //self.spaceDidChange() // (three times, but it doesn't works well, anyway)
-                
+                print("spaceIsChanging = true because of differentSpace")
                 spaceIsChanging = true
             }
             
@@ -970,6 +970,7 @@ public class Display : Equatable {
     public var isFullscreen : Bool = false
     
     public var currentSpaceId : Int = -1
+    var currentSpaceIds : [Int] = []
     public var spaces : [Int: SwifterPlaceholder] = [:]
     var curPlaceholder : SwifterPlaceholder? = nil
     var samePlaceholderSince : Int64 = 0
@@ -1294,7 +1295,7 @@ public class Display : Equatable {
                                 // ...
                             }
                             else {
-                                print("space holder found")
+                                print("space holder found ", spaceHolderFound, winId)
                                 
                                 if spaceHolderFound == -1{
                                     spaceHolderFound = winId
@@ -1382,6 +1383,7 @@ public class Display : Equatable {
                                     if placeholder.numWindows == self.curPlaceholder?.numWindows && spaceHolderId != self.currentSpaceId {
                                         self.removeDuplicatePlaceholder(idNew: spaceHolderId, idOld: self.currentSpaceId)
                                         spaceHolderId = self.currentSpaceId
+                                        print("duplicate space holder removed")
                                     }
                                 }
                             }
@@ -1389,21 +1391,29 @@ public class Display : Equatable {
                     }
                     
                     if self.currentSpaceId != spaceHolderId || (spaceHolderFound < 0 && self.currentSpaceId > 0){
-                        if sameSpaceHolderId != spaceHolderId{
+                        if !currentSpaceIds.contains(spaceHolderId){
                             samePlaceholderSince = 0
                         }
                         
                         sameSpaceHolderId = spaceHolderId
                     }
                     
+                    // register the space holder in the list of "current space holders"
+                    // this is an ugly but realistic approach. the space holder managament is a mess
+                    if spaceHolderId > 0 {
+                        if !currentSpaceIds.contains(spaceHolderId){
+                            currentSpaceIds.append(spaceHolderId)
+                        }
+                    }
+                    
                     
                     if spaceHolderFound >= 0 {
                         self.currentSpaceId = spaceHolderId
+                        print("space holder found")
                     }
                     
-                    //spaceHolderFound = -2 // force "space changing" status
-                                    
-                    if spaceHolderFound < 0 && !self.spaceIsChanging {
+                    //spaceHolderFound = -2 // force "space changing" status (it means that two space holders were found)
+                    if spaceHolderFound == -2 && !self.spaceIsChanging {
                         print("space changing")
                         self.spaceIsChanging = true
                         self.spaceInChanging()
@@ -1413,8 +1423,12 @@ public class Display : Equatable {
                 }
                 
                 if self.spaceIsChanging {
-                    if samePlaceholderSince > Static.WaitAfterSpaceChange { // not working. Duck you
+                    if samePlaceholderSince > Static.WaitAfterSpaceChange {
                         self.spaceIsChanging = false
+                        print("space no more changing due to timeout")
+                    }
+                    else {
+                        print("space is still changing because of ", samePlaceholderSince, " <= ", Static.WaitAfterSpaceChange)
                     }
                 }
                 else {
@@ -1584,6 +1598,7 @@ public class Display : Equatable {
                 
                 if !self.isFullscreen && !spaceIsChanging{
                     if self.currentSpaceId == -1 {
+                        print("creating new SwifterPlaceholder")
                         let winHolder = SwifterPlaceholder()
                         winHolder.numWindows = windows!.count
                         winHolder.show()
@@ -2214,6 +2229,8 @@ public class Display : Equatable {
         samePlaceholderSince = 0
         
         self.spaceIsChanging = false
+        
+        self.currentSpaceIds = []
     }
     
     func spaceInChanging(){
