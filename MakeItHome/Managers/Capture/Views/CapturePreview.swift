@@ -735,18 +735,18 @@ import OrderedCollections
                 auroraBorealisNode = auroraNode
                 
                 node.addChildNode(auroraNode)
-                auroraNode.position.z = -self.parentView.windowsZ
+                //auroraNode.position.z = -self.parentView.windowsZ
                 
                 // Set up a particle system for the aurora
                 let particleSystem = SCNParticleSystem()
                 auroraBorealisParticleSystem = particleSystem
                 
-                particleSystem.birthRate = 100
+                particleSystem.birthRate = 50
                 particleSystem.particleLifeSpan = 5
                 particleSystem.particleLifeSpanVariation = 0
-                particleSystem.emissionDuration = 10
+                particleSystem.emissionDuration = 5
                 particleSystem.loops = true
-                particleSystem.blendMode = .additive
+                particleSystem.blendMode = .screen
                 particleSystem.isAffectedByGravity = false
                 
                 if isHorizontal{
@@ -757,8 +757,8 @@ import OrderedCollections
                 }
                 
                 // Color the particles to mimic the Aurora Borealis
-                particleSystem.particleColor = NSColor.green
-                particleSystem.particleColorVariation = SCNVector4(0.2, 0.5, 0.5, 0.1)
+                particleSystem.particleColor = NSColor.white
+                particleSystem.particleColorVariation = SCNVector4(0.2, 0.5, 0.5, 0.5)
                 particleSystem.particleSize = self.parentView.onePixel * 50
                 particleSystem.acceleration.y = self.parentView.onePixel
                 particleSystem.particleSizeVariation = self.parentView.onePixel * 10
