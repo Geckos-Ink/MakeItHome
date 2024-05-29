@@ -886,6 +886,10 @@ public class Display : Equatable {
                         return
                     }
                     
+                    if self.lastCii == nil { // double check
+                        return
+                    }
+                    
                     var cii = self.lastCii!
                     
                     // Resize

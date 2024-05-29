@@ -730,6 +730,10 @@ import OrderedCollections
             var auroraBorealisParticleSystem : SCNParticleSystem?
             
             func addAuroraBorealis() {
+                if auroraBorealisNode != nil {
+                    auroraBorealisNode?.removeFromParentNode()
+                }
+                
                 // Create a node for the aurora
                 let auroraNode = SCNNode()
                 auroraBorealisNode = auroraNode
@@ -744,11 +748,11 @@ import OrderedCollections
                 let duration : CGFloat = 3
                 
                 particleSystem.birthRate = 50
-                particleSystem.particleLifeSpan = duration * 2
+                particleSystem.particleLifeSpan = duration
                 particleSystem.particleLifeSpanVariation = 0
-                particleSystem.emissionDuration = duration * 2
+                particleSystem.emissionDuration = duration
                 particleSystem.loops = true
-                particleSystem.blendMode = .screen
+                particleSystem.blendMode = .additive
                 particleSystem.isAffectedByGravity = false
                 
                 if isHorizontal{
@@ -759,7 +763,7 @@ import OrderedCollections
                 }
                 
                 // Color the particles to mimic the Aurora Borealis
-                particleSystem.particleColor = NSColor.white
+                particleSystem.particleColor = NSColor.green
                 particleSystem.particleColorVariation = SCNVector4(0.2, 0.5, 0.5, 0.5)
                 particleSystem.particleSize = self.parentView.onePixel * 50
                 particleSystem.acceleration.y = self.parentView.onePixel
@@ -767,9 +771,9 @@ import OrderedCollections
      
                 particleSystem.particleImage = NSImage(named: "AuroraBorealis")
                 particleSystem.imageSequenceColumnCount = 4
-                particleSystem.imageSequenceRowCount = 4
+                particleSystem.imageSequenceRowCount = 8
                 particleSystem.imageSequenceAnimationMode = .autoReverse
-                particleSystem.imageSequenceFrameRate = 16
+                particleSystem.imageSequenceFrameRate = 12
                 
                 // Create a custom shader for the particle system
                 /*particleSystem.shaderModifiers = [.particle: """
@@ -780,6 +784,17 @@ import OrderedCollections
                     vec2 pos = vec2(sin(_particle_position.x + time), cos(_particle_position.y + time));
                     _output.color.rgb = vec3(pos * intensity, pos.y * intensity, intensity);
                     """]*/
+                
+                if false { // it doesn't works
+                    let opacityAnimation = CABasicAnimation(keyPath: "particleColor")
+                    opacityAnimation.fromValue = CGColor(gray: 1, alpha: 1)
+                    opacityAnimation.toValue = CGColor(gray: 1, alpha: 0)
+                    opacityAnimation.duration = duration*2 // Match particle life span
+                    //opacityAnimation.autoreverses = true
+                    opacityAnimation.repeatCount = .infinity
+                    
+                    particleSystem.addAnimation(opacityAnimation, forKey: "opacityAnimation")
+                }
                 
                 auroraNode.addParticleSystem(particleSystem)
                 
@@ -797,16 +812,8 @@ import OrderedCollections
                 intensityAnimation.autoreverses = true
                 intensityAnimation.repeatCount = .infinity
                 
-                let opacityAnimation = CABasicAnimation(keyPath: "opacity")
-                opacityAnimation.fromValue = 0
-                opacityAnimation.toValue = 1
-                opacityAnimation.duration = duration
-                opacityAnimation.autoreverses = true
-                opacityAnimation.repeatCount = .infinity
-                
                 auroraNode.addAnimation(timeAnimation, forKey: "timeAnimation")
                 auroraNode.addAnimation(intensityAnimation, forKey: "intensityAnimation")
-                particleSystem.addAnimation(opacityAnimation, forKey: "opacityAnimation")
             }
             
             
