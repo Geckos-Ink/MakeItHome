@@ -10,6 +10,7 @@
 		8B10BE9C2B52DFA100872640 /* MyAppleEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B10BE9B2B52DFA100872640 /* MyAppleEvents.swift */; };
 		8B10BE9F2B52E1DC00872640 /* RequestAutomationPermissions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B10BE9E2B52E1DC00872640 /* RequestAutomationPermissions.swift */; };
 		8B11BBA22C07742C00E46355 /* AuroraBorealis.png in Resources */ = {isa = PBXBuildFile; fileRef = 8B11BBA12C07742C00E46355 /* AuroraBorealis.png */; settings = {ASSET_TAGS = (New, ); }; };
+		8B11BBA42C07CBEA00E46355 /* AppExtensionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B11BBA32C07CBEA00E46355 /* AppExtensionView.swift */; };
 		8B3D40512AD70A26003DFAC7 /* preview.html in Resources */ = {isa = PBXBuildFile; fileRef = 8B3D404F2AD70A26003DFAC7 /* preview.html */; settings = {ASSET_TAGS = (New, ); }; };
 		8B3D40592AD70F94003DFAC7 /* mrWhite.html in Resources */ = {isa = PBXBuildFile; fileRef = 8B3D40572AD70F93003DFAC7 /* mrWhite.html */; settings = {ASSET_TAGS = (New, ); }; };
 		8B60F6D92AEFDA8B00DA12A2 /* NavigateZoneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B60F6D82AEFDA8B00DA12A2 /* NavigateZoneView.swift */; };
@@ -75,6 +76,7 @@
 		8B10BE9B2B52DFA100872640 /* MyAppleEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyAppleEvents.swift; sourceTree = "<group>"; };
 		8B10BE9E2B52E1DC00872640 /* RequestAutomationPermissions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestAutomationPermissions.swift; sourceTree = "<group>"; };
 		8B11BBA12C07742C00E46355 /* AuroraBorealis.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AuroraBorealis.png; sourceTree = "<group>"; };
+		8B11BBA32C07CBEA00E46355 /* AppExtensionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppExtensionView.swift; sourceTree = "<group>"; };
 		8B3C5739290B7A87002C2146 /* Docker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Docker.swift; sourceTree = "<group>"; };
 		8B3D404F2AD70A26003DFAC7 /* preview.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = preview.html; sourceTree = "<group>"; };
 		8B3D40572AD70F93003DFAC7 /* mrWhite.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = mrWhite.html; sourceTree = "<group>"; };
@@ -190,6 +192,7 @@
 			children = (
 				8B419C23290409970017C05C /* CapturePreview.swift */,
 				8B5785D729050FE200C626C3 /* ConfigurationView.swift */,
+				8B11BBA32C07CBEA00E46355 /* AppExtensionView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -562,6 +565,7 @@
 				8BAFBF4C2AE08DC4000663AE /* Clipboard.swift in Sources */,
 				8B8B557D2C06F746001817EC /* HowToRecordingPermissionView.swift in Sources */,
 				8BB0E38D293DC881006DA326 /* LoginItems.swift in Sources */,
+				8B11BBA42C07CBEA00E46355 /* AppExtensionView.swift in Sources */,
 				8BB0E38E293DC881006DA326 /* ContentView.swift in Sources */,
 				8BB0E38F293DC881006DA326 /* ScreenRecorder.swift in Sources */,
 				8BB0E3B6293DCFAE006DA326 /* EmptyView.swift in Sources */,
