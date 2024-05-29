@@ -151,6 +151,41 @@ import OrderedCollections
         else {
             DispatchQueue.main.async {
                 self.view!.vars.overlayOffsetY = 10000
+                
+                if Static.OnAppExtensionZone {
+                                    
+                    var position : CGFloat = (Static.OverscreenSize - (aboveBy-Static.OverscreenSize))
+                    print("AppExtension position", position, display.side, aboveBy)
+                    
+                    self.view!.vars.appExtOverlayOpacity = (aboveBy-Static.OverscreenSize) / Static.OverscreenSize
+                    
+                    if display.side == 2 {
+                        self.view!.vars.appExtOverlayOffsetX = 0
+                        self.view!.vars.appExtOverlayOffsetY = position + (display.frame.height / 2) - (Static.OverscreenSize/2)
+                        
+                        self.view!.vars.appExtOverlaySizeX = display.frame.width
+                        self.view!.vars.appExtOverlaySizeY = Static.OverscreenSize
+                    }
+                    else {
+                        if display.side == 1 {
+                            position = display.frame.width + position
+                        }
+                        else {
+                            position = Static.OverscreenSize - position
+                        }
+                        
+                        self.view!.vars.appExtOverlayOffsetX = position - (display.frame.width / 2) - (Static.OverscreenSize/2)
+                        self.view!.vars.appExtOverlayOffsetY = 0
+                        
+                        self.view!.vars.appExtOverlaySizeX = Static.OverscreenSize
+                        self.view!.vars.appExtOverlaySizeY = display.frame.height
+                    }
+                }
+                else {
+                    self.view!.vars.appExtOverlayOffsetX = -10000
+                    self.view!.vars.appExtOverlayOffsetY = -10000
+                    self.view!.vars.appExtOverlayOpacity = 0
+                }
             }
         }
     }

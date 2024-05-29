@@ -61,39 +61,14 @@ public struct AppExtensionWebView: NSViewRepresentable {
     
     // 3
     public func updateNSView(_ webView: WKWebView, context: Context) {
-        if !Static.TopBarIsPreview{
-            loadTopWKWB(webView: webView)
-        }
+        wkwv.load()
     }
     
     public func makeCoordinator() -> AppExtensionWebViewCoordinator {
        return AppExtensionWebViewCoordinator(parent: self)
     }
     
-    var delegate: DragDropDelegate?
-    
-    public func sendMessage(str: String){
-        // Call the injected JavaScript function from Swift
-        let callScript = "receiveMessage('\(str)');"
-        wkwv.evaluateJavaScript(callScript, completionHandler: nil)
-    }
-    
-    public func sendMessage(obj: JSMessage){
-        do {
-            let jsonData = try JSONEncoder().encode(obj)
-            let msg = String(data: jsonData, encoding: String.Encoding.utf8)
-            
-            if msg != nil{
-                let callScript = "receiveMessage("+msg!+");"
-                //print(callScript)
-                wkwv.evaluateJavaScript(callScript, completionHandler: nil)
-            }
-        }
-        catch {
-            print("EEEEERRROOORRR")
-        }
-    }
-            
+    var delegate: DragDropDelegate? // to remove
 }
 
 public class AppExtensionWebViewCoordinator: NSObject, WKNavigationDelegate, DragDropDelegate, WKUIDelegate {
@@ -121,9 +96,10 @@ public class AppExtensionWebViewCoordinator: NSObject, WKNavigationDelegate, Dra
         print("AppExtension received url ", url)
         
         if(url.scheme == "file"){
-            if(firstLoad || url.lastPathComponent == "mrWhite.html"){
+            //print("AppExtension file lastPathComponent", url.lastPathComponent)
+            if(url.lastPathComponent == "appExtensionView.html"){
                 decisionHandler(.allow)
-                firstLoad = url.lastPathComponent == "mrWhite.html"
+                return
             }
         }
         else if let url = navigationAction.request.url, // is a message
@@ -199,6 +175,16 @@ public class AppExtensionWKWV : WKWebView{
         }
         catch {
             print("EEEEERRROOORRR")
+        }
+    }
+    
+    ///
+    ///
+    ///
+    
+    func load(){
+        if let url = Bundle.main.url(forResource: "assets/appExtensionView", withExtension: "html") {
+            self.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
         }
     }
 }

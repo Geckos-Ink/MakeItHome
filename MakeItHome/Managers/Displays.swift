@@ -2845,6 +2845,8 @@ public class Display : Equatable {
                 //print("curAboveByDeFacto", curAboveByDeFacto)
             }
             
+            Static.OnAppExtensionZone = onMoreAboveBy
+            
             ///
             /// End more aboveBy
             ///

@@ -184,6 +184,7 @@ public class Static {
     }
     
     ///# App Extension web view
+    public static var OnAppExtensionZone = false
     public static var AppExtensionWebView : AppExtensionWKWV? = nil
     public static var appExtensionWebViewRepresentable : AppExtensionWebView?
     
