@@ -59,6 +59,7 @@ I try to make a to do list as memorandum:
 - Find a solution for the lack of localization in the Widgets Zone (written in WebKit)
 - Found an issue about screen recording when you change users 
 - As said, the multi space management is a critical code. I continue to improve and correct it, but it's a mess. This due to the fact that you can have a notification only when the space *did* change, but not during. For doing this, you have to check if multiple place holders are present at the same time. But if a place holder is not already existing, this is not revealed. Happens also to create multiple SwifterPlaceholder on the same space. So I had to create an array to check if multiple placeholders (or spaceholders) belongs the same space.
+- The aboveBy management in Display class is full of unused variables. To clear it.
 
 ## Development guide
 - The top widgets zone web assets if located at MakeItHome/Resources/assets/, instead the Swift controller is located at MakeItHome/Views/Overscreen/WidgetZoneView.swift
