@@ -677,7 +677,7 @@ import OrderedCollections
                     let ciIcon = iconImg?.ciImage()
                     if ciIcon != nil {
                         var bitmap = [UInt8](repeating: 0, count: 4)
-                        Static.curDisplay?.contextAvgColor.render(ciIcon!, toBitmap: &bitmap, rowBytes: 4, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBA8, colorSpace: nil)
+                        Static.curDisplay?.contextAvgColor.render(ciIcon!, toBitmap: &bitmap, rowBytes: 4, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBA8, colorSpace: self.app.display.screen.colorSpace?.cgColorSpace)
                         
                         app.iconAvgColor = NSColor(red: CGFloat(bitmap[0]) / 255, green: CGFloat(bitmap[1]) / 255, blue: CGFloat(bitmap[2]) / 255, alpha: CGFloat(bitmap[3]) / 255)
                     }
