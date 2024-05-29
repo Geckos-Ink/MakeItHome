@@ -1815,7 +1815,7 @@ public class Display : Equatable {
             }
         }
         
-        res /= self.scale
+        //res /= self.scale
         return res
     }
     
@@ -2796,6 +2796,26 @@ public class Display : Equatable {
                 }
             }
             
+            
+            ///
+            /// More aboveBy
+            ///
+            
+            let moreAboveByEnabled = false
+            let moreAboveByActivationPoint : CGFloat = 5 // pixels
+            let moreAboveByActivationSize : CGFloat = 20 // pixels
+            let moreAboveByOverscreenSize : CGFloat = Static.OverscreenSize
+            
+            if moreAboveByEnabled && aboveBy == 1 && curSide != 3 {
+                if mouseAboveLimitBy < moreAboveByOverscreenSize {
+                    print("activating moreAboveBy", mouseAboveLimitBy) // damn, mouseAboveLimitBy doesn't check display scale...
+                }
+            }
+            
+            ///
+            /// End more aboveBy
+            ///
+            
             //let recordingAvailable = recordingDisplayID == 94 || recordingDisplayID == screen.displayID
             
             // && acceleration >= 0
@@ -3250,7 +3270,6 @@ public class Display : Equatable {
             removeAccumulate.y += curML.y - mouse.y*/
             
             alterMouse = 0
-            
         }
         else {
             /*if(resetMouse){
