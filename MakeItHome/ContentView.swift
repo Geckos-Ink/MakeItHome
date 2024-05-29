@@ -352,11 +352,11 @@ public struct ContentView: View {
                         
                         Timer.scheduledTimer(withTimeInterval: 1, repeats: false) { timer in
                             DispatchQueue.main.async {
-                                if Static.ScreenRecordingUnauthorized{
+                                if Static.ScreenRecordingUnauthorized {
                                     if myself.activatePanel == nil {
                                         myself.store.window?.close()
                                         
-                                        myself.activatePanel = SwifterPanel<NoRecordingPermissionView>(view: NoRecordingPermissionView())
+                                        myself.activatePanel = SwifterPanel<HowToRecordingPermissionView>(view: HowToRecordingPermissionView())
                                         myself.activatePanel!.show()
                                     }
                                 }
@@ -378,7 +378,7 @@ public struct ContentView: View {
 
     }
     
-    var activatePanel : SwifterPanel<NoRecordingPermissionView>?
+    var activatePanel : SwifterPanel<HowToRecordingPermissionView>?
     
     @MainActor
     @available (macOS 12.3, *)
