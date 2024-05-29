@@ -17,6 +17,7 @@
 		8B8B557B2C069DFB001817EC /* howto_permissions.mov in Resources */ = {isa = PBXBuildFile; fileRef = 8B8B557A2C069DFA001817EC /* howto_permissions.mov */; settings = {ASSET_TAGS = (New, ); }; };
 		8B8B557D2C06F746001817EC /* HowToRecordingPermissionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B8B557C2C06F746001817EC /* HowToRecordingPermissionView.swift */; };
 		8B8B557F2C0705B1001817EC /* HowToBasicsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B8B557E2C0705B1001817EC /* HowToBasicsView.swift */; };
+		8B8B55802C070879001817EC /* howto_basic.mov in Resources */ = {isa = PBXBuildFile; fileRef = 8B8B55752C069D89001817EC /* howto_basic.mov */; settings = {ASSET_TAGS = (New, ); }; };
 		8B9E532C2B52F38B00D81833 /* CocoaManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B9E532A2B52F38B00D81833 /* CocoaManager.swift */; };
 		8B9E53302B52F3D100D81833 /* wallpaperDark.jpeg in Resources */ = {isa = PBXBuildFile; fileRef = 8B9E532E2B52F3D100D81833 /* wallpaperDark.jpeg */; settings = {ASSET_TAGS = (New, ); }; };
 		8B9E53352B545D3900D81833 /* Calendar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B9E53332B545D3900D81833 /* Calendar.swift */; };
@@ -519,6 +520,7 @@
 				8BB0E3AD293DC881006DA326 /* wallpaper.jpeg in Resources */,
 				8BB5D8002AA0A2B4007453F0 /* Localizable.xcstrings in Resources */,
 				8BB0E3AE293DC881006DA326 /* Assets.xcassets in Resources */,
+				8B8B55802C070879001817EC /* howto_basic.mov in Resources */,
 				8B8B557B2C069DFB001817EC /* howto_permissions.mov in Resources */,
 				8BAFBF632AE47EBF000663AE /* lock.mov in Resources */,
 			);

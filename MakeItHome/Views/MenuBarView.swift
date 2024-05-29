@@ -131,6 +131,16 @@ struct MenuBarView: View {
                     }
                 }
                 
+                Spacer()
+                Button(action: {
+                    let howToBasics = SwifterPanel<HowToBasicsView>(view: HowToBasicsView());
+                    howToBasics.show()
+                }, label: {
+                    Text("\(Image(systemName: "videoprojector")) Basic how to use").padding(10)
+                })
+                .background(Color(red: 0.4, green: 0.52, blue: 0.0)).cornerRadius(5).buttonStyle(.bordered)
+                Spacer()
+                
                 /*Toggle("\(Image(systemName: "hare")) Require acceleration", isOn: $requireAcceleration).onChange(of: requireAcceleration){ newVal in
                     Static.EnableRequiredAcceleration = newVal
                     
