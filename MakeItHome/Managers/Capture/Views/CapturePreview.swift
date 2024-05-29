@@ -735,7 +735,7 @@ import OrderedCollections
                 auroraBorealisNode = auroraNode
                 
                 node.addChildNode(auroraNode)
-                //auroraNode.position.z = -self.parentView.windowsZ
+                auroraNode.position.z = self.parentView.windowsZ*2
                 
                 // Set up a particle system for the aurora
                 let particleSystem = SCNParticleSystem()
