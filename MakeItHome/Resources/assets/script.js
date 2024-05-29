@@ -107,6 +107,28 @@ function bridgeUrl(url){
     return "https://geckos.ink/api/makeithome-bridge.php?url=" + encodeURIComponent(url);
 }
 
+$("#clipboard").on('mousemove', function (e) {
+    console.log(e.clientX, e.clientY)
+    let width = $("#clipboard").width()
+    let height = $("#clipboard").height()
+
+    let ratioX = ((e.clientX - width / 2) / width)
+    let ratioY = ((e.clientY - height / 2) / height)
+
+    let translateX = ratioX * 10
+    let translateY = ratioY * 10
+
+    let parallaxY = ratioX * 10 * -1
+    let parallaxX = ratioY * 10
+
+    $("#clipboard .item").css("-webkit-transform", " rotateX(" + parallaxX +"deg) rotateY("+parallaxY+"deg) translateX(" + translateX + "px) translateY(" + translateY + "px)")
+})
+
+$("#clipboard").on('mouseexit', function (e) {
+    //$("#clipboard .item").css("-webkit-transform", "rotateX(0deg) rotateY(0deg)")
+    //$("#clipboard .item").animate({ "-webkit-transform": "rotateX(0deg) rotateY(0deg)" }, 100)
+})
+
 ///
 /// Board app
 ///
