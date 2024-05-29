@@ -741,10 +741,12 @@ import OrderedCollections
                 let particleSystem = SCNParticleSystem()
                 auroraBorealisParticleSystem = particleSystem
                 
+                let duration : CGFloat = 3
+                
                 particleSystem.birthRate = 50
-                particleSystem.particleLifeSpan = 5
+                particleSystem.particleLifeSpan = duration * 2
                 particleSystem.particleLifeSpanVariation = 0
-                particleSystem.emissionDuration = 5
+                particleSystem.emissionDuration = duration * 2
                 particleSystem.loops = true
                 particleSystem.blendMode = .screen
                 particleSystem.isAffectedByGravity = false
@@ -781,8 +783,6 @@ import OrderedCollections
                 
                 auroraNode.addParticleSystem(particleSystem)
                 
-                let duration : CGFloat = 3
-                
                 // Animate the custom shader properties
                 let timeAnimation = CABasicAnimation(keyPath: "time")
                 timeAnimation.fromValue = 0.0
@@ -801,12 +801,12 @@ import OrderedCollections
                 opacityAnimation.fromValue = 0
                 opacityAnimation.toValue = 1
                 opacityAnimation.duration = duration
-                intensityAnimation.autoreverses = true
-                intensityAnimation.repeatCount = 2
+                opacityAnimation.autoreverses = true
+                opacityAnimation.repeatCount = .infinity
                 
                 auroraNode.addAnimation(timeAnimation, forKey: "timeAnimation")
                 auroraNode.addAnimation(intensityAnimation, forKey: "intensityAnimation")
-                auroraNode.addAnimation(opacityAnimation, forKey: "opacityAnimation")
+                particleSystem.addAnimation(opacityAnimation, forKey: "opacityAnimation")
             }
             
             
