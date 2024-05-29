@@ -85,7 +85,7 @@ public class Static {
     public static let OverscreenSizeTop : CGFloat = 400
     
     public static let OverscreenAboveLimit : CGFloat = 5
-    public static let CompensateAboveByCursor : Double = 0.80
+    public static let CompensateAboveByCursor : Double = 1.0
     public static let DivideMaxSpeedBy : Double = 2
     
     public static let PutAsideInUsingApp = false
