@@ -745,7 +745,7 @@ import OrderedCollections
                 let particleSystem = SCNParticleSystem()
                 auroraBorealisParticleSystem = particleSystem
                 
-                let duration : CGFloat = 3
+                let duration : CGFloat = 4
                 
                 particleSystem.birthRate = 50
                 particleSystem.particleLifeSpan = duration
@@ -763,17 +763,18 @@ import OrderedCollections
                 }
                 
                 // Color the particles to mimic the Aurora Borealis
-                particleSystem.particleColor = NSColor.green
+                //particleSystem.particleColor = NSColor.green
+                particleSystem.particleColor = app.iconAvgColor
                 particleSystem.particleColorVariation = SCNVector4(0.2, 0.5, 0.5, 0.5)
                 particleSystem.particleSize = self.parentView.onePixel * 50
-                particleSystem.acceleration.y = self.parentView.onePixel
+                particleSystem.acceleration.y = self.parentView.onePixel * 2
                 particleSystem.particleSizeVariation = self.parentView.onePixel * 10
      
                 particleSystem.particleImage = NSImage(named: "AuroraBorealis")
                 particleSystem.imageSequenceColumnCount = 4
                 particleSystem.imageSequenceRowCount = 8
                 particleSystem.imageSequenceAnimationMode = .autoReverse
-                particleSystem.imageSequenceFrameRate = 12
+                particleSystem.imageSequenceFrameRate = 8
                 
                 // Create a custom shader for the particle system
                 /*particleSystem.shaderModifiers = [.particle: """
