@@ -1468,6 +1468,8 @@ function initColorPicker(elId) {
 // Use of the local storage to save the personal widgets. This is not the best way to do it, but it works for my lazyness.
 let myWidgets = []
 let pickers = []
+let myWidgetsListLoad = []
+
 function loadMyWidgets() {
     let _myWidgets = localStorage.getItem("myWidgets")
     if (_myWidgets) {
@@ -1477,6 +1479,7 @@ function loadMyWidgets() {
         _myWidgets = []
     }
 
+    myWidgetsListLoad = []
     for (let widget of _myWidgets) {
         console.log("loading", widget)
         let res = newWidget(widget)        
@@ -1489,10 +1492,19 @@ function loadMyWidgets() {
         pickers.push(picker)
 
         setTimeout(() => {
-            picker.setColor(widget.color)
+            myWidgetsListLoad.push(() => {
+                picker.setColor(widget.color)
+            })
         }, 250)        
     }
 }
+
+$('ons-list-item.myWidgets').on('click', (e) => {
+    console.log("myWidgets ons-list-item clicked")
+    for (let cbk of myWidgetsListLoad) {
+        cbk()
+    }
+})
 
 function clearMyWidgets() {
     saveMyWidgets()
