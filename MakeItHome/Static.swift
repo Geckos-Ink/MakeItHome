@@ -216,7 +216,7 @@ public class Static {
     static var thankYouDone = false
     public static func CheckForThankYou(){
         
-        return; // no thank you this time
+        //return; // no thank you this time
         
         if(thankYouDone){
             return
@@ -225,12 +225,12 @@ public class Static {
         thankYouDone = true
         
         if !(User.object(forKey: "ThankYouBanner") as? Bool ?? false){
-            let thankYou = SwifterPanel<ThankYouBannerView>(view: ThankYouBannerView());
+            let thankYou = SwifterPanel<HowToBasicsView>(view: HowToBasicsView());
             thankYou.show()
             
             User.set(true, forKey: "ThankYouBanner")
         }
-        else if !(User.object(forKey: "UncleNerdBanner") as? Bool ?? false){
+        else if !(User.object(forKey: "UncleNerdBanner") as? Bool ?? false) && false{
             let thankYou = SwifterPanel<IWantYouView>(view: IWantYouView());
             thankYou.show()
             

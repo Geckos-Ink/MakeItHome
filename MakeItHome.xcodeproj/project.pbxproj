@@ -16,6 +16,7 @@
 		8B76137A296D670A00425767 /* UpdateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B761379296D670A00425767 /* UpdateView.swift */; };
 		8B8B557B2C069DFB001817EC /* howto_permissions.mov in Resources */ = {isa = PBXBuildFile; fileRef = 8B8B557A2C069DFA001817EC /* howto_permissions.mov */; settings = {ASSET_TAGS = (New, ); }; };
 		8B8B557D2C06F746001817EC /* HowToRecordingPermissionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B8B557C2C06F746001817EC /* HowToRecordingPermissionView.swift */; };
+		8B8B557F2C0705B1001817EC /* HowToBasicsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B8B557E2C0705B1001817EC /* HowToBasicsView.swift */; };
 		8B9E532C2B52F38B00D81833 /* CocoaManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B9E532A2B52F38B00D81833 /* CocoaManager.swift */; };
 		8B9E53302B52F3D100D81833 /* wallpaperDark.jpeg in Resources */ = {isa = PBXBuildFile; fileRef = 8B9E532E2B52F3D100D81833 /* wallpaperDark.jpeg */; settings = {ASSET_TAGS = (New, ); }; };
 		8B9E53352B545D3900D81833 /* Calendar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B9E53332B545D3900D81833 /* Calendar.swift */; };
@@ -114,6 +115,7 @@
 		8B8B55752C069D89001817EC /* howto_basic.mov */ = {isa = PBXFileReference; lastKnownFileType = video.quicktime; path = howto_basic.mov; sourceTree = "<group>"; };
 		8B8B557A2C069DFA001817EC /* howto_permissions.mov */ = {isa = PBXFileReference; lastKnownFileType = video.quicktime; path = howto_permissions.mov; sourceTree = "<group>"; };
 		8B8B557C2C06F746001817EC /* HowToRecordingPermissionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HowToRecordingPermissionView.swift; sourceTree = "<group>"; };
+		8B8B557E2C0705B1001817EC /* HowToBasicsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HowToBasicsView.swift; sourceTree = "<group>"; };
 		8B9E532A2B52F38B00D81833 /* CocoaManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CocoaManager.swift; sourceTree = "<group>"; };
 		8B9E532E2B52F3D100D81833 /* wallpaperDark.jpeg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = wallpaperDark.jpeg; sourceTree = "<group>"; };
 		8B9E53332B545D3900D81833 /* Calendar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Calendar.swift; path = MakeItHome/Managers/Widgets/Calendar.swift; sourceTree = SOURCE_ROOT; };
@@ -204,6 +206,7 @@
 				8B73A9CC2A9267D10057F86B /* IWantYouView.swift */,
 				8B10BE9E2B52E1DC00872640 /* RequestAutomationPermissions.swift */,
 				8B8B557C2C06F746001817EC /* HowToRecordingPermissionView.swift */,
+				8B8B557E2C0705B1001817EC /* HowToBasicsView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -575,6 +578,7 @@
 				8BB0E39B293DC881006DA326 /* CapturePreview.swift in Sources */,
 				8BB0E39C293DC881006DA326 /* Displays.swift in Sources */,
 				8BB0E39D293DC881006DA326 /* MakeItHomeApp.swift in Sources */,
+				8B8B557F2C0705B1001817EC /* HowToBasicsView.swift in Sources */,
 				8B60F6D92AEFDA8B00DA12A2 /* NavigateZoneView.swift in Sources */,
 				8BD2DD542B48E2C900F74622 /* SimpleHttpServer.swift in Sources */,
 				8BB0E39E293DC881006DA326 /* ActivateView.swift in Sources */,
