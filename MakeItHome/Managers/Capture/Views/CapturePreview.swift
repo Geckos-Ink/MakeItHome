@@ -196,7 +196,7 @@ import OrderedCollections
             Static.isDraggingInside = true
             Static.topBarWebViewRepresentable?.sendMessage(str: "dragging")
             return super.draggingEntered(sender)
-        }        
+        }
         
         ///
         /// Rendering management
@@ -213,14 +213,14 @@ import OrderedCollections
                 isRendering = false
             }
         }
-
+        
         // Function to restart rendering
         func restartRendering() {
             if(!isRendering){
                 print("start SCNScene rendering")
                 
                 showed()
-         
+                
                 isRendering = true
             }
         }
@@ -260,7 +260,7 @@ import OrderedCollections
             // Make this a layer-hosting view. First set the layer, then set wantsLayer to true.
             //self.layer = layer
             //wantsLayer = true
-                                    
+            
             prepareScene()
             
             // Try to hard reset after some time
@@ -270,7 +270,7 @@ import OrderedCollections
                         self.prepareScene()
                         self.setLayer(layer: self.captureLayer!)
                     }
-                }         
+                }
             }
             
             Timer.scheduledTimer(withTimeInterval: Static.ResetCapturePreviewSceneEvery, repeats: true) { timer in
@@ -424,7 +424,7 @@ import OrderedCollections
                 }
             }
         }
-            
+        
         override public func rightMouseUp(with event: NSEvent) {
             DispatchQueue.global(qos: .userInitiated).async {
                 // Handle right mouse up event here
@@ -433,10 +433,10 @@ import OrderedCollections
         }
         
         /*override func rightMouseDragged(with event: NSEvent) {
-            // Handle right mouse dragged event here
-            super.rightMouseDragged(with: event)
-        }*/
-                
+         // Handle right mouse dragged event here
+         super.rightMouseDragged(with: event)
+         }*/
+        
         //MARK: Mouse move
         var mouseOnApp : AppNode?
         func mouseMove(display: Display){
@@ -537,7 +537,7 @@ import OrderedCollections
                 }
             }
         }
-         
+        
         //MARK: General functions
         
         // vertical: it has sense?
@@ -555,13 +555,13 @@ import OrderedCollections
                 self.node = SCNNode(geometry: self.geometry)
             }
         }
-       
+        
         public var planeScreen : Plane?
         public var nodeApps : SCNNode?
         
         func setLayer(layer: CALayer){
             //prepareScene()
-                                    
+            
             planeScreen!.geometry.width = (layer.frame.width / layer.frame.height) * planeScreen!.geometry.height
             planeScreen!.geometry.firstMaterial?.diffuse.contents = captureLayer
             
@@ -599,7 +599,7 @@ import OrderedCollections
             
             //TODO: Thread 1: EXC_BREAKPOINT (code=1, subcode=0x105195380)
             self.pointOfView = pow
-                        
+            
             nodeApps = SCNNode()
             scene!.rootNode.addChildNode(nodeApps!)
             
@@ -610,7 +610,7 @@ import OrderedCollections
             fatalError("Not supported")
             //super.init(coder: coder)
         }
-
+        
         //MARK: AppNode
         public class AppNode : Equatable {
             
@@ -626,7 +626,7 @@ import OrderedCollections
             public var node = SCNNode()
             
             public var orderValue = 0.0
-                        
+            
             init(view : CaptureView, app: Display.AppWindows, asIcon: Bool){
                 self.parentView = view
                 self.app = app
@@ -648,7 +648,7 @@ import OrderedCollections
                     win.app = nil
                     win.node.removeFromParentNode()
                     
-                    win.win.winPlane = nil                    
+                    win.win.winPlane = nil
                     win.selection.myWin = nil
                 }
                 
@@ -697,8 +697,8 @@ import OrderedCollections
                 else {
                     _iconNode?.position.x = requestedSize / 2
                 }
-                                                
-                _iconNode?.addChildNode(iconPlane.node)                                
+                
+                _iconNode?.addChildNode(iconPlane.node)
                 
                 node.addChildNode(_iconNode!)
                 
@@ -721,6 +721,92 @@ import OrderedCollections
                     windows.append(winPlane)
                     winPlane.addToNode(node: self.node)
                 }
+                
+                // Check particle system
+                self.addAuroraBorealis()
+            }
+            
+            var auroraBorealisNode : SCNNode?
+            var auroraBorealisParticleSystem : SCNParticleSystem?
+            
+            func addAuroraBorealis() {
+                // Create a node for the aurora
+                let auroraNode = SCNNode()
+                auroraBorealisNode = auroraNode
+                
+                node.addChildNode(auroraNode)
+                auroraNode.position.z = -self.parentView.windowsZ
+                
+                // Set up a particle system for the aurora
+                let particleSystem = SCNParticleSystem()
+                auroraBorealisParticleSystem = particleSystem
+                
+                particleSystem.birthRate = 100
+                particleSystem.particleLifeSpan = 5
+                particleSystem.particleLifeSpanVariation = 0
+                particleSystem.emissionDuration = 10
+                particleSystem.loops = true
+                particleSystem.blendMode = .additive
+                particleSystem.isAffectedByGravity = false
+                
+                if isHorizontal{
+                    particleSystem.emitterShape = SCNPlane(width: requestedSize, height: parentView.onePixel)
+                }
+                else {
+                    particleSystem.emitterShape = SCNPlane(width: parentView.onePixel, height: requestedSize)
+                }
+                
+                // Color the particles to mimic the Aurora Borealis
+                particleSystem.particleColor = NSColor.green
+                particleSystem.particleColorVariation = SCNVector4(0.2, 0.5, 0.5, 0.1)
+                particleSystem.particleSize = self.parentView.onePixel * 50
+                particleSystem.acceleration.y = self.parentView.onePixel
+                particleSystem.particleSizeVariation = self.parentView.onePixel * 10
+     
+                particleSystem.particleImage = NSImage(named: "AuroraBorealis")
+                particleSystem.imageSequenceColumnCount = 4
+                particleSystem.imageSequenceRowCount = 4
+                particleSystem.imageSequenceAnimationMode = .autoReverse
+                particleSystem.imageSequenceFrameRate = 16
+                
+                // Create a custom shader for the particle system
+                /*particleSystem.shaderModifiers = [.particle: """
+                    #pragma arguments
+                    float time;
+                    float intensity;
+                    #pragma body
+                    vec2 pos = vec2(sin(_particle_position.x + time), cos(_particle_position.y + time));
+                    _output.color.rgb = vec3(pos * intensity, pos.y * intensity, intensity);
+                    """]*/
+                
+                auroraNode.addParticleSystem(particleSystem)
+                
+                let duration : CGFloat = 3
+                
+                // Animate the custom shader properties
+                let timeAnimation = CABasicAnimation(keyPath: "time")
+                timeAnimation.fromValue = 0.0
+                timeAnimation.toValue = Float.pi * 2
+                timeAnimation.duration = duration
+                timeAnimation.repeatCount = .infinity
+                
+                let intensityAnimation = CABasicAnimation(keyPath: "intensity")
+                intensityAnimation.fromValue = 0.5
+                intensityAnimation.toValue = 1.5
+                intensityAnimation.duration = duration
+                intensityAnimation.autoreverses = true
+                intensityAnimation.repeatCount = .infinity
+                
+                let opacityAnimation = CABasicAnimation(keyPath: "opacity")
+                opacityAnimation.fromValue = 0
+                opacityAnimation.toValue = 1
+                opacityAnimation.duration = duration
+                intensityAnimation.autoreverses = true
+                intensityAnimation.repeatCount = 2
+                
+                auroraNode.addAnimation(timeAnimation, forKey: "timeAnimation")
+                auroraNode.addAnimation(intensityAnimation, forKey: "intensityAnimation")
+                auroraNode.addAnimation(opacityAnimation, forKey: "opacityAnimation")
             }
             
             
@@ -759,7 +845,7 @@ import OrderedCollections
                     
                     win.checkSizeChange()
                 }
-                                
+                
             }
             
             public func setHeight(height: CGFloat, display: Display){
@@ -826,7 +912,7 @@ import OrderedCollections
                     }
                 }
                 else {
-                    if(lOffset == 0){        
+                    if(lOffset == 0){
                         curOffset = (offset + curOffset)/2
                         
                         if(abs(curOffset - offset) < parentView.onePixel){
@@ -889,18 +975,18 @@ import OrderedCollections
             let view : CaptureView
             
             let selection = Selection()
-                    
+            
             init(app: AppNode, win: Display.AppWindows.Window, view: CaptureView){
                 self.app = app
                 self.win = win
                 self.view = view
-                                                
+                
                 super.init(width: 1, height: 1)
                 
                 if !app.asIcon {
                     win.winPlane = self
                 }
-                        
+                
                 selection.config(win: self)
                 self.geometry.cornerRadius = view.pixelsToScene(pixels: 5)
                 self.geometry.firstMaterial?.emission.contents = NSColor.white
@@ -1027,7 +1113,7 @@ import OrderedCollections
                     
                     return NSAttributedString(string: ret, attributes: [.foregroundColor : NSColor.clear, .font: NSFont(name: "ArialRoundedMTBold", size: 1) ?? NSFont(name: "Arial", size: 1)!])
                 }
-
+                
                 //MARK: Set text
                 // Calculated size 40 characters every 280px
                 let maxCharsPerLine = Int((self.geometry.width / (view.pixelsToScene(pixels: 280)))*35)
@@ -1037,7 +1123,7 @@ import OrderedCollections
                 let newText = SCNText(string: attrStr, extrusionDepth:view.windowsZ)
                 //newText.font = .menuBarFont(ofSize: 1)
                 newText.firstMaterial!.diffuse.contents = NSColor.white
-
+                
                 let scaleNode = 0.010 * (win.isFakeWin ? 0.75 : 1)
                 
                 let padding = view.pixelsToScene(pixels: 10)
@@ -1054,7 +1140,7 @@ import OrderedCollections
                 
                 let contrastPlane = Plane(width: textWidth + (contrastPadding*2),
                                           height: textHeight + (contrastPadding*2)
-                                    )
+                )
                 
                 contrastPlane.geometry.cornerRadius = 1
                 
@@ -1063,9 +1149,9 @@ import OrderedCollections
                 
                 contrastPlane.geometry.firstMaterial?.transparency = 0.75
                 contrastPlane.node.position =
-                    SCNVector3(
-                        (contrastPlane.geometry.width/2)-contrastPadding,
-                        (contrastPadding + (textHeight/2))
+                SCNVector3(
+                    (contrastPlane.geometry.width/2)-contrastPadding,
+                    (contrastPadding + (textHeight/2))
                     ,0)
                 
                 _textNode?.addChildNode(contrastPlane.node)
@@ -1101,12 +1187,12 @@ import OrderedCollections
                     let bloomFilter = CIFilter(name:"CIBloom")!
                     bloomFilter.setValue(1, forKey: "inputIntensity")
                     bloomFilter.setValue(5, forKey: "inputRadius")
-
+                    
                     return [bloomFilter]
                 }
                 
                 if win.lastPreview?.width ?? 16384  < 16384 {
-                                                            
+                    
                     self.geometry.firstMaterial?.writesToDepthBuffer = false
                     
                     self.geometry.firstMaterial?.diffuse.contents = win.lastPreview
@@ -1192,7 +1278,7 @@ import OrderedCollections
                 
                 totalSpace += spaceBetweenApps + app.spacing
             }
-                            
+            
             let oppositeSpacing = -totalSpace / 2
             
             // Set nodeWindow position
@@ -1200,7 +1286,7 @@ import OrderedCollections
                 //let rapp = display.frame.width / display.frame.height
                 
                 var x = self.pixelsToScene(pixels: (-curDisplay!.frame.width/2) - Static.OverscreenSize) + (pixelsToScene(pixels:Static.OverscreenSize) - maxLarge)/2
-                                
+                
                 if(sidePair == 1){
                     x = self.pixelsToScene(pixels: curDisplay!.frame.width/2)
                     x += pixelsToScene(pixels: Static.OverscreenAboveLimit*2)
@@ -1262,7 +1348,7 @@ import OrderedCollections
             sidePair = side % 2
             
             var maxSize : CGFloat = pixelsToScene(pixels: (Static.OverscreenSize) - (Static.OverscreenAboveLimit*4))
-                        
+            
             //print("maxSize: ", maxSize)
             //print("maxSizePixels", (display.overscreenSize) - (Static.OverscreenAboveLimit*4) / dim) //=> 280px
             
@@ -1270,7 +1356,7 @@ import OrderedCollections
             nodeApps?.removeFromParentNode()
             nodeApps = SCNNode()
             scene?.rootNode.addChildNode(nodeApps!)
-                        
+            
             if(false){ //reference green plane
                 let testPlane = Plane(width: 0.1, height: 0.1)
                 testPlane.geometry.firstMaterial?.diffuse.contents = NSColor.green
@@ -1286,7 +1372,7 @@ import OrderedCollections
             }
             
             let maxPreviews = Int(Double(Static.MaxApps)*0.75)
-
+            
             var lastTitle : String = ""
             
             var showAppsWin : [AppNode] = []
@@ -1321,7 +1407,7 @@ import OrderedCollections
                             let winPlane = WindowPlane(app: appNode, win: lastEl, view: self)
                             appNode.windows.insert(winPlane, at: appNode.windows.count)
                             winPlane.addToNode(node: appNode.node)
-                                                        
+                            
                             showAppsWin.append(appNode)
                             
                             lastTitle = app!.value.title
@@ -1379,7 +1465,7 @@ import OrderedCollections
                         }
                     }
                     
-                    app!.value.clearUnusedWindows()                                                            
+                    app!.value.clearUnusedWindows()
                 }
                 else {
                     app?.value.considered = false
@@ -1443,7 +1529,7 @@ import OrderedCollections
                         app.value.setHeight(height: size, display: display)
                     }
                 }
-                                                
+                
                 return setWindowsPosition()
             }
             
@@ -1452,7 +1538,7 @@ import OrderedCollections
             if(!sideVertical){
                 maxSpace = pixelsToScene(pixels: curDisplay!.frame.width)
             }
-                                    
+            
             while setWinsSize(size: maxSize) > maxSpace{
                 maxSize -= pixelsToScene(pixels: 15)
             }

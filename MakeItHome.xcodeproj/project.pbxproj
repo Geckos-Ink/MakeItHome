@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		8B10BE9C2B52DFA100872640 /* MyAppleEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B10BE9B2B52DFA100872640 /* MyAppleEvents.swift */; };
 		8B10BE9F2B52E1DC00872640 /* RequestAutomationPermissions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B10BE9E2B52E1DC00872640 /* RequestAutomationPermissions.swift */; };
+		8B11BBA22C07742C00E46355 /* AuroraBorealis.png in Resources */ = {isa = PBXBuildFile; fileRef = 8B11BBA12C07742C00E46355 /* AuroraBorealis.png */; settings = {ASSET_TAGS = (New, ); }; };
 		8B3D40512AD70A26003DFAC7 /* preview.html in Resources */ = {isa = PBXBuildFile; fileRef = 8B3D404F2AD70A26003DFAC7 /* preview.html */; settings = {ASSET_TAGS = (New, ); }; };
 		8B3D40592AD70F94003DFAC7 /* mrWhite.html in Resources */ = {isa = PBXBuildFile; fileRef = 8B3D40572AD70F93003DFAC7 /* mrWhite.html */; settings = {ASSET_TAGS = (New, ); }; };
 		8B60F6D92AEFDA8B00DA12A2 /* NavigateZoneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B60F6D82AEFDA8B00DA12A2 /* NavigateZoneView.swift */; };
@@ -73,6 +74,7 @@
 /* Begin PBXFileReference section */
 		8B10BE9B2B52DFA100872640 /* MyAppleEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyAppleEvents.swift; sourceTree = "<group>"; };
 		8B10BE9E2B52E1DC00872640 /* RequestAutomationPermissions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestAutomationPermissions.swift; sourceTree = "<group>"; };
+		8B11BBA12C07742C00E46355 /* AuroraBorealis.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AuroraBorealis.png; sourceTree = "<group>"; };
 		8B3C5739290B7A87002C2146 /* Docker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Docker.swift; sourceTree = "<group>"; };
 		8B3D404F2AD70A26003DFAC7 /* preview.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = preview.html; sourceTree = "<group>"; };
 		8B3D40572AD70F93003DFAC7 /* mrWhite.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = mrWhite.html; sourceTree = "<group>"; };
@@ -215,6 +217,7 @@
 		8B5785D9290511B100C626C3 /* Assets */ = {
 			isa = PBXGroup;
 			children = (
+				8B11BBA12C07742C00E46355 /* AuroraBorealis.png */,
 				8B9E532E2B52F3D100D81833 /* wallpaperDark.jpeg */,
 				8B4AC9E0292EACAC00DE44E5 /* wallpaper.jpeg */,
 				8B5785DA290511BF00C626C3 /* Synth.aif */,
@@ -510,6 +513,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				8B9E53302B52F3D100D81833 /* wallpaperDark.jpeg in Resources */,
+				8B11BBA22C07742C00E46355 /* AuroraBorealis.png in Resources */,
 				8B3D40592AD70F94003DFAC7 /* mrWhite.html in Resources */,
 				8BAFBF672AE4AB2A000663AE /* release.mov in Resources */,
 				8BB0E3A9293DC881006DA326 /* info.plist in Resources */,

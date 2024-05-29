@@ -1049,6 +1049,8 @@ public class Display : Equatable {
         
         var prevRecorderUpdate : Double = 0
         var pauseMinMouseSpeed : Double = 0
+        
+        let timeStart = Date.now
                 
         Timer.scheduledTimer(withTimeInterval: Static.CheckIfUpdateWindowScreenshotEvery / Double(definitionMultiplier), repeats: true) { timer in
             
@@ -1073,7 +1075,9 @@ public class Display : Equatable {
                 // Check if mouse is not moving
                 if self.mouseIn {
                     let limiter = self.avgSpeed * 0.1 * 0.25
-                    if !force && mouseMoveMultiplier > 0 && (self.mouseSpeed_10s < limiter || (self.recordingPaused && pauseMinMouseSpeed > self.mouseSpeed_10s)) {
+                    let startedFor = Date.now - timeStart.timeIntervalSince1970
+                    
+                    if !force && mouseMoveMultiplier > 0 && (self.mouseSpeed_10s < limiter || (self.recordingPaused && pauseMinMouseSpeed > self.mouseSpeed_10s)) && startedFor.timeIntervalSince1970 > 10 {
                         if !self.recordingPaused {
                             print("recorder paused")
                             self.recorderPause()
@@ -2424,9 +2428,7 @@ public class Display : Equatable {
         
         mouseSpeed_10s = ((mouseSpeed_10s*(Static.MouseHertz * 10))+mouseSpeed)/((Static.MouseHertz * 10)+1)
         
-        if(mouseSpeed > 0){
-            avgSpeed = ((avgSpeed*avgWeight)+mouseSpeed)/(avgWeight+1)
-        }
+        avgSpeed = ((avgSpeed*avgWeight)+mouseSpeed)/(avgWeight+1)
         
         if(maxSpeed < avgSpeed){
             maxSpeed = (maxSpeed + avgSpeed)/2
@@ -2867,7 +2869,7 @@ public class Display : Equatable {
                     
                     if(aboveBy > 1){
                         aboveBy = 1
-                        print("aboveBy exceeded 1")
+                        //print("aboveBy exceeded 1")
                     }
                     else if(aboveBy < 0){
                         aboveBy = 0
