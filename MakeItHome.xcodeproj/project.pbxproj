@@ -14,6 +14,7 @@
 		8B11BBA62C088C2500E46355 /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8B11BBA52C088C2500E46355 /* AVKit.framework */; };
 		8B11BBA92C08AB1F00E46355 /* howto_basic.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 8B11BBA72C08AB1F00E46355 /* howto_basic.mp4 */; settings = {ASSET_TAGS = (New, ); }; };
 		8B11BBAA2C08AB1F00E46355 /* howto_permissions.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 8B11BBA82C08AB1F00E46355 /* howto_permissions.mp4 */; settings = {ASSET_TAGS = (New, ); }; };
+		8B11BBAC2C0900EC00E46355 /* AVScreenRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B11BBAB2C0900EC00E46355 /* AVScreenRecorder.swift */; };
 		8B3D40512AD70A26003DFAC7 /* preview.html in Resources */ = {isa = PBXBuildFile; fileRef = 8B3D404F2AD70A26003DFAC7 /* preview.html */; settings = {ASSET_TAGS = (New, ); }; };
 		8B3D40592AD70F94003DFAC7 /* mrWhite.html in Resources */ = {isa = PBXBuildFile; fileRef = 8B3D40572AD70F93003DFAC7 /* mrWhite.html */; settings = {ASSET_TAGS = (New, ); }; };
 		8B60F6D92AEFDA8B00DA12A2 /* NavigateZoneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B60F6D82AEFDA8B00DA12A2 /* NavigateZoneView.swift */; };
@@ -81,6 +82,7 @@
 		8B11BBA52C088C2500E46355 /* AVKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVKit.framework; path = System/Library/Frameworks/AVKit.framework; sourceTree = SDKROOT; };
 		8B11BBA72C08AB1F00E46355 /* howto_basic.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = howto_basic.mp4; sourceTree = "<group>"; };
 		8B11BBA82C08AB1F00E46355 /* howto_permissions.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = howto_permissions.mp4; sourceTree = "<group>"; };
+		8B11BBAB2C0900EC00E46355 /* AVScreenRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AVScreenRecorder.swift; sourceTree = "<group>"; };
 		8B3C5739290B7A87002C2146 /* Docker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Docker.swift; sourceTree = "<group>"; };
 		8B3D404F2AD70A26003DFAC7 /* preview.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = preview.html; sourceTree = "<group>"; };
 		8B3D40572AD70F93003DFAC7 /* mrWhite.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = mrWhite.html; sourceTree = "<group>"; };
@@ -186,6 +188,7 @@
 				8B419C25290409E10017C05C /* CaptureEngine.swift */,
 				8B419C2729040F270017C05C /* Audio.swift */,
 				8B5785D52904A6D000C626C3 /* ScreenRecorder.swift */,
+				8B11BBAB2C0900EC00E46355 /* AVScreenRecorder.swift */,
 			);
 			path = Capture;
 			sourceTree = "<group>";
@@ -558,6 +561,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				8B11BBAC2C0900EC00E46355 /* AVScreenRecorder.swift in Sources */,
 				8BB0E387293DC881006DA326 /* TestView.swift in Sources */,
 				8BB0E388293DC881006DA326 /* Extensions.swift in Sources */,
 				8BC56F902AD073E6008B3788 /* WidgetZoneView.swift in Sources */,
