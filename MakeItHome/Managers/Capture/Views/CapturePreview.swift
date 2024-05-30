@@ -504,6 +504,10 @@ import OrderedCollections
                             //onApp = app.value
                             
                             mouseOnApp = app.value
+                            
+                            // This is a very superficial checking for the moreAboveBy.
+                            //TODO: Effectively check if it's in the axis of the app indipendetly if passed over the preview
+                            Static.LastAppPreviewMouseOver = mouseOnApp?.app
                         }
                         else {
                             app.value.moveEmissionAlpha(to: 0)
@@ -812,7 +816,7 @@ import OrderedCollections
                 particleSystem.particleColor = app.iconAvgColor
                 
                 if blend == .subtract {
-                    particleSystem.particleColor = NSColor.red
+                    particleSystem.particleColor = NSColor.blue
                 }
                 
                 particleSystem.particleColorVariation = SCNVector4(0.2, 0.5, 0.5, 0.5)

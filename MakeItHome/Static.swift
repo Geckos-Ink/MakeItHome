@@ -187,6 +187,7 @@ public class Static {
     public static var OnAppExtensionZone = false
     public static var AppExtensionWebView : AppExtensionWKWV? = nil
     public static var appExtensionWebViewRepresentable : AppExtensionWebView?
+    public static var LastAppPreviewMouseOver : Display.AppWindows?
     
     ///
     ///# Init
