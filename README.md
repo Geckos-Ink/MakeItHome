@@ -45,8 +45,16 @@
   <table>
 </center>
 
+## MakeItHome 2.0
+The current versions 1.9.x aims to the completion of "MakeItHome 2.0" objectives.
+
+These objectives are:
+- Widgets zone in the top bar (completed)
+- Widgets from external app (todo)
+- App extension: an application can extend its icon in the windows switching area. The work is in progress: when an application has the extension area, an aurora borealis is generated at the base of its preview. Then, if the user "break" more the screen boundaries on the aurora's side, he will access a doubled overscreen with a WebView where the application can render what he wants. My first intention of using this feature is to create a browser extension and create a rapid tab switching with web page preview. But an application is free to set what he wants: for example a music player app can display the songs queue and permit the rapid change of song. Respect than the Widgets Zone, the App Extension has not design structure, so all focus is about the APIs and the communication protocol between MakeItHome and the app. I aim to implement the App Extension "theoretically" only with a demo app and a documentation and then create the browsers extensions... well, when I'll have time. 
+
 ## Notes
-This project deserve a better documentation, most of all seen the fact that soon I should publish a new update, at least to improve the user experience and to complete the widgets zone. 
+This project deserves a better documentation, most of all seen the fact that soon I should publish a new update, at least to improve the user experience and to complete the widgets zone. 
 
 I try to make a to do list as memorandum:
 
