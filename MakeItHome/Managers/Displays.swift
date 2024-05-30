@@ -2372,7 +2372,7 @@ public class Display : Equatable {
     var dockPos : WBDockPosition = WBDockPosition.none
     
     ///# moreAboveBy
-    let moreAboveByEnabled = false
+    let moreAboveByEnabled = true
     let moreAboveByActivationPoint : CGFloat = 5 // pixels
     let moreAboveByActivationSize : CGFloat = 10 // pixels
     var onMoreAboveBy = false

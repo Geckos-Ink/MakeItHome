@@ -762,7 +762,7 @@ import OrderedCollections
                 }
                 
                 // Check particle system
-                if false { //TODO: enable on supported apps
+                if true { //TODO: enable only on supported apps
                     self.addAuroraBorealis()
                 }
             }
