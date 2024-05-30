@@ -1255,7 +1255,8 @@ function renderParagraph(id){
     let $pars = $id.find('.paragraph')
 
     let $contents = $('<div class="left"></div>')
-    let $titles = $('<div class="right"></div>')
+    let $titles = $('<div class="right"><div class="menu"></div></div>')
+    let $menu = $titles.find('.menu')
 
     for(p=0; p<$pars.length; p++){
         $par = $($pars[p])
@@ -1274,21 +1275,34 @@ function renderParagraph(id){
         })
 
         $contents.append($content)
-        $titles.append($title)
+        $menu.append($title)
     }
+
+    let interval = setInterval(() => {
+        let offset = $titles.offset()
+
+        if (offset.left > 0 && offset.top > 0) {
+            $menu.css('top', offset.top)
+            $menu.css('left', offset.left)
+            $menu.css('width', $titles.width())
+            $menu.css('height', $titles.height())
+
+            clearInterval(interval)
+        }
+    }, 100)
     
     $contents.on('mousemove', (e)=>{
         let $conts = $contents //$id.find('.left')
 
         let scroll = $conts.scrollTop()
-        let y = e.originalEvent.pageY - ($id.position().top) + scroll;
+        let y = e.originalEvent.pageY - ($id.offset().top) + scroll;
 
         let lastPar = -1;
 
         let pars = $conts.find('.paragraph')
         for(p = 0; p < pars.length; p++){
             let par = $(pars[p])
-            let pos = par.position()
+            let pos = par.offset()
 
             if(y >= pos.top){
                 lastPar = p                

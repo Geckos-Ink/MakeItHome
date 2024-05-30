@@ -574,12 +574,16 @@ input {
 }
 
 .paragraphs .right {
-  position: absolute;
+  position: relative;
 
   top: 0;
   bottom: 0;
   right: 0;
   left: 75%;
+}
+
+.paragraphs .right .menu {
+  position: fixed;
 }
 
 .paragraphs .paragraph {
