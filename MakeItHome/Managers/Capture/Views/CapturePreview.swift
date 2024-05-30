@@ -762,7 +762,9 @@ import OrderedCollections
                 }
                 
                 // Check particle system
-                self.addAuroraBorealis()
+                if false { //TODO: enable on supported apps
+                    self.addAuroraBorealis()
+                }
             }
             
             var auroraBorealisNode : SCNNode?
