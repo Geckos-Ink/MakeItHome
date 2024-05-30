@@ -11,6 +11,7 @@
 		8B10BE9F2B52E1DC00872640 /* RequestAutomationPermissions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B10BE9E2B52E1DC00872640 /* RequestAutomationPermissions.swift */; };
 		8B11BBA22C07742C00E46355 /* AuroraBorealis.png in Resources */ = {isa = PBXBuildFile; fileRef = 8B11BBA12C07742C00E46355 /* AuroraBorealis.png */; settings = {ASSET_TAGS = (New, ); }; };
 		8B11BBA42C07CBEA00E46355 /* AppExtensionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B11BBA32C07CBEA00E46355 /* AppExtensionView.swift */; };
+		8B11BBA62C088C2500E46355 /* AVKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8B11BBA52C088C2500E46355 /* AVKit.framework */; };
 		8B3D40512AD70A26003DFAC7 /* preview.html in Resources */ = {isa = PBXBuildFile; fileRef = 8B3D404F2AD70A26003DFAC7 /* preview.html */; settings = {ASSET_TAGS = (New, ); }; };
 		8B3D40592AD70F94003DFAC7 /* mrWhite.html in Resources */ = {isa = PBXBuildFile; fileRef = 8B3D40572AD70F93003DFAC7 /* mrWhite.html */; settings = {ASSET_TAGS = (New, ); }; };
 		8B60F6D92AEFDA8B00DA12A2 /* NavigateZoneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B60F6D82AEFDA8B00DA12A2 /* NavigateZoneView.swift */; };
@@ -77,6 +78,7 @@
 		8B10BE9E2B52E1DC00872640 /* RequestAutomationPermissions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestAutomationPermissions.swift; sourceTree = "<group>"; };
 		8B11BBA12C07742C00E46355 /* AuroraBorealis.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = AuroraBorealis.png; sourceTree = "<group>"; };
 		8B11BBA32C07CBEA00E46355 /* AppExtensionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppExtensionView.swift; sourceTree = "<group>"; };
+		8B11BBA52C088C2500E46355 /* AVKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AVKit.framework; path = System/Library/Frameworks/AVKit.framework; sourceTree = SDKROOT; };
 		8B3C5739290B7A87002C2146 /* Docker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Docker.swift; sourceTree = "<group>"; };
 		8B3D404F2AD70A26003DFAC7 /* preview.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = preview.html; sourceTree = "<group>"; };
 		8B3D40572AD70F93003DFAC7 /* mrWhite.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = mrWhite.html; sourceTree = "<group>"; };
@@ -165,6 +167,7 @@
 			files = (
 				8BB0E3A1293DC881006DA326 /* OrderedCollections in Frameworks */,
 				8BB0E3A2293DC881006DA326 /* ScreenCaptureKit.framework in Frameworks */,
+				8B11BBA62C088C2500E46355 /* AVKit.framework in Frameworks */,
 				8BB0E3A3293DC881006DA326 /* AVFAudio.framework in Frameworks */,
 				8BB0E3A4293DC881006DA326 /* AVFoundation.framework in Frameworks */,
 				8BB0E3A5293DC881006DA326 /* ServiceManagement.framework in Frameworks */,
@@ -325,6 +328,7 @@
 		8BE1B22628EFE9E60037D132 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				8B11BBA52C088C2500E46355 /* AVKit.framework */,
 				8B439450292FD2CD00134EB6 /* ScreenCaptureKit.framework */,
 				8B557446292AA716009D645D /* ServiceManagement.framework */,
 				8B5785E02905701E00C626C3 /* AVFAudio.framework */,

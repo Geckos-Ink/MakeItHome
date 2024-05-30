@@ -230,7 +230,7 @@ public class Static {
         
         thankYouDone = true
         
-        if !(User.object(forKey: "ThankYouBanner") as? Bool ?? false){
+        if !(User.object(forKey: "ThankYouBanner") as? Bool ?? false) {
             let thankYou = SwifterPanel<HowToBasicsView>(view: HowToBasicsView());
             thankYou.show()
             
