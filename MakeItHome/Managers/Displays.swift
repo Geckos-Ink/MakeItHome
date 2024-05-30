@@ -1054,7 +1054,7 @@ public class Display : Equatable {
         var prevRecorderUpdate : Double = 0
         var pauseMinMouseSpeed : Double = 0
         
-        let timeStart = Date.now
+        let timeStart = Date()
                 
         Timer.scheduledTimer(withTimeInterval: Static.CheckIfUpdateWindowScreenshotEvery / Double(definitionMultiplier), repeats: true) { timer in
             
@@ -1079,9 +1079,9 @@ public class Display : Equatable {
                 // Check if mouse is not moving
                 if self.mouseIn {
                     let limiter = self.avgSpeed * 0.1 * 0.25
-                    let startedFor = Date.now - timeStart.timeIntervalSince1970
+                    let startedFor = Date().timeIntervalSince1970 - timeStart.timeIntervalSince1970
                     
-                    if !force && mouseMoveMultiplier > 0 && (self.mouseSpeed_10s < limiter || (self.recordingPaused && pauseMinMouseSpeed > self.mouseSpeed_10s)) && startedFor.timeIntervalSince1970 > 10 {
+                    if !force && mouseMoveMultiplier > 0 && (self.mouseSpeed_10s < limiter || (self.recordingPaused && pauseMinMouseSpeed > self.mouseSpeed_10s)) && startedFor > 10 {
                         if !self.recordingPaused {
                             print("recorder paused")
                             self.recorderPause()
@@ -2005,10 +2005,12 @@ public class Display : Equatable {
     }
     
     func recorderPause(){
-        DispatchQueue.main.async{
-            let screenRecorder = (self.manager.contentView?.store.screenRecorder as! ScreenRecorder)
-            Task{
-                await screenRecorder.stop()
+        if #available(macOS 12.3, *){
+            DispatchQueue.main.async{
+                let screenRecorder = (self.manager.contentView?.store.screenRecorder as! ScreenRecorder)
+                Task{
+                    await screenRecorder.stop()
+                }
             }
         }
     }

@@ -45,7 +45,11 @@ public class StoreView {
             
             ///
             ///
-            (self.screenRecorder as? ScreenRecorder)?.capturePreview.view = self.view
+            if #available(macOS 12.3, *) {
+                (self.screenRecorder as? ScreenRecorder)?.capturePreview.view = self.view
+            } else {
+                // Fallback on earlier versions
+            }
         }
     }
     

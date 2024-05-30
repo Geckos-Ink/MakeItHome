@@ -12,18 +12,17 @@ import SceneKit
 
 import OrderedCollections
 
-@available(macOS 12.3, *) public struct CapturePreview: NSViewRepresentable {
+public struct CapturePreview: NSViewRepresentable {
     // A layer that renders the video contents.
     @State var contentLayer : CALayer? = nil
-    internal var screenRecorder : ScreenRecorder
+    
     public let device = MTLCreateSystemDefaultDevice()
 
     public let captureView : CaptureView
     
     public var view : ContentView?
     
-    init(screenRecorder: ScreenRecorder) {
-        self.screenRecorder = screenRecorder        
+    init() {
         contentLayer = CALayer()
         
         captureView = CaptureView()

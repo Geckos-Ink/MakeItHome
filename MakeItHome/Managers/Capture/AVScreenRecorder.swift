@@ -11,6 +11,8 @@ import AVFoundation
 
 // that can lead the minimum compatibility to macOS 10.8
 // but the use of StateObject brings the minimum compatibility to 11.0 ... is this a good invenstment of time?
+// https://gs.statcounter.com/macos-version-market-share if it's true that Catalina (10.15) has 95% of market share, yes.
+// update: due to the use of SwiftUI a lot of operations seems incompatible. So seems an hard work... or an impossible one.
 class AVScreenRecorder: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
 
     var window: NSWindow!
