@@ -205,14 +205,13 @@ struct MenuBarView: View {
                 }
                 
                 Button(action: {
-                    if let url = URL(string: "https://geckos.ink/"){
+                    if let url = URL(string: "https://github.com/Geckos-Ink/MakeItHome"){
                         if NSWorkspace.shared.open(url) {
                             print("default browser was successfully opened")
                             
                         }
                     }
                 }){
-
                     VStack{
                         Image("GeckosInkLogo").resizable().frame(width: 80, height: 80)
                         Text("by Gecko's Ink")

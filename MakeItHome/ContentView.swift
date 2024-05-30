@@ -161,6 +161,14 @@ public class StoreVars: ObservableObject {
     @Published public var navOverlaySizeY: CGFloat = 100
     
     @Published public var navOverlayOpacity: CGFloat = 1
+    
+    // AppExtension overlay
+    @Published public var appExtOverlayOffsetX: CGFloat = 100
+    @Published public var appExtOverlayOffsetY: CGFloat = 10000
+    @Published public var appExtOverlaySizeX: CGFloat = 100
+    @Published public var appExtOverlaySizeY: CGFloat = 100
+    
+    @Published public var appExtOverlayOpacity: CGFloat = 1
 }
 
 @MainActor
@@ -214,6 +222,12 @@ public struct ContentView: View {
                 .offset(x: vars.navOverlayOffsetX, y: vars.navOverlayOffsetY)
                 .frame(width: vars.navOverlaySizeX, height: vars.navOverlaySizeY)
                 .opacity(vars.navOverlayOpacity)
+        }
+        .overlay {
+            AppExtensionView()
+                .offset(x: vars.appExtOverlayOffsetX, y: vars.appExtOverlayOffsetY)
+                .frame(width: vars.appExtOverlaySizeX, height: vars.appExtOverlaySizeY)
+                .opacity(vars.appExtOverlayOpacity)
         }
         
         /*.overlay {

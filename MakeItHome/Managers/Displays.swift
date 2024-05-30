@@ -886,6 +886,10 @@ public class Display : Equatable {
                         return
                     }
                     
+                    if self.lastCii == nil { // double check
+                        return
+                    }
+                    
                     var cii = self.lastCii!
                     
                     // Resize
@@ -1049,6 +1053,8 @@ public class Display : Equatable {
         
         var prevRecorderUpdate : Double = 0
         var pauseMinMouseSpeed : Double = 0
+        
+        let timeStart = Date.now
                 
         Timer.scheduledTimer(withTimeInterval: Static.CheckIfUpdateWindowScreenshotEvery / Double(definitionMultiplier), repeats: true) { timer in
             
@@ -1073,7 +1079,9 @@ public class Display : Equatable {
                 // Check if mouse is not moving
                 if self.mouseIn {
                     let limiter = self.avgSpeed * 0.1 * 0.25
-                    if !force && mouseMoveMultiplier > 0 && (self.mouseSpeed_10s < limiter || (self.recordingPaused && pauseMinMouseSpeed > self.mouseSpeed_10s)) {
+                    let startedFor = Date.now - timeStart.timeIntervalSince1970
+                    
+                    if !force && mouseMoveMultiplier > 0 && (self.mouseSpeed_10s < limiter || (self.recordingPaused && pauseMinMouseSpeed > self.mouseSpeed_10s)) && startedFor.timeIntervalSince1970 > 10 {
                         if !self.recordingPaused {
                             print("recorder paused")
                             self.recorderPause()
@@ -1815,7 +1823,7 @@ public class Display : Equatable {
             }
         }
         
-        res /= self.scale
+        //res /= self.scale
         return res
     }
     
@@ -2363,6 +2371,12 @@ public class Display : Equatable {
     var aroundTopSide = false
     var dockPos : WBDockPosition = WBDockPosition.none
     
+    ///# moreAboveBy
+    let moreAboveByEnabled = false
+    let moreAboveByActivationPoint : CGFloat = 5 // pixels
+    let moreAboveByActivationSize : CGFloat = 10 // pixels
+    var onMoreAboveBy = false
+    
     //MARK: Active area
     @MainActor func active(mouse: NSPoint){
         
@@ -2418,9 +2432,7 @@ public class Display : Equatable {
         
         mouseSpeed_10s = ((mouseSpeed_10s*(Static.MouseHertz * 10))+mouseSpeed)/((Static.MouseHertz * 10)+1)
         
-        if(mouseSpeed > 0){
-            avgSpeed = ((avgSpeed*avgWeight)+mouseSpeed)/(avgWeight+1)
-        }
+        avgSpeed = ((avgSpeed*avgWeight)+mouseSpeed)/(avgWeight+1)
         
         if(maxSpeed < avgSpeed){
             maxSpeed = (maxSpeed + avgSpeed)/2
@@ -2725,13 +2737,13 @@ public class Display : Equatable {
             
             //accumulatedDelta = CGPoint(x: accumulateAvg.x + accumulatedDelta.x, y: accumulateAvg.y + accumulatedDelta.y) // rest in movement
             //accumulatedDelta = accumulateAvg.clone
-                        
-      
+            
+            
             //let useLastAcc = invertPoint(point: lastAccumulated)
             //let compMouse = self.getPointAccumulated(point: accMouse)
             var mouseAboveLimitBy = self.calcAboveBy(side: self.side, point: relMouse)
             var forecastAboveLimitBy = self.calcAboveBy(side: self.side, point: mouseForecast)
-
+            
             if(aboveBy > 0.8){
                 forecastAboveLimitBy = mouseAboveLimitBy
                 
@@ -2746,7 +2758,7 @@ public class Display : Equatable {
             //MARK: Calculate speed
             //TODO: deprecate speed (it's useless, always at 0)
             var axisSpeed = accDelta.x
-                             
+            
             if(!sideVertical){
                 axisSpeed = accDelta.y
             }
@@ -2764,9 +2776,9 @@ public class Display : Equatable {
             }
             
             alongLine.aboveBy = mouseAboveLimitBy
-              
+            
             //removed: && mouseAboveLimitBy < moveOnPixels && ((speedRatio > slowDownMinSpeedRatio || abs(speed)>(maxAccumulate/3)))
-                        
+            
             let goingTo = manager.getPointerDisplay(cursor: absForecastMouse, justGet: true)
             let isGoingHere = goingTo == nil || goingTo == self
             
@@ -2796,93 +2808,139 @@ public class Display : Equatable {
                 }
             }
             
-            //let recordingAvailable = recordingDisplayID == 94 || recordingDisplayID == screen.displayID
             
-            // && acceleration >= 0
-            if recordingAvailable && isRightDirection && ((forecastAboveLimitBy < moveOnPixels && isGoingHere && aboveAvgSpeed) || sideToClose != -1) && !activateNewApp {
-                sideToClose = side
-              
-                //MARK: Follow mouse
-                let acceptEnter : CGFloat = moveOnPixels
-                var aboveWithMin : CGFloat = (forecastAboveLimitBy*scale) - acceptEnter
+            ///
+            /// More aboveBy
+            ///
+            
+            var curAboveByDeFacto = aboveByPixels / Static.OverscreenSize
+            if curAboveByDeFacto > 0.99 && curAboveByDeFacto < 1 {
+                curAboveByDeFacto = 1
+            }
+            
+            onMoreAboveBy = false
+            if moreAboveByEnabled && curAboveByDeFacto >= 1 && curSide != 3 {
+                let mouseMoreAboveLimitBy = mouseAboveLimitBy + Static.OverscreenSize
+                //print("moreAboveBy", curAboveByDeFacto, mouseMoreAboveLimitBy)
                 
-                if(false){
-                    let aboveWithMinMouse : CGFloat = (mouseAboveLimitBy) - acceptEnter
-                    if(aboveWithMinMouse < aboveWithMin){
-                        aboveWithMin = aboveWithMinMouse
+                if mouseMoreAboveLimitBy < moreAboveByActivationPoint {
+                    var moreAboveBy = (mouseMoreAboveLimitBy - moreAboveByActivationPoint) / (-(moreAboveByActivationSize+moreAboveByActivationPoint))
+                    
+                    if moreAboveBy > 1 {
+                        moreAboveBy = 1
+                    }
+                    
+                    aboveBy = 1 + moreAboveBy
+                    onMoreAboveBy = true
+                    
+                    if moreAboveBy != 0 && moreAboveBy != 1 {
+                        print("activating moreAboveBy", mouseMoreAboveLimitBy, moreAboveBy)
                     }
                 }
-
-                //MARK: Set aboveBy
-                aboveBy = aboveWithMin / (Static.OverscreenAboveLimit+acceptEnter)
-                aboveBy *= -1
-                
-                if(aboveBy > 1){
+                else if aboveBy > 1 {
                     aboveBy = 1
                 }
-                else if(aboveBy < 0){
-                    aboveBy = 0
-                }
-                
-                /*if prevAboveBy == 0 && aboveBy > 0 {
-                    self.checkForScreenshot(forceShot: true)
-                }*/
-                                   
-                //print("current aboveBy", aboveBy)
             }
-            else if(mouseAboveLimitBy > 0){ //MARK: not "over screen"
+            else {
+                //print("curAboveByDeFacto", curAboveByDeFacto)
+            }
+            
+            Static.OnAppExtensionZone = onMoreAboveBy
+            
+            ///
+            /// End more aboveBy
+            ///
+            
+            //let recordingAvailable = recordingDisplayID == 94 || recordingDisplayID == screen.displayID
+            
+            if !onMoreAboveBy {
+                // && acceleration >= 0
+                if recordingAvailable && isRightDirection && ((forecastAboveLimitBy < moveOnPixels && isGoingHere && aboveAvgSpeed) || sideToClose != -1) && !activateNewApp {
+                    sideToClose = side
+                    
+                    //MARK: Follow mouse
+                    let acceptEnter : CGFloat = moveOnPixels
+                    var aboveWithMin : CGFloat = (forecastAboveLimitBy) - acceptEnter
+                    
+                    if(false){
+                        let aboveWithMinMouse : CGFloat = (mouseAboveLimitBy) - acceptEnter
+                        if(aboveWithMinMouse < aboveWithMin){
+                            aboveWithMin = aboveWithMinMouse
+                        }
+                    }
+                    
+                    //MARK: Set aboveBy
+                    aboveBy = aboveWithMin / (Static.OverscreenAboveLimit+acceptEnter)
+                    aboveBy *= -1
+                    
+                    if(aboveBy > 1){
+                        aboveBy = 1
+                        //print("aboveBy exceeded 1")
+                    }
+                    else if(aboveBy < 0){
+                        aboveBy = 0
+                    }
+                    
+                    /*if prevAboveBy == 0 && aboveBy > 0 {
+                     self.checkForScreenshot(forceShot: true)
+                     }*/
+                    
+                    //print("current aboveBy", aboveBy)
+                }
+                else if(mouseAboveLimitBy > 0){ //MARK: not "over screen"
+                    
+                    if(aboveBy == 0){ // slow down pointer
+                        
+                        //MARK: Border slowering
+                        if(Static.EnableDockMouseSlowering){
+                            //MARK: Mouse slowing
+                            
+                            //TODO: take the dockPos from the main display and check for left side in secondary display
+                            //print("dockPos", dockPos.rawValue, side)
+                            if(dockPos.rawValue == side && self.aboveBy == 0){ //disable lateral slowering
                                 
-                if(aboveBy == 0){ // slow down pointer
-   
-                    //MARK: Border slowering
-                    if(Static.EnableDockMouseSlowering){
-                        //MARK: Mouse slowing
-                             
-                        //TODO: take the dockPos from the main display and check for left side in secondary display
-                        //print("dockPos", dockPos.rawValue, side)
-                        if(dockPos.rawValue == side && self.aboveBy == 0){ //disable lateral slowering
-
-                            //print(speedRatio)
-                            if(abs(speedRatio) > slowDownMinSpeedRatio && weight > 0.25 && axisSpeed * (sideSign == 0 ? -1 : 1) > 0 && abs(axisSpeed) >= avgSpeed){
-                                let prevAboveBy = alongLine.aboveBy
-                                                                                          
-                                alongLine.alterBy = (mouseSpeed / avgSpeed) * weight
-                                alongLine.aboveBy -= axisSpeed * alongLine.alterBy
-                                //accumulatedDelta = multPoint(point: accumulatedDelta, mul: acceleration)
-                                
-                                if(prevAboveBy - alongLine.aboveBy < 0){
-                                    alterMouse = 1
+                                //print(speedRatio)
+                                if(abs(speedRatio) > slowDownMinSpeedRatio && weight > 0.25 && axisSpeed * (sideSign == 0 ? -1 : 1) > 0 && abs(axisSpeed) >= avgSpeed){
+                                    let prevAboveBy = alongLine.aboveBy
+                                    
+                                    alongLine.alterBy = (mouseSpeed / avgSpeed) * weight
+                                    alongLine.aboveBy -= axisSpeed * alongLine.alterBy
+                                    //accumulatedDelta = multPoint(point: accumulatedDelta, mul: acceleration)
+                                    
+                                    if(prevAboveBy - alongLine.aboveBy < 0){
+                                        alterMouse = 1
+                                    }
+                                }
+                                else {
+                                    if(axisSpeed < 0){
+                                        alongLine.aboveBy = mouseAboveLimitBy
+                                    }
+                                    
+                                    accumulatedAboveByDiff = 0
                                 }
                             }
-                            else {
-                                if(axisSpeed < 0){
-                                    alongLine.aboveBy = mouseAboveLimitBy
-                                }
-                                
-                                accumulatedAboveByDiff = 0
-                            }
+                            
                         }
                         
                     }
-                                        
+                    
+                    ///#TODO: set aboveBy
+                }
+                else { // on over screen
+                    //nothing to do
                 }
                 
-                ///#TODO: set aboveBy
-            }
-            else { // on over screen
-                //nothing to do
-            }
-            
-                                               
-            //print("acumulated", accumulatedDelta.x, accumulatedDelta.y)
-            
-            prevMouseAboveBy = mouseAboveLimitBy
-            lastMouseChanged = alterMouse > 0
-            
-            self.timerHideWindowStarted = false
-            
-            if prevAboveBy == 0 && aboveBy > 0 {
-                performHaptic()
+                
+                //print("acumulated", accumulatedDelta.x, accumulatedDelta.y)
+                
+                prevMouseAboveBy = mouseAboveLimitBy
+                lastMouseChanged = alterMouse > 0
+                
+                self.timerHideWindowStarted = false
+                
+                if prevAboveBy == 0 && aboveBy > 0 {
+                    performHaptic()
+                }
             }
         }
         else { //MARK: outside side
@@ -2892,7 +2950,7 @@ public class Display : Equatable {
             }
             prevMouseAboveBy = activateOnPixelsLimit
             lastMouseChanged = false
-
+            
             if(!windowHidden){
                 
                 if(aboveByPixels == 0){
@@ -2911,7 +2969,7 @@ public class Display : Equatable {
                     }
                 }
             }
-                                    
+            
             if(sideToClose != -1){
                 let s = sideToClose
                 aboveBy *= decelerateAboveBy
@@ -2932,6 +2990,7 @@ public class Display : Equatable {
         //MARK: Update aboveByPixels
         prevAboveByPixels = aboveByPixels
         aboveByPixels = ((aboveBy * Static.OverscreenSize)+prevAboveByPixels)/2
+        //print("aboveByPixels", aboveBy, aboveByPixels)
         
         if(prevAboveByPixels > aboveByPixels){
             aboveByPixels -= 1 // force closing
@@ -2955,7 +3014,10 @@ public class Display : Equatable {
         
         let aboveByPixelsDiff = aboveByPixels - prevAboveByPixels
         if(aboveByPixels != prevAboveByPixels){
-            alterMouse = 2
+            
+            if aboveByPixels != 0 && aboveByPixels != Static.OverscreenSize {
+                alterMouse = 2
+            }
             
             var s = sideToClose
             if(s == -1){
@@ -2975,7 +3037,7 @@ public class Display : Equatable {
                 activateNewApp = false
             }
             
-            if(aboveByPixels > Static.OverscreenSize){
+            if !onMoreAboveBy && aboveByPixels > Static.OverscreenSize {
                 aboveBy = 1
                 aboveByPixels = Static.OverscreenSize
             }
@@ -3006,12 +3068,11 @@ public class Display : Equatable {
         let minMovement : CGFloat = 1.1/scale
         
         //print(curSpeed, maxSpeed)
-        if(alterMouse > 0 || compensateAboveByCursor != CGPoint.zero){
+        if(alterMouse > 0 || compensateAboveByCursor != CGPoint.zero){ //TODO: move this block into a function (due to the use of returns in the flow)
             //MARK: compesate mouse position
             
             //print("accumulatedDelta", accumulatedDelta)
-            
-            //print("alterMouse")
+            //print("alterMouse", alterMouse)
             //updateAccumulation(x: accumulatedDelta.x, y: accumulatedDelta.y)
             
             //MARK: set alterMouse moving aboveBy
@@ -3019,7 +3080,7 @@ public class Display : Equatable {
                 if(aboveByPixels == 0 || aboveByPixels == Static.OverscreenSize){
                     
                     if(side == 3 && aboveBy >= 1){
-                        accumulatedDelta.y += 20
+                        accumulatedDelta.y += 5
                     }
                     
                     return
@@ -3043,11 +3104,14 @@ public class Display : Equatable {
                 //print("changeOf", diffAboveBy*dim)
                 
                 var moveToDo : CGFloat = aboveByPixelsDiff*dim
-                                
-                while(abs(moveToDo) > abs(aboveByPixelsDiff)){
-                    moveToDo *= 0.75
+                            
+                if false {
+                    while(abs(moveToDo) > abs(aboveByPixelsDiff)){
+                        moveToDo *= 0.9 // pretty arbitrary
+                    }
                 }
                 
+                //TODO: check this trash, then delete it
                 /*if(sideVertical){
                     //accumulatedDelta.x += accumulateAvg.x
                     compensateAboveByCursor.x -= diffAboveBy*dim
@@ -3086,7 +3150,7 @@ public class Display : Equatable {
                 }*/
                 
                 let absMoveToDo = abs(moveToDo)
-                if(absMoveToDo < minMovement){
+                if(absMoveToDo < minMovement) && false { // disabled just for debuggin purposes(?)
                     return
                 }
                 else {
@@ -3168,7 +3232,7 @@ public class Display : Equatable {
                 
                 //print(mouse.x, "=>", moveTo.x, ", ", mouse.y, "=>", moveTo.y)
                             
-                if(abs(accumulatedAboveByDiff) > minMovement){
+                if(abs(accumulatedAboveByDiff) > minMovement) && false{
                     if(sideSign == 0){
                         accumulatedAboveByDiff *= -1
                     }
@@ -3226,6 +3290,8 @@ public class Display : Equatable {
             /*let mouseEventSource = CGEventSource(stateID: .hidSystemState)
              mouseEventSource?.setLocalEventsFilterDuringSuppressionState(CGEventFilterMask.permitLocalMouseEvents , state: CGEventSuppressionState(rawValue: 0)!)*/
             
+            //print("alterMouse", alterMouse)
+            
             CGDisplayHideCursor(1)
             
             if !justArrived{
@@ -3250,7 +3316,6 @@ public class Display : Equatable {
             removeAccumulate.y += curML.y - mouse.y*/
             
             alterMouse = 0
-            
         }
         else {
             /*if(resetMouse){

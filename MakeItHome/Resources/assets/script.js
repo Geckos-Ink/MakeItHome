@@ -107,6 +107,28 @@ function bridgeUrl(url){
     return "https://geckos.ink/api/makeithome-bridge.php?url=" + encodeURIComponent(url);
 }
 
+$("#clipboard").on('mousemove', function (e) {
+    console.log(e.clientX, e.clientY)
+    let width = $("#clipboard").width()
+    let height = $("#clipboard").height()
+
+    let ratioX = ((e.clientX - width / 2) / width)
+    let ratioY = ((e.clientY - height / 2) / height)
+
+    let translateX = ratioX * 10
+    let translateY = ratioY * 10
+
+    let parallaxY = ratioX * 10 * -1
+    let parallaxX = ratioY * 10
+
+    $("#clipboard .item").css("-webkit-transform", " rotateX(" + parallaxX +"deg) rotateY("+parallaxY+"deg) translateX(" + translateX + "px) translateY(" + translateY + "px)")
+})
+
+$("#clipboard").on('mouseexit', function (e) {
+    //$("#clipboard .item").css("-webkit-transform", "rotateX(0deg) rotateY(0deg)")
+    //$("#clipboard .item").animate({ "-webkit-transform": "rotateX(0deg) rotateY(0deg)" }, 100)
+})
+
 ///
 /// Board app
 ///
@@ -1468,6 +1490,8 @@ function initColorPicker(elId) {
 // Use of the local storage to save the personal widgets. This is not the best way to do it, but it works for my lazyness.
 let myWidgets = []
 let pickers = []
+let myWidgetsListLoad = []
+
 function loadMyWidgets() {
     let _myWidgets = localStorage.getItem("myWidgets")
     if (_myWidgets) {
@@ -1477,6 +1501,7 @@ function loadMyWidgets() {
         _myWidgets = []
     }
 
+    myWidgetsListLoad = []
     for (let widget of _myWidgets) {
         console.log("loading", widget)
         let res = newWidget(widget)        
@@ -1489,10 +1514,19 @@ function loadMyWidgets() {
         pickers.push(picker)
 
         setTimeout(() => {
-            picker.setColor(widget.color)
+            myWidgetsListLoad.push(() => {
+                picker.setColor(widget.color)
+            })
         }, 250)        
     }
 }
+
+$('ons-list-item.myWidgets').on('click', (e) => {
+    console.log("myWidgets ons-list-item clicked")
+    for (let cbk of myWidgetsListLoad) {
+        cbk()
+    }
+})
 
 function clearMyWidgets() {
     saveMyWidgets()

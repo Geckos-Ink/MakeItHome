@@ -139,7 +139,7 @@ public struct TopWebView: NSViewRepresentable {
         }
     }
     
-    public func makeCoordinator() -> Coordinator {
+    public func makeCoordinator() -> TopWebViewCoordinator {
        return Coordinator(parent: self)
     }
     
@@ -175,7 +175,7 @@ public protocol DragDropDelegate {
     func didDrop(files: [URL])
 }
 
-public class Coordinator: NSObject, WKUIDelegate, WKNavigationDelegate, NSDraggingDestination, DropDelegate, DragDropDelegate {
+public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate, NSDraggingDestination, DropDelegate, DragDropDelegate {
     var parent: TopWebView
 
     var firstLoad = true

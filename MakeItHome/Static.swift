@@ -85,7 +85,7 @@ public class Static {
     public static let OverscreenSizeTop : CGFloat = 400
     
     public static let OverscreenAboveLimit : CGFloat = 5
-    public static let CompensateAboveByCursor : Double = 0.80
+    public static let CompensateAboveByCursor : Double = 0.99
     public static let DivideMaxSpeedBy : Double = 2
     
     public static let PutAsideInUsingApp = false
@@ -182,6 +182,12 @@ public class Static {
             return (Bundle.main.infoDictionary!["CFBundleShortVersionString"] as! String)
         }
     }
+    
+    ///# App Extension web view
+    public static var OnAppExtensionZone = false
+    public static var AppExtensionWebView : AppExtensionWKWV? = nil
+    public static var appExtensionWebViewRepresentable : AppExtensionWebView?
+    public static var LastAppPreviewMouseOver : Display.AppWindows?
     
     ///
     ///# Init
