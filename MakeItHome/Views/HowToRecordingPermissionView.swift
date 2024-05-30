@@ -10,7 +10,7 @@ import SwiftUI
 import AVKit
 
 struct HowToRecordingPermissionView: View {
-    @State var player = AVPlayer(url: Bundle.main.url(forResource: "howto_permissions", withExtension: "mov")!)
+    @State var player = AVPlayer(url: Bundle.main.url(forResource: "howto_permissions", withExtension: "mp4")!)
     
     var body: some View {
         VStack{
