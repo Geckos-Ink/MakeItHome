@@ -764,17 +764,23 @@ import OrderedCollections
             var auroraBorealisNode : SCNNode?
             var auroraBorealisParticleSystem : SCNParticleSystem?
             
-            func addAuroraBorealis() {
+            func addAuroraBorealis(){
                 if auroraBorealisNode != nil {
                     auroraBorealisNode?.removeFromParentNode()
                 }
                 
                 // Create a node for the aurora
-                let auroraNode = SCNNode()
-                auroraBorealisNode = auroraNode
+                auroraBorealisNode = SCNNode()
+                
+                addAuroraBorealisWithBlend(blend: .additive, z:3)
+                addAuroraBorealisWithBlend(blend: .subtract, z:2)
+            }
+            
+            func addAuroraBorealisWithBlend(blend : SCNParticleBlendMode, z : CGFloat) {
+                let auroraNode = auroraBorealisNode!
                 
                 node.addChildNode(auroraNode)
-                auroraNode.position.z = self.parentView.windowsZ*2
+                auroraNode.position.z = self.parentView.windowsZ*z
                 
                 if self.parentView.curDisplay?.side == 1 {
                     auroraNode.position.x = requestedSize
@@ -786,12 +792,12 @@ import OrderedCollections
                 
                 let duration : CGFloat = 4
                 
-                particleSystem.birthRate = 50
+                particleSystem.birthRate = 30
                 particleSystem.particleLifeSpan = duration
                 particleSystem.particleLifeSpanVariation = 0
                 particleSystem.emissionDuration = duration
                 particleSystem.loops = true
-                particleSystem.blendMode = .additive
+                particleSystem.blendMode = blend
                 particleSystem.isAffectedByGravity = false
                 
                 if isHorizontal{
@@ -804,6 +810,11 @@ import OrderedCollections
                 // Color the particles to mimic the Aurora Borealis
                 //particleSystem.particleColor = NSColor.green
                 particleSystem.particleColor = app.iconAvgColor
+                
+                if blend == .subtract {
+                    particleSystem.particleColor = NSColor.red
+                }
+                
                 particleSystem.particleColorVariation = SCNVector4(0.2, 0.5, 0.5, 0.5)
                 particleSystem.particleSize = self.parentView.onePixel * 50
                 particleSystem.acceleration.y = self.parentView.onePixel * 2
@@ -815,45 +826,7 @@ import OrderedCollections
                 particleSystem.imageSequenceAnimationMode = .autoReverse
                 particleSystem.imageSequenceFrameRate = 8
                 
-                // Create a custom shader for the particle system
-                /*particleSystem.shaderModifiers = [.particle: """
-                    #pragma arguments
-                    float time;
-                    float intensity;
-                    #pragma body
-                    vec2 pos = vec2(sin(_particle_position.x + time), cos(_particle_position.y + time));
-                    _output.color.rgb = vec3(pos * intensity, pos.y * intensity, intensity);
-                    """]*/
-                
-                if false { // it doesn't works
-                    let opacityAnimation = CABasicAnimation(keyPath: "particleColor")
-                    opacityAnimation.fromValue = CGColor(gray: 1, alpha: 1)
-                    opacityAnimation.toValue = CGColor(gray: 1, alpha: 0)
-                    opacityAnimation.duration = duration*2 // Match particle life span
-                    //opacityAnimation.autoreverses = true
-                    opacityAnimation.repeatCount = .infinity
-                    
-                    particleSystem.addAnimation(opacityAnimation, forKey: "opacityAnimation")
-                }
-                
                 auroraNode.addParticleSystem(particleSystem)
-                
-                // Animate the custom shader properties
-                let timeAnimation = CABasicAnimation(keyPath: "time")
-                timeAnimation.fromValue = 0.0
-                timeAnimation.toValue = Float.pi * 2
-                timeAnimation.duration = duration
-                timeAnimation.repeatCount = .infinity
-                
-                let intensityAnimation = CABasicAnimation(keyPath: "intensity")
-                intensityAnimation.fromValue = 0.5
-                intensityAnimation.toValue = 1.5
-                intensityAnimation.duration = duration
-                intensityAnimation.autoreverses = true
-                intensityAnimation.repeatCount = .infinity
-                
-                auroraNode.addAnimation(timeAnimation, forKey: "timeAnimation")
-                auroraNode.addAnimation(intensityAnimation, forKey: "intensityAnimation")
             }
             
             
@@ -1244,8 +1217,10 @@ import OrderedCollections
                     
                     self.geometry.firstMaterial?.diffuse.contents = win.lastPreview
                     
-                    self.geometry.firstMaterial?.multiply.contents = win.lastPreview
-                    self.geometry.firstMaterial?.multiply.intensity = 0.6
+                    if true { //TODO: check its utility
+                        self.geometry.firstMaterial?.multiply.contents = win.lastPreview
+                        self.geometry.firstMaterial?.multiply.intensity = 0.6
+                    }
                     
                     if win.inUsing {
                         self.minAlpha = 1
