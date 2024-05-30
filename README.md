@@ -14,7 +14,6 @@
 ## Some messages for new and older users
 
 - The application uses Screen Recording to work and to create the magic. Don't be scared, the recorded images are not saved on storage nor sent through internet.
-- I continue to have some bug that prevents the correct working of multi space (or virtual desktops) window management on the same running app. When I solve a bug, another one due to a new code prevents this feature to work in the release on the App Store. Currently this feature works in the code built from this repo, but I need a way to test (or auto test) better some critical features before an official release.
 
 ## How to
 <center>
