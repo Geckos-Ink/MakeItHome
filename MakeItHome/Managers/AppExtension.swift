@@ -132,9 +132,10 @@ class AppExtensionManager {
         
         if req.hasPrefix("/waitForStatus"){
             ///#TODO
+            let wasShowing = app!.imShowing()
             var isShowing = app!.imShowing()
             
-            while !isShowing && !app!.hasStatusUpdate{
+            while wasShowing == isShowing && !app!.hasStatusUpdate{
                 isShowing = app!.imShowing()
             }
             
@@ -180,7 +181,9 @@ class AppExtension {
     
     func setHTMLContent(content: String){
         htmlContent = content
-        Static.AppExtensionWebView?.genericEvaluateJavascript(script: "setContent('\(bundleId)', '\(content)');")
+        
+        var escapedContent = content.replacingOccurrences(of: "'", with: "\\'")
+        Static.AppExtensionWebView?.genericEvaluateJavascript(script: "setContent('\(bundleId)', '\(escapedContent)');")
     }
     
     var sendJsMessageWhenShowing = false
