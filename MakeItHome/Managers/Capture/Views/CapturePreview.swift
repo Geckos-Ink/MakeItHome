@@ -419,6 +419,7 @@ public struct CapturePreview: NSViewRepresentable {
                         
                         if self.clickStartedHere == NSPoint.zero {
                             self.clickedOnApp = app.value
+                            Static.isDragginApp = true
                         }
                     }
                 }
@@ -442,6 +443,7 @@ public struct CapturePreview: NSViewRepresentable {
                 
                 self.clickStartedHere = CGPoint.zero
                 self.clickedOnApp = nil
+                Static.isDragginApp = false
             }
         }
         
