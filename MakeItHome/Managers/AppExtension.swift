@@ -30,9 +30,9 @@ class AppExtensionManager {
         let bundleId = query!["bundleId"]!
         print("AppExtension request from bundleId", bundleId)
         
+        var app = apps[bundleId]
+        
         if req.hasPrefix("/connect"){
-            var app = apps[bundleId]
-            
             if app == nil {
                 app = AppExtension(bundleId: bundleId)
                 apps[bundleId] = app
@@ -49,6 +49,32 @@ class AppExtensionManager {
         
         if req.hasPrefix("/setHtmlContent"){
             print("set html content")
+            
+            if app == nil {
+                reply.status = "error"
+                return reply
+            }
+            
+            if dataReq == nil {
+                reply.status = "error"
+                return reply
+            }
+            
+            var body = jsonStringToDictionary(jsonString: dataReq!)
+            
+            if body == nil {
+                reply.status = "error"
+                return reply
+            }
+            
+            let content = body!["content"] as? String
+            
+            if content == nil {
+                reply.status = "error"
+                return reply
+            }
+             
+            app?.htmlContent = content!
         }
         
         reply.status = "nothing"

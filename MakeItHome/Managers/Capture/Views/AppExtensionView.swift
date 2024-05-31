@@ -187,4 +187,17 @@ public class AppExtensionWKWV : WKWebView{
             self.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
         }
     }
+    
+    ///
+    /// Current App Extension management
+    ///
+    
+    var curApp : Display.AppWindows?
+    func setCurrentApp(app: Display.AppWindows){
+        self.curApp = app
+        
+        let content = app.appExtension!.htmlContent
+        let callScript = "setBodyContent('\(content)');"
+        self.evaluateJavaScript(callScript, completionHandler: nil)
+    }
 }

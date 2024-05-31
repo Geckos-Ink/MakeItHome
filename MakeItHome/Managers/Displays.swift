@@ -2841,8 +2841,9 @@ public class Display : Equatable {
                 curAboveByDeFacto = 1
             }
             
+            let prevOnMoreAboveBy = onMoreAboveBy
             onMoreAboveBy = false
-            if moreAboveByEnabled && curAboveByDeFacto >= 1 && curSide != 3 {
+            if moreAboveByEnabled && Static.LastAppPreviewMouseOver?.appExtension != nil && curAboveByDeFacto >= 1 && curSide != 3 {
                 let mouseMoreAboveLimitBy = mouseAboveLimitBy + Static.OverscreenSize
                 //print("moreAboveBy", curAboveByDeFacto, mouseMoreAboveLimitBy)
                 
@@ -2858,6 +2859,11 @@ public class Display : Equatable {
                     
                     if moreAboveBy != 0 && moreAboveBy != 1 {
                         print("activating moreAboveBy", mouseMoreAboveLimitBy, moreAboveBy)
+                    }
+                    
+                    if prevOnMoreAboveBy == false {
+                        // prepare activated content
+                        Static.AppExtensionWebView?.setCurrentApp(app: Static.LastAppPreviewMouseOver!)
                     }
                 }
                 else if aboveBy > 1 {

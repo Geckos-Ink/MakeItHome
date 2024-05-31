@@ -101,6 +101,32 @@ func parseURLQueryItems(from urlString: String) -> [String: String]? {
     return arr
 }
 
+func jsonStringToDictionary(jsonString: String) -> [String: Any?]? {
+    // Convert the JSON string to Data
+    guard let jsonData = jsonString.data(using: .utf8) else {
+        print("Failed to convert JSON string to Data")
+        return nil
+    }
+    
+    do {
+        // Deserialize the JSON data into a dictionary
+        if let jsonDict = try JSONSerialization.jsonObject(with: jsonData, options: []) as? [String: Any] {
+            // Convert the dictionary to [String: Any?]
+            var resultDict: [String: Any?] = [:]
+            for (key, value) in jsonDict {
+                resultDict[key] = value
+            }
+            return resultDict
+        } else {
+            print("Failed to cast JSON object to [String: Any?]")
+            return nil
+        }
+    } catch {
+        print("Error deserializing JSON data: \(error)")
+        return nil
+    }
+}
+
 public class SimpleHTTPServer {
     static public let CopyInDirectoryBundle = false
     
