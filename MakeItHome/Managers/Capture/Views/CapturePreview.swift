@@ -805,8 +805,8 @@ public struct CapturePreview: NSViewRepresentable {
                 // Create a node for the aurora
                 auroraBorealisNode = SCNNode()
                 
-                addAuroraBorealisWithBlend(blend: .additive, z:3)
-                addAuroraBorealisWithBlend(blend: .subtract, z:2)
+                addAuroraBorealisWithBlend(blend: .additive, z:2)
+                addAuroraBorealisWithBlend(blend: .subtract, z:3)
             }
             
             func addAuroraBorealisWithBlend(blend : SCNParticleBlendMode, z : CGFloat) {
@@ -823,15 +823,16 @@ public struct CapturePreview: NSViewRepresentable {
                 let particleSystem = SCNParticleSystem()
                 auroraBorealisParticleSystem = particleSystem
                 
-                let duration : CGFloat = 4
+                let duration : CGFloat = 4 * 2
                 
-                particleSystem.birthRate = 30
+                particleSystem.birthRate = 30 * 2
                 particleSystem.particleLifeSpan = duration
                 particleSystem.particleLifeSpanVariation = 0
                 particleSystem.emissionDuration = duration
                 particleSystem.loops = true
                 particleSystem.blendMode = blend
                 particleSystem.isAffectedByGravity = false
+                particleSystem.isLightingEnabled = true
                 
                 if isHorizontal{
                     particleSystem.emitterShape = SCNPlane(width: requestedSize, height: parentView.onePixel)
@@ -845,13 +846,19 @@ public struct CapturePreview: NSViewRepresentable {
                 particleSystem.particleColor = app.iconAvgColor
                 
                 if blend == .subtract {
-                    particleSystem.particleColor = NSColor.blue
+                    particleSystem.particleColor = NSColor.purple
                 }
                 
                 particleSystem.particleColorVariation = SCNVector4(0.2, 0.5, 0.5, 0.5)
-                particleSystem.particleSize = self.parentView.onePixel * 50
-                particleSystem.acceleration.y = self.parentView.onePixel * 2
-                particleSystem.particleSizeVariation = self.parentView.onePixel * 10
+                particleSystem.particleSize = self.parentView.onePixel * 30
+                particleSystem.acceleration.y = self.parentView.onePixel * 1
+                
+                particleSystem.particleAngularVelocity = self.parentView.onePixel * 10
+                particleSystem.particleVelocity = self.parentView.onePixel * 2
+                particleSystem.particleAngularVelocityVariation = self.parentView.onePixel * 10
+                particleSystem.particleVelocityVariation = self.parentView.onePixel * 2
+                
+                particleSystem.particleSizeVariation = self.parentView.onePixel * 20
      
                 particleSystem.particleImage = NSImage(named: "AuroraBorealis")
                 particleSystem.imageSequenceColumnCount = 4
