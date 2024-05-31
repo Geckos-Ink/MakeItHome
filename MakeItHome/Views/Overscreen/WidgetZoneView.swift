@@ -547,6 +547,8 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
 
 public class TopWKWV : WKWebView, NSDraggingSource{
     
+    public override var acceptsFirstResponder: Bool { return true }
+    
     public var httpServer : SimpleHTTPServer?
     
     public func initHttpServer(){

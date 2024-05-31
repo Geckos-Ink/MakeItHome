@@ -208,6 +208,8 @@ public class AppExtensionWKWV : WKWebView{
     /// Current App Extension management
     ///
     
+    public override var acceptsFirstResponder: Bool { return true }
+    
     var curApp : Display.AppWindows?
     func setCurrentApp(app: Display.AppWindows){
         self.curApp = app

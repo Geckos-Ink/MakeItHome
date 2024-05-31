@@ -2087,16 +2087,15 @@ public class Display : Equatable {
               
         //TODO: correct this condition in case of space-changing or prioritization issues
         if !Static.screenWake && (dontPrioritizeRunningApp && self.side != 3) {
-            manager.window?.orderFront(nil)
+            self.manager.window?.makeFirstResponder(Static.AppExtensionWebView)
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            manager.window?.makeKeyAndOrderFront(nil)
         }
         else {
+            self.manager.window?.makeFirstResponder(Static.TopBarWebView)
             NSApplication.shared.activate(ignoringOtherApps: true)
             manager.window?.makeKeyAndOrderFront(nil)
             Static.screenWake = false
-        }
-        
-        delay(ms: 50){
-            self.manager.window?.makeKey()
         }
         
         Static.mainWindowFirstShow = true
