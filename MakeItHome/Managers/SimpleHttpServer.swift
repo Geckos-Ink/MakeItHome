@@ -81,6 +81,10 @@ public class SimpleHTTPServer {
     private let directoryPath: String
     private var listener: NWListener?
     public var assetsAvailable = false
+    
+    // I know, this is chaotic, but for the moment has sense: AppExtension works using this HTTP server
+    // for communication, so this location remains a stable reference point
+    var appExtensionManager : AppExtensionManager
 
     init(port: UInt16) {
         self.port = NWEndpoint.Port(rawValue: port)!
@@ -92,6 +96,9 @@ public class SimpleHTTPServer {
         }
 
         self.directoryPath = containerDir?.path ?? ""
+        
+        self.appExtensionManager = AppExtensionManager()
+        Static.appExtensionManager = self.appExtensionManager
     }
 
     func start() async throws -> Bool {
@@ -364,6 +371,13 @@ public class SimpleHTTPServer {
             if jsonRes == nil {
                 jsonRes = getDefaultJson(at: jsonName)
             }
+        }
+        
+        ///
+        /// Handle AppExtension
+        ///
+        if url.hasPrefix("/appExtension/"){
+            appExtensionManager.httpRequest(url:String(url), dataReq: dataReq)
         }
         
         ///

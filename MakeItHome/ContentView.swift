@@ -315,6 +315,12 @@ public struct ContentView: View {
                 }
             }
         }
+        /*.touchBar { // TouchBar discontinues: implementing it is lost time
+            Button("♥️ - Hearts", action: selectHearts)
+            Button("♣️ - Clubs", action: selectClubs)
+            Button("♠️ - Spades", action: selectSpades)
+            Button("♦️ - Diamonds", action: selectDiamonds)
+        }*/
 
         /*.onTapGesture {
             //Displays.curDisplay?.hideWindow()

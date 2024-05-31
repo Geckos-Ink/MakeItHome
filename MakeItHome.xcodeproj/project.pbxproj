@@ -15,6 +15,7 @@
 		8B11BBA92C08AB1F00E46355 /* howto_basic.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 8B11BBA72C08AB1F00E46355 /* howto_basic.mp4 */; settings = {ASSET_TAGS = (New, ); }; };
 		8B11BBAA2C08AB1F00E46355 /* howto_permissions.mp4 in Resources */ = {isa = PBXBuildFile; fileRef = 8B11BBA82C08AB1F00E46355 /* howto_permissions.mp4 */; settings = {ASSET_TAGS = (New, ); }; };
 		8B11BBAC2C0900EC00E46355 /* AVScreenRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B11BBAB2C0900EC00E46355 /* AVScreenRecorder.swift */; };
+		8B11BBC92C09CB5000E46355 /* AppExtension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B11BBC82C09CB5000E46355 /* AppExtension.swift */; };
 		8B3D40512AD70A26003DFAC7 /* preview.html in Resources */ = {isa = PBXBuildFile; fileRef = 8B3D404F2AD70A26003DFAC7 /* preview.html */; settings = {ASSET_TAGS = (New, ); }; };
 		8B3D40592AD70F94003DFAC7 /* mrWhite.html in Resources */ = {isa = PBXBuildFile; fileRef = 8B3D40572AD70F93003DFAC7 /* mrWhite.html */; settings = {ASSET_TAGS = (New, ); }; };
 		8B60F6D92AEFDA8B00DA12A2 /* NavigateZoneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B60F6D82AEFDA8B00DA12A2 /* NavigateZoneView.swift */; };
@@ -83,6 +84,7 @@
 		8B11BBA72C08AB1F00E46355 /* howto_basic.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = howto_basic.mp4; sourceTree = "<group>"; };
 		8B11BBA82C08AB1F00E46355 /* howto_permissions.mp4 */ = {isa = PBXFileReference; lastKnownFileType = file; path = howto_permissions.mp4; sourceTree = "<group>"; };
 		8B11BBAB2C0900EC00E46355 /* AVScreenRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AVScreenRecorder.swift; sourceTree = "<group>"; };
+		8B11BBC82C09CB5000E46355 /* AppExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppExtension.swift; sourceTree = "<group>"; };
 		8B3C5739290B7A87002C2146 /* Docker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Docker.swift; sourceTree = "<group>"; };
 		8B3D404F2AD70A26003DFAC7 /* preview.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = preview.html; sourceTree = "<group>"; };
 		8B3D40572AD70F93003DFAC7 /* mrWhite.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = mrWhite.html; sourceTree = "<group>"; };
@@ -373,6 +375,7 @@
 				8BD2DD522B48E2C900F74622 /* SimpleHttpServer.swift */,
 				8B10BE9B2B52DFA100872640 /* MyAppleEvents.swift */,
 				8B9E532A2B52F38B00D81833 /* CocoaManager.swift */,
+				8B11BBC82C09CB5000E46355 /* AppExtension.swift */,
 			);
 			path = Managers;
 			sourceTree = "<group>";
@@ -597,6 +600,7 @@
 				8BB0E39C293DC881006DA326 /* Displays.swift in Sources */,
 				8BB0E39D293DC881006DA326 /* MakeItHomeApp.swift in Sources */,
 				8B8B557F2C0705B1001817EC /* HowToBasicsView.swift in Sources */,
+				8B11BBC92C09CB5000E46355 /* AppExtension.swift in Sources */,
 				8B60F6D92AEFDA8B00DA12A2 /* NavigateZoneView.swift in Sources */,
 				8BD2DD542B48E2C900F74622 /* SimpleHttpServer.swift in Sources */,
 				8BB0E39E293DC881006DA326 /* ActivateView.swift in Sources */,

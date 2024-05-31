@@ -306,6 +306,8 @@ public class Static {
     
     static var curRequestAutomationPermission : SwifterWindow<RequestAutomationPermissions>?
     
+    static var appExtensionManager : AppExtensionManager?
+    
     ///
     ///# Cache
     ///

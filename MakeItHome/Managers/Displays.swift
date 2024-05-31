@@ -2071,6 +2071,7 @@ public class Display : Equatable {
         //TODO: correct this condition in case of space-changing or prioritization issues
         if !Static.screenWake && (dontPrioritizeRunningApp && self.side != 3) {
             manager.window?.orderFront(nil)
+            //manager.window?.makeKey()
         }
         else {
             NSApplication.shared.activate(ignoringOtherApps: true)
