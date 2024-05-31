@@ -17,35 +17,38 @@ class AppExtensionManager {
         let query = parseURLQueryItems(from: url)
         var req = url.replacingOccurrences(of: "/appExtension", with: "")
         
+        if query == nil {
+            reply.status = "error"
+            return reply
+        }
+        
+        if query!["bundleId"] == nil {
+            reply.status = "error"
+            return reply
+        }
+        
+        let bundleId = query!["bundleId"]!
+        print("AppExtension request from bundleId", bundleId)
+        
         if req.hasPrefix("/connect"){
-            if query != nil {
-                if query!["bundleId"] == nil {
-                    reply.status = "error"
-                    return reply
-                }
+            var app = apps[bundleId]
+            
+            if app == nil {
+                app = AppExtension(bundleId: bundleId)
+                apps[bundleId] = app
                 
-                let bundleId = query!["bundleId"]!
-                print("requested connection by bundleId", bundleId)
-                
-                var app = apps[bundleId]
-                
-                if app == nil {
-                    app = AppExtension(bundleId: bundleId)
-                    apps[bundleId] = app
-                    
-                    reply.description = "appConnected"
-                }
-                else {
-                    reply.description = "appAlredyConnected"
-                }
-                
-                reply.status = "ok"
-                return reply
+                reply.description = "appConnected"
             }
             else {
-                reply.status = "error"
-                return reply
+                reply.description = "appAlredyConnected"
             }
+            
+            reply.status = "ok"
+            return reply
+        }
+        
+        if req.hasPrefix("/setHtmlContent"){
+            print("set html content")
         }
         
         reply.status = "nothing"
@@ -61,6 +64,7 @@ struct AppExtensionMsg : Codable {
 class AppExtension {
     let bundleId : String
     var app : Display.AppWindows?
+    var htmlContent : String = ""
     
     init(bundleId : String){
         self.bundleId = bundleId
