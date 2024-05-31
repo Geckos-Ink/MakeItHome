@@ -201,6 +201,11 @@ public class AppExtensionWKWV : WKWebView{
     func load(){
         if let url = Bundle.main.url(forResource: "assets/appExtensionView", withExtension: "html") {
             self.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+            
+            delay(ms: 100){
+                // for some reasons, that seems to not work
+                self.sendCurrentVersion()
+            }
         }
     }
     
@@ -217,10 +222,18 @@ public class AppExtensionWKWV : WKWebView{
         let bundleId = app.appExtension!.bundleId
         let isHorizontal = Static.curDisplay?.side ?? 0 <= 1 ? "false" : "true"
         
-        let callScript = "showAppExtension('\(bundleId)', \(isHorizontal);"
+        let callScript = "showAppExtension('\(bundleId)', \(isHorizontal));"
         self.evaluateJavaScript(callScript, completionHandler: nil)
         
+        // repeat every time, this is the mantra
+        self.sendCurrentVersion()
+        
         app.appExtension?.flushJSMessage()
+    }
+    
+    func sendCurrentVersion(){
+        let version = (Bundle.main.infoDictionary!["CFBundleShortVersionString"] as! String)
+        self.genericEvaluateJavascript(script: "setVersion('\(version)');")
     }
     
     func exiting() {

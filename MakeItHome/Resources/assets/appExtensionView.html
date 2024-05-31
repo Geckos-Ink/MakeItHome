@@ -60,6 +60,7 @@
         let isHorizontal = true
         let curBundleId = ''
         let isShowing = false
+        let version = ''
 
         function createAppExtension(bundleId){
             bundleId = bundleId.replaceAll(".", "-")
@@ -93,7 +94,7 @@
         }
 
         function exitingAppExtension(){
-            let appEvent = vars[bundleId+'_event_exit']
+            let appEvent = vars[curBundleId+'_event_exit']
             if(appEvent)
                 appEvent() 
             
@@ -119,6 +120,10 @@
 
         function closeOverscreen(){
             sendMessage({type:'closeOverscreen'})
+        }
+
+        function setVersion(v){
+            version = v
         }
     </script>
 </html>
