@@ -208,6 +208,8 @@ public class AppExtensionWKWV : WKWebView{
         let content = app.appExtension!.htmlContent
         let callScript = "setBodyContent('\(content)');"
         self.evaluateJavaScript(callScript, completionHandler: nil)
+        
+        app.appExtension?.flushJSMessage()
     }
     
     func genericEvaluateJavascript(script: String){
