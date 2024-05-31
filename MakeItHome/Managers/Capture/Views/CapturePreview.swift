@@ -852,9 +852,11 @@ public struct CapturePreview: NSViewRepresentable {
                 if blend == .subtract {
                     particleSystem.particleColor = NSColor.purple
                 }
-                
-                if defaultColor != nil {
+                else if defaultColor != nil {
                     particleSystem.particleColor = defaultColor!
+                }
+                else {
+                    //particleSystem.birthRate = 15
                 }
                 
                 particleSystem.particleColorVariation = SCNVector4(0.2, 0.5, 0.5, 0.5)

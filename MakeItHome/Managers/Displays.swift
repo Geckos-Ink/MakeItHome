@@ -631,6 +631,13 @@ public class Display : Equatable {
             self.bundleId = runningApp.bundleIdentifier
             
             print("App bundleId", self.bundleId)
+            
+            DispatchQueue.global().async {
+                if runningApp.icon != nil {
+                    let avg = averageColor(of: runningApp.icon!)
+                    self.iconAvgColor = avg ?? self.iconAvgColor
+                }
+            }
         }
         
         func checkAppExtension(){
