@@ -130,6 +130,15 @@ public class AppExtensionWebViewCoordinator: NSObject, WKNavigationDelegate, Dra
                     print(json?.value);
                 }
                 
+                if json?.type == "status" && json?.value != nil {
+                    let curApp = Static.AppExtensionWebView?.curApp
+                    
+                    if curApp?.appExtension != nil {
+                        let ext = curApp?.appExtension
+                        ext?.addMessage(msg: json!.value!)
+                    }
+                }
+                
                 //...
                 
                 decisionHandler(.cancel)

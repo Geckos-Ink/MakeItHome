@@ -118,10 +118,14 @@ class AppExtensionManager {
             if Static.OnAppExtensionZone && Static.AppExtensionWebView?.curApp?.bundleId == app?.app?.bundleId {
                 isShowing = true
             }
+            
             reply.appExtensionIsShowing = isShowing
+            reply.statusMessages = app!.statusMessages
             
             reply.status = "ok"
+            
             app!.hasStatusUpdate = false
+            app!.statusMessages = []
         }
         
         if req.hasPrefix("/waitForStatus"){
@@ -141,9 +145,12 @@ class AppExtensionManager {
             }
             
             reply.appExtensionIsShowing = isShowing
+            reply.statusMessages = app!.statusMessages
             
             reply.status = "ok"
+            
             app!.hasStatusUpdate = false
+            app!.statusMessages = []
         }
         
         reply.status = "nothing"
@@ -156,6 +163,7 @@ struct AppExtensionMsg : Codable {
     var description: String?
     
     var appExtensionIsShowing : Bool?
+    var statusMessages : [String]?
 }
 
 class AppExtension {
@@ -164,6 +172,7 @@ class AppExtension {
     var htmlContent : String = ""
     
     var hasStatusUpdate : Bool = false
+    var statusMessages : [String] = []
     
     init(bundleId : String){
         self.bundleId = bundleId
@@ -171,5 +180,10 @@ class AppExtension {
     
     func link(app : Display.AppWindows){
         self.app = app
+    }
+    
+    func addMessage(msg: String){
+        statusMessages.append(msg)
+        hasStatusUpdate = true
     }
 }
