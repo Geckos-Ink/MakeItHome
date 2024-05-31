@@ -1543,16 +1543,16 @@ function loadMyWidgets() {
         let res = newWidget(widget)        
 
         let $widget = res[1]
-        $widget.find('.name').html(widget.title)
-        $widget.find('.url').val(widget.url)
 
         let picker = res[2]
         pickers.push(picker)
 
         setTimeout(() => {
             myWidgetsListLoad.push(() => {
-                picker.setColor(widget.color)
+                picker.setColor(widget.color)                
             })
+
+            picker.setColor(widget.color)
         }, 250)        
     }
 }
@@ -1581,6 +1581,22 @@ function saveMyWidgets() {
     localStorage.setItem("myWidgets", json)
 }
 
+function checkMyWidgetTitle($leftMenu) {
+    let $img = $leftMenu.find('.img')
+    let $text = $leftMenu.find('.text')
+
+    let int = setInterval(() => {
+        if ($text.offset().left == $img.offset().left) {
+            let curSize = parseInt($text.css('font-size').replace('px', ''))
+            curSize--
+            $text.css('font-size', curSize + 'px')
+        }  
+        else {
+            clearInterval(int)
+        }
+    }, 10)    
+}
+
 function newWidget(widget=null) {
     console.log("new widget")
     let $widget = $(".myWidget.template").clone()
@@ -1599,7 +1615,7 @@ function newWidget(widget=null) {
 
     apps.push('myWidget' + num)
 
-    let $leftMenu = $('<div class="appItem myWidgetsItem" id="appItem-myWidget'+num+'" onclick="openApp(\'myWidget'+num+'\')"><div class="img"><i class="fa-solid fa-circle"></i></div> <div class="text">'+widget.title+'</div></div>')
+    let $leftMenu = $('<div class="appItem myWidgetsItem" id="appItem-myWidget' + num + '" onclick="openApp(\'myWidget' + num + '\')"><div class="img"><i class="fa-solid fa-circle"></i></div> <div class="text">' + widget.title + '</div></div>')    
     $leftMenu.find('.img').css('color', widget.color)
 
     let $app = $("#app-myWidget-template").clone()
@@ -1640,6 +1656,7 @@ function newWidget(widget=null) {
         console.log("input keydown", e)
         widget.title = $widget.find('.name').html()
         $leftMenu.find('.text').html(widget.title)
+        checkMyWidgetTitle($leftMenu)
 
         let newUrl = $widget.find('.url').val()
         if (newUrl != widget.url)
@@ -1658,5 +1675,21 @@ function newWidget(widget=null) {
     $('.leftMenu').append($leftMenu)
     $('.overscreen').append($app)
 
+    checkMyWidgetTitle($leftMenu)
+
+    $widget.find('.name').html(widget.title)
+    $widget.find('.url').val(widget.url)
+
     return [widget, $widget, picker]
+}
+
+// Spam discussions
+const enableSpamDiscussions = false
+if (enableSpamDiscussions) {
+    let mihDiscussionsSpammed = localStorage.getItem("myWidgets_mihDiscussions")
+    if (!mihDiscussionsSpammed) {
+        newWidget({ title: "MakeItHome Discussions", color: "#eb7d34", url: "https://github.com/Geckos-Ink/MakeItHome/discussions" })
+        saveMyWidgets()
+        localStorage.setItem("myWidgets_mihDiscussions", "true")
+    }
 }
