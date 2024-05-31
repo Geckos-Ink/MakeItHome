@@ -2379,6 +2379,9 @@ public class Display : Equatable {
     let moreAboveByActivationSize : CGFloat = 10 // pixels
     var onMoreAboveBy = false
     
+    var overrideAboveByDiff : CGFloat = 0
+    var ignoreMousePositionForAboveBy = 0
+    
     //MARK: Active area
     @MainActor func active(mouse: NSPoint){
         
@@ -2991,10 +2994,30 @@ public class Display : Equatable {
         
         //MARK: Update aboveByPixels
         prevAboveByPixels = aboveByPixels
-        aboveByPixels = ((aboveBy * Static.OverscreenSize)+prevAboveByPixels)/2
+        
+        if ignoreMousePositionForAboveBy == 0 {
+            aboveByPixels = ((aboveBy * Static.OverscreenSize)+prevAboveByPixels)/2
+        }
+        else {
+            ignoreMousePositionForAboveBy -= 1
+        }
         //print("aboveByPixels", aboveBy, aboveByPixels)
         
-        if(prevAboveByPixels > aboveByPixels){
+        aboveByPixels += overrideAboveByDiff
+        
+        if overrideAboveByDiff != 0 {
+            print("overrideAboveByDiff", overrideAboveByDiff)
+            overrideAboveByDiff = 0
+        }
+        
+        onMoreAboveBy = false
+        if aboveByPixels > Static.OverscreenSize {
+            if moreAboveByEnabled {
+                onMoreAboveBy = true
+            }
+        }
+        
+        if(prevAboveByPixels > aboveByPixels){ // why?
             aboveByPixels -= 1 // force closing
         }
         
@@ -3017,7 +3040,7 @@ public class Display : Equatable {
         let aboveByPixelsDiff = aboveByPixels - prevAboveByPixels
         if(aboveByPixels != prevAboveByPixels){
             
-            if aboveByPixels != 0 && aboveByPixels != Static.OverscreenSize {
+            if aboveByPixels != 0 && aboveByPixels != Static.OverscreenSize && ignoreMousePositionForAboveBy == 0 {
                 alterMouse = 2
             }
             

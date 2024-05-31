@@ -324,6 +324,31 @@ public struct CapturePreview: NSViewRepresentable {
             NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(self.goodNight), name: NSWorkspace.willSleepNotification, object: nil)
         }
         
+        ///
+        ///# Two-finger (scrolling) gesture
+        ///
+        override public func scrollWheel(with event: NSEvent) {
+            super.scrollWheel(with: event)
+            
+            // Check if the event is a two-finger scroll
+            if event.phase == .began || event.phase == .changed {
+                if event.deltaX != 0 || event.deltaY != 0 {
+                    handleTwoFingerScroll(event)
+                }
+            }
+        }
+
+        private func handleTwoFingerScroll(_ event: NSEvent) {
+            // Handle the two-finger scroll gesture here
+            print("Two-finger scroll detected: deltaX = \(event.deltaX), deltaY = \(event.deltaY)")
+            
+            curDisplay?.overrideAboveByDiff = (curDisplay?.side ?? 0 <= 1 ? event.deltaX : event.deltaY) * -20
+            curDisplay?.ignoreMousePositionForAboveBy = 10 // 10 ticks where the mouse position doesn't matters
+        }
+        ///
+        ///
+        ///
+        
         @objc func screenWake() {
             print("screen wake up")
             
