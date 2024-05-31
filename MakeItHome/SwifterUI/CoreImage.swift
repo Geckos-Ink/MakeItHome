@@ -190,3 +190,36 @@ extension NSImage {
         return nsImage
     }
 }
+
+
+func applyColorFilter(to image: NSImage, with color: NSColor) -> NSImage? {
+    guard let tiffData = image.tiffRepresentation, let ciImage = CIImage(data: tiffData) else {
+        return nil
+    }
+    
+    // Create a CIImage with the given color
+    let colorFilter = CIFilter(name: "CIConstantColorGenerator")!
+    colorFilter.setValue(CIColor(color: color), forKey: kCIInputColorKey)
+    guard let colorImage = colorFilter.outputImage else {
+        return nil
+    }
+    
+    // Crop the color image to the size of the original image
+    let colorImageCropped = colorImage.cropped(to: ciImage.extent)
+    
+    // Blend the color image over the original image
+    let blendFilter = CIFilter(name: "CISourceAtopCompositing")!
+    blendFilter.setValue(colorImageCropped, forKey: kCIInputImageKey)
+    blendFilter.setValue(ciImage, forKey: kCIInputBackgroundImageKey)
+    
+    guard let outputImage = blendFilter.outputImage else {
+        return nil
+    }
+    
+    // Convert the CIImage back to NSImage
+    let rep = NSCIImageRep(ciImage: outputImage)
+    let nsImage = NSImage(size: rep.size)
+    nsImage.addRepresentation(rep)
+    
+    return nsImage
+}

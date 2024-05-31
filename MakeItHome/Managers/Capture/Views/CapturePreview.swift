@@ -807,9 +807,12 @@ public struct CapturePreview: NSViewRepresentable {
                 
                 addAuroraBorealisWithBlend(blend: .additive, z:2)
                 addAuroraBorealisWithBlend(blend: .subtract, z:3)
+                
+                addAuroraBorealisWithBlend(blend: .additive, z:2, defaultColor: NSColor.green)
+                addAuroraBorealisWithBlend(blend: .additive, z:2, defaultColor: NSColor.purple)
             }
             
-            func addAuroraBorealisWithBlend(blend : SCNParticleBlendMode, z : CGFloat) {
+            func addAuroraBorealisWithBlend(blend : SCNParticleBlendMode, z : CGFloat, defaultColor: NSColor? = nil) {
                 let auroraNode = auroraBorealisNode!
                 
                 node.addChildNode(auroraNode)
@@ -825,7 +828,7 @@ public struct CapturePreview: NSViewRepresentable {
                 
                 let duration : CGFloat = 4 * 2
                 
-                particleSystem.birthRate = 30 * 2
+                particleSystem.birthRate = 30
                 particleSystem.particleLifeSpan = duration
                 particleSystem.particleLifeSpanVariation = 0
                 particleSystem.emissionDuration = duration
@@ -849,6 +852,10 @@ public struct CapturePreview: NSViewRepresentable {
                     particleSystem.particleColor = NSColor.purple
                 }
                 
+                if defaultColor != nil {
+                    particleSystem.particleColor = defaultColor!
+                }
+                
                 particleSystem.particleColorVariation = SCNVector4(0.2, 0.5, 0.5, 0.5)
                 particleSystem.particleSize = self.parentView.onePixel * 30
                 particleSystem.acceleration.y = self.parentView.onePixel * 1
@@ -860,7 +867,8 @@ public struct CapturePreview: NSViewRepresentable {
                 
                 particleSystem.particleSizeVariation = self.parentView.onePixel * 20
      
-                particleSystem.particleImage = NSImage(named: "AuroraBorealis")
+                let animationImg = NSImage(named: "AuroraBorealis")!
+                particleSystem.particleImage = applyColorFilter(to: animationImg, with: particleSystem.particleColor) ?? animationImg
                 particleSystem.imageSequenceColumnCount = 4
                 particleSystem.imageSequenceRowCount = 8
                 particleSystem.imageSequenceAnimationMode = .autoReverse
