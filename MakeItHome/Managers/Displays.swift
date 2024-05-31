@@ -2088,12 +2088,15 @@ public class Display : Equatable {
         //TODO: correct this condition in case of space-changing or prioritization issues
         if !Static.screenWake && (dontPrioritizeRunningApp && self.side != 3) {
             manager.window?.orderFront(nil)
-            //manager.window?.makeKey()
         }
         else {
             NSApplication.shared.activate(ignoringOtherApps: true)
             manager.window?.makeKeyAndOrderFront(nil)
             Static.screenWake = false
+        }
+        
+        delay(ms: 50){
+            self.manager.window?.makeKey()
         }
         
         Static.mainWindowFirstShow = true
@@ -2847,7 +2850,7 @@ public class Display : Equatable {
                 let mouseMoreAboveLimitBy = mouseAboveLimitBy + Static.OverscreenSize
                 //print("moreAboveBy", curAboveByDeFacto, mouseMoreAboveLimitBy)
                 
-                if mouseMoreAboveLimitBy < moreAboveByActivationPoint {
+                if mouseMoreAboveLimitBy < moreAboveByActivationPoint && !self.activateNewApp {
                     var moreAboveBy = (mouseMoreAboveLimitBy - moreAboveByActivationPoint) / (-(moreAboveByActivationSize+moreAboveByActivationPoint))
                     
                     if moreAboveBy > 1 {

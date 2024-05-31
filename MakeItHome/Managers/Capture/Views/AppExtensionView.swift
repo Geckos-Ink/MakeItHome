@@ -139,6 +139,13 @@ public class AppExtensionWebViewCoordinator: NSObject, WKNavigationDelegate, Dra
                     }
                 }
                 
+                if json?.type == "closeOverscreen" {
+                    print("close overscreen")
+                    Static.curDisplay?.activateNewApp = true
+                    Static.curDisplay?.aboveBy = 0
+                    Static.curDisplay?.ignoreMousePositionForAboveBy = 10
+                }
+                
                 //...
                 
                 decisionHandler(.cancel)
