@@ -2088,14 +2088,17 @@ public class Display : Equatable {
         //TODO: correct this condition in case of space-changing or prioritization issues
         if !Static.screenWake && (dontPrioritizeRunningApp && self.side != 3) {
             self.manager.window?.makeFirstResponder(Static.AppExtensionWebView)
-            NSApplication.shared.activate(ignoringOtherApps: true)
             manager.window?.makeKeyAndOrderFront(nil)
         }
         else {
             self.manager.window?.makeFirstResponder(Static.TopBarWebView)
-            NSApplication.shared.activate(ignoringOtherApps: true)
             manager.window?.makeKeyAndOrderFront(nil)
             Static.screenWake = false
+        }
+        
+        // Delay because it use to slow down performances for some reason
+        delay(ms: 100){
+            NSApplication.shared.activate(ignoringOtherApps: true)
         }
         
         Static.mainWindowFirstShow = true
@@ -2874,6 +2877,10 @@ public class Display : Equatable {
             }
             else {
                 //print("curAboveByDeFacto", curAboveByDeFacto)
+            }
+            
+            if !onMoreAboveBy && prevOnMoreAboveBy {
+                Static.AppExtensionWebView?.exiting()
             }
             
             Static.OnAppExtensionZone = onMoreAboveBy

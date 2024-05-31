@@ -59,6 +59,7 @@
         let vars = {}
         let isHorizontal = true
         let curBundleId = ''
+        let isShowing = false
 
         function createAppExtension(bundleId){
             bundleId = bundleId.replaceAll(".", "-")
@@ -85,9 +86,18 @@
 
             // Check for event
             let appEvent = vars[bundleId+'_event_show']
-            if(appEvent){
-                appEvent()
-            }
+            if(appEvent)
+                appEvent()    
+            
+            isShowing = true
+        }
+
+        function exitingAppExtension(){
+            let appEvent = vars[bundleId+'_event_exit']
+            if(appEvent)
+                appEvent() 
+            
+            isShowing = false
         }
 
         function setEvent(name, func){

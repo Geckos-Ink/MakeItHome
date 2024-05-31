@@ -223,6 +223,10 @@ public class AppExtensionWKWV : WKWebView{
         app.appExtension?.flushJSMessage()
     }
     
+    func exiting() {
+        self.evaluateJavaScript("exitingAppExtension()", completionHandler: nil)
+    }
+    
     func genericEvaluateJavascript(script: String){
         self.evaluateJavaScript(script)
     }
