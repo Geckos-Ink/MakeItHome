@@ -16,6 +16,7 @@ Current release version: 1.9.5
 ## Some messages for new and older users
 
 - The application uses Screen Recording to work and to create the magic. Don't be scared, the recorded images are not saved on storage nor sent through internet.
+- Don't be scared neither by the "Security" issues presented by GitHub: are all related to the Angular project used for the Notes and Tasks in the Widgets Zone, and are incosistent issues in the practice. Anyway, it's important to check sometimes issues related to the Swift code.
 
 ## How to
 <center>
