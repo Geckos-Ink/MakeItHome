@@ -215,7 +215,9 @@ public class AppExtensionWKWV : WKWebView{
         self.curApp = app
         
         let bundleId = app.appExtension!.bundleId
-        let callScript = "showAppExtension('\(bundleId)');"
+        let isHorizontal = Static.curDisplay?.side ?? 0 <= 1 ? "false" : "true"
+        
+        let callScript = "showAppExtension('\(bundleId)', \(isHorizontal);"
         self.evaluateJavaScript(callScript, completionHandler: nil)
         
         app.appExtension?.flushJSMessage()

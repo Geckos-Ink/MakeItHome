@@ -56,6 +56,8 @@
 
     <script>
         let $body = $(document.body)
+        let vars = {}
+        let isHorizontal = true
 
         function createAppExtension(bundleId){
             bundleId = bundleId.replaceAll(".", "-")
@@ -69,7 +71,9 @@
             $ext.html(content)
         }
 
-        function showAppExtension(bundleId){
+        function showAppExtension(bundleId, _isHorizontal=true){
+            isHorizontal = _isHorizontal
+
             $(".appExtension").hide()
 
             bundleId = bundleId.replaceAll(".", "-")
