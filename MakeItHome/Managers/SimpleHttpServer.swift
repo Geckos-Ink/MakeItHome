@@ -176,30 +176,32 @@ public class SimpleHTTPServer {
         
         connection.start(queue: .main)
         connection.receive(minimumIncompleteLength: 1, maximumLength: Int.max) { (data, _, isComplete, error) in
-            if let data = data, !data.isEmpty {
-
-                guard let r = String(data: data, encoding: .utf8) else {
-                    let respData = "HTTP/1.1 400 Bad Request\r\n\r\n".data(using: .utf8)!
-                    connection.send(content: respData, completion: .contentProcessed({ _ in
-                        connection.cancel()
-                    }))
-                    return
+            DispatchQueue.global(qos: .background).async {
+                if let data = data, !data.isEmpty {
+                    
+                    guard let r = String(data: data, encoding: .utf8) else {
+                        let respData = "HTTP/1.1 400 Bad Request\r\n\r\n".data(using: .utf8)!
+                        connection.send(content: respData, completion: .contentProcessed({ _ in
+                            connection.cancel()
+                        }))
+                        return
+                    }
+                    
+                    request += r
+                    
+                    if(request.contains("\r\n\r\n")){
+                        let response = self.handleRequest(request: request)
+                        connection.send(content: response, completion: .contentProcessed({ _ in
+                            connection.cancel()
+                        }))
+                    }
+                    
+                } else if isComplete {
+                    connection.cancel()
+                } else if let error = error {
+                    print("Error receiving data: \(error)")
+                    connection.cancel()
                 }
-                
-                request += r
-                
-                if(request.contains("\r\n\r\n")){
-                    let response = self.handleRequest(request: request)
-                    connection.send(content: response, completion: .contentProcessed({ _ in
-                        connection.cancel()
-                    }))
-                }
-                
-            } else if isComplete {
-                connection.cancel()
-            } else if let error = error {
-                print("Error receiving data: \(error)")
-                connection.cancel()
             }
         }
     }

@@ -52,11 +52,13 @@ class AppExtensionManager {
             
             if app == nil {
                 reply.status = "error"
+                reply.description = "App not connected"
                 return reply
             }
             
             if dataReq == nil {
                 reply.status = "error"
+                reply.description = "POST body missing"
                 return reply
             }
             
@@ -64,6 +66,7 @@ class AppExtensionManager {
             
             if body == nil {
                 reply.status = "error"
+                reply.description = "Invalid body JSON"
                 return reply
             }
             
@@ -71,10 +74,76 @@ class AppExtensionManager {
             
             if content == nil {
                 reply.status = "error"
+                reply.description = "Missing 'content' in body"
                 return reply
             }
              
             app?.htmlContent = content!
+        }
+        
+        if req.hasPrefix("/sendJSMessage"){
+            if app == nil {
+                reply.status = "error"
+                reply.description = "App not connected"
+                return reply
+            }
+            
+            if dataReq == nil {
+                reply.status = "error"
+                reply.description = "POST body missing"
+                return reply
+            }
+            
+            var body = jsonStringToDictionary(jsonString: dataReq!)
+            
+            if body == nil {
+                reply.status = "error"
+                reply.description = "Invalid body JSON"
+                return reply
+            }
+            
+            let jsMessage = body!["jsMessage"] as? String
+            
+            if jsMessage == nil {
+                reply.status = "error"
+                reply.description = "Missing 'jsMessage' in body"
+                return reply
+            }
+            
+            Static.AppExtensionWebView?.genericEvaluateJavascript(script: jsMessage!)
+        }
+        
+        if req.hasPrefix("/checkStatus"){
+            var isShowing = false
+            if Static.OnAppExtensionZone && Static.AppExtensionWebView?.curApp?.bundleId == app?.app?.bundleId {
+                isShowing = true
+            }
+            reply.appExtensionIsShowing = isShowing
+            
+            reply.status = "ok"
+            app!.hasStatusUpdate = false
+        }
+        
+        if req.hasPrefix("/waitForStatus"){
+            ///#TODO
+            var isShowing = false
+            
+            isShowing = false
+            if Static.OnAppExtensionZone && Static.AppExtensionWebView?.curApp?.bundleId == app?.app?.bundleId {
+                isShowing = true
+            }
+            
+            while !isShowing && !app!.hasStatusUpdate{
+                isShowing = false
+                if Static.OnAppExtensionZone && Static.AppExtensionWebView?.curApp?.bundleId == app?.app?.bundleId {
+                    isShowing = true
+                }
+            }
+            
+            reply.appExtensionIsShowing = isShowing
+            
+            reply.status = "ok"
+            app!.hasStatusUpdate = false
         }
         
         reply.status = "nothing"
@@ -85,12 +154,16 @@ class AppExtensionManager {
 struct AppExtensionMsg : Codable {
     var status: String?
     var description: String?
+    
+    var appExtensionIsShowing : Bool?
 }
 
 class AppExtension {
     let bundleId : String
     var app : Display.AppWindows?
     var htmlContent : String = ""
+    
+    var hasStatusUpdate : Bool = false
     
     init(bundleId : String){
         self.bundleId = bundleId
