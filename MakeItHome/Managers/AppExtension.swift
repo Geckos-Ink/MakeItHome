@@ -32,6 +32,11 @@ class AppExtensionManager {
                 if app == nil {
                     app = AppExtension(bundleId: bundleId)
                     apps[bundleId] = app
+                    
+                    reply.description = "appConnected"
+                }
+                else {
+                    reply.description = "appAlredyConnected"
                 }
                 
                 reply.status = "ok"
@@ -50,6 +55,7 @@ class AppExtensionManager {
 
 struct AppExtensionMsg : Codable {
     var status: String?
+    var description: String?
 }
 
 class AppExtension {
