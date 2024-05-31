@@ -790,7 +790,9 @@ public struct CapturePreview: NSViewRepresentable {
                 // Check AppExtension
                 self.app.checkAppExtension()
                 if self.app.appExtension != nil { // enable only on supported apps
-                    self.addAuroraBorealis()
+                    delay(ms: 100){
+                        self.addAuroraBorealis()
+                    }
                 }
             }
             
