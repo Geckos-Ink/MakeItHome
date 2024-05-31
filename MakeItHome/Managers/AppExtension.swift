@@ -111,6 +111,9 @@ class AppExtensionManager {
             }
             
             app?.sendJSMessage(msg: jsMessage!)
+            
+            reply.status = "ok"
+            return reply
         }
         
         if req.hasPrefix("/checkStatus"){
@@ -123,6 +126,8 @@ class AppExtensionManager {
             
             app!.hasStatusUpdate = false
             app!.statusMessages = []
+            
+            return reply
         }
         
         if req.hasPrefix("/waitForStatus"){
@@ -140,6 +145,8 @@ class AppExtensionManager {
             
             app!.hasStatusUpdate = false
             app!.statusMessages = []
+            
+            return reply
         }
         
         reply.status = "nothing"
