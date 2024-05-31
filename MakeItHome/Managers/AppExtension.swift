@@ -110,14 +110,11 @@ class AppExtensionManager {
                 return reply
             }
             
-            Static.AppExtensionWebView?.genericEvaluateJavascript(script: jsMessage!)
+            app?.sendJSMessage(msg: jsMessage!)
         }
         
         if req.hasPrefix("/checkStatus"){
-            var isShowing = false
-            if Static.OnAppExtensionZone && Static.AppExtensionWebView?.curApp?.bundleId == app?.app?.bundleId {
-                isShowing = true
-            }
+            var isShowing = app!.imShowing()
             
             reply.appExtensionIsShowing = isShowing
             reply.statusMessages = app!.statusMessages
@@ -130,18 +127,10 @@ class AppExtensionManager {
         
         if req.hasPrefix("/waitForStatus"){
             ///#TODO
-            var isShowing = false
-            
-            isShowing = false
-            if Static.OnAppExtensionZone && Static.AppExtensionWebView?.curApp?.bundleId == app?.app?.bundleId {
-                isShowing = true
-            }
+            var isShowing = app!.imShowing()
             
             while !isShowing && !app!.hasStatusUpdate{
-                isShowing = false
-                if Static.OnAppExtensionZone && Static.AppExtensionWebView?.curApp?.bundleId == app?.app?.bundleId {
-                    isShowing = true
-                }
+                isShowing = app!.imShowing()
             }
             
             reply.appExtensionIsShowing = isShowing
@@ -174,8 +163,40 @@ class AppExtension {
     var hasStatusUpdate : Bool = false
     var statusMessages : [String] = []
     
+    var jsMessages : [String] = []
+    
     init(bundleId : String){
         self.bundleId = bundleId
+    }
+    
+    func sendJSMessage(msg: String){
+        if self.imShowing(){
+            flushJSMessage()
+            Static.AppExtensionWebView?.genericEvaluateJavascript(script: msg)
+        }
+        else {
+            jsMessages.append(msg)
+        }
+    }
+    
+    func flushJSMessage(){
+        if jsMessages.count == 0 {
+            return
+        }
+        
+        for msg in jsMessages {
+            Static.AppExtensionWebView?.genericEvaluateJavascript(script: msg)
+        }
+        
+        jsMessages = []
+    }
+    
+    func imShowing() -> Bool {
+        if Static.OnAppExtensionZone && Static.AppExtensionWebView?.curApp?.bundleId == app?.bundleId {
+            return true
+        }
+        
+        return false
     }
     
     func link(app : Display.AppWindows){
