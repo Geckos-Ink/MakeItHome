@@ -620,11 +620,15 @@ public class Display : Equatable {
         public var iconAvgColor : NSColor = NSColor.white
         
         public let id : pid_t
+        public let bundleId : String?
         
         init(runningApp: NSRunningApplication, display: Display){
             self.runningApp = runningApp
             self.display = display
             self.id = runningApp.processIdentifier
+            self.bundleId = runningApp.bundleIdentifier
+            
+            print("App bundleId", self.bundleId)
         }
         
         public func destroyWindows(force : Bool = false){

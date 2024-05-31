@@ -74,6 +74,33 @@ func getAssetsUrl() -> URL? {
     return sourceURL
 }
 
+func parseURLQueryItems(from urlString: String) -> [String: String]? {
+    // Ensure the URL is valid
+    guard let url = URL(string: urlString) else {
+        return nil
+    }
+    
+    // Create URLComponents from the URL
+    guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+        return nil
+    }
+    
+    // Get the query items and map them to an array of tuples (key, value)
+    guard let queryItems = components.queryItems else {
+        return nil
+    }
+    
+    let result = queryItems.map { ($0.name, $0.value ?? "") }
+    
+    var arr : [String: String] = [:]
+    
+    for (k, v) in result{
+        arr[k] = v
+    }
+    
+    return arr
+}
+
 public class SimpleHTTPServer {
     static public let CopyInDirectoryBundle = false
     
@@ -347,6 +374,28 @@ public class SimpleHTTPServer {
             }
         }
         
+        var jsonRes : String? = nil
+        
+        ///
+        /// Handle AppExtension
+        ///
+        
+        if url.hasPrefix("/appExtension/"){
+            let reply = appExtensionManager.httpRequest(url:String(url), dataReq: dataReq)
+            let data = try? JSONEncoder().encode(reply)
+            
+            if data != nil{
+                jsonRes = String(data: data!, encoding: .utf8)
+            }
+            else {
+                jsonRes = "{}"
+            }
+        }
+        
+        ///
+        ///
+        ///
+        
         if url.hasSuffix(".js.m"){
             url += "ap"
         }
@@ -360,7 +409,6 @@ public class SimpleHTTPServer {
         ///
         /// Handle API call
         ///
-        var jsonRes : String? = nil
         if url.hasPrefix("/fuse/api/"){
             let jsonName = url.replacingOccurrences(of: "/", with: "-") + ".json"
             
@@ -371,13 +419,6 @@ public class SimpleHTTPServer {
             if jsonRes == nil {
                 jsonRes = getDefaultJson(at: jsonName)
             }
-        }
-        
-        ///
-        /// Handle AppExtension
-        ///
-        if url.hasPrefix("/appExtension/"){
-            appExtensionManager.httpRequest(url:String(url), dataReq: dataReq)
         }
         
         ///
