@@ -812,6 +812,7 @@ public struct CapturePreview: NSViewRepresentable {
                 addAuroraBorealisWithBlend(blend: .additive, z:2, defaultColor: NSColor.purple)
             }
             
+            static var auroraBorealisAnimationCache : [NSColor: NSImage] = [:]
             func addAuroraBorealisWithBlend(blend : SCNParticleBlendMode, z : CGFloat, defaultColor: NSColor? = nil) {
                 let auroraNode = auroraBorealisNode!
                 
@@ -866,9 +867,14 @@ public struct CapturePreview: NSViewRepresentable {
                 particleSystem.particleVelocityVariation = self.parentView.onePixel * 2
                 
                 particleSystem.particleSizeVariation = self.parentView.onePixel * 20
-     
+                
                 let animationImg = NSImage(named: "AuroraBorealis")!
-                particleSystem.particleImage = applyColorFilter(to: animationImg, with: particleSystem.particleColor) ?? animationImg
+                
+                if AppNode.auroraBorealisAnimationCache[particleSystem.particleColor] == nil{
+                    AppNode.auroraBorealisAnimationCache[particleSystem.particleColor] = applyColorFilter(to: animationImg, with: particleSystem.particleColor) ?? animationImg
+                }
+                                
+                particleSystem.particleImage = AppNode.auroraBorealisAnimationCache[particleSystem.particleColor]
                 particleSystem.imageSequenceColumnCount = 4
                 particleSystem.imageSequenceRowCount = 8
                 particleSystem.imageSequenceAnimationMode = .autoReverse
