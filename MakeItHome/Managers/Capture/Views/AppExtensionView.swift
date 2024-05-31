@@ -205,8 +205,8 @@ public class AppExtensionWKWV : WKWebView{
     func setCurrentApp(app: Display.AppWindows){
         self.curApp = app
         
-        let content = app.appExtension!.htmlContent
-        let callScript = "setBodyContent('\(content)');"
+        let bundleId = app.appExtension!.bundleId
+        let callScript = "showAppExtension('\(bundleId)');"
         self.evaluateJavaScript(callScript, completionHandler: nil)
         
         app.appExtension?.flushJSMessage()

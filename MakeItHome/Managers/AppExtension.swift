@@ -78,7 +78,7 @@ class AppExtensionManager {
                 return reply
             }
              
-            app?.htmlContent = content!
+            app?.setHTMLContent(content: content!)
         }
         
         if req.hasPrefix("/sendJSMessage"){
@@ -174,15 +174,23 @@ class AppExtension {
     
     init(bundleId : String){
         self.bundleId = bundleId
+        
+        Static.AppExtensionWebView?.genericEvaluateJavascript(script: "createAppExtension('\(bundleId)');")
     }
     
+    func setHTMLContent(content: String){
+        htmlContent = content
+        Static.AppExtensionWebView?.genericEvaluateJavascript(script: "setContent('\(bundleId)', '\(content)');")
+    }
+    
+    var sendJsMessageWhenShowing = false
     func sendJSMessage(msg: String){
-        if self.imShowing(){
+        if !sendJsMessageWhenShowing || self.imShowing(){
             flushJSMessage()
             Static.AppExtensionWebView?.genericEvaluateJavascript(script: msg)
         }
         else {
-            jsMessages.append(msg)
+            jsMessages.append(msg)            
         }
     }
     

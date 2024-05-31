@@ -1,18 +1,61 @@
 <html>
     <head>
+        <script src="./jquery-3.7.1.min.js"></script>
+
         <style>
-            body{
-                background-color: rgba(255,0,0,0.1);
+            @font-face {
+                font-family: Lato;
+                src: url(Lato-Light.ttf);
+                font-weight: normal;
+            }
+
+            @font-face {
+                font-family: Lato;
+                src: url(Lato-Regular.ttf);
+                font-weight: bold;
+            }
+
+            @font-face {
+                font-family: OxygenMono;
+                src: url(OxygenMono-Regular.ttf);
+                font-weight: normal;
+            }
+
+            body {
+                font-family: Lato;
+            }
+
+            .appExtension {
+                width: 100%;
+                height: 100%;
             }
         </style>
     </head>
     <body>
-        Hello world!
+        
     </body>
 
     <script>
-        function setBodyContent(content){
-            document.body.innerHTML = content
+        let $body = $(document.body)
+
+        function createAppExtension(bundleId){
+            bundleId = bundleId.replaceAll(".", "-")
+            let $ext = $('<div class="appExtension" id="'+bundleId+'">Extension not already loaded...</div>')
+            $body.append($ext)
+        }
+
+        function setContent(bundleId, content){
+            bundleId = bundleId.replaceAll(".", "-")
+            let $ext = $('#'+bundleId)
+            $ext.html(content)
+        }
+
+        function showAppExtension(bundleId){
+            $(".appExtension").hide()
+
+            bundleId = bundleId.replaceAll(".", "-")
+            let $ext = $('#'+bundleId)
+            $ext.show()
         }
 
         function sendMessage(message) {
