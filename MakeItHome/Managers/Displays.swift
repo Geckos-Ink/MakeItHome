@@ -622,6 +622,8 @@ public class Display : Equatable {
         public let id : pid_t
         public let bundleId : String?
         
+        var appExtension : AppExtension?
+        
         init(runningApp: NSRunningApplication, display: Display){
             self.runningApp = runningApp
             self.display = display
@@ -629,6 +631,17 @@ public class Display : Equatable {
             self.bundleId = runningApp.bundleIdentifier
             
             print("App bundleId", self.bundleId)
+        }
+        
+        func checkAppExtension(){
+            if self.appExtension == nil && Static.appExtensionManager != nil {
+                for (id, app) in Static.appExtensionManager!.apps {
+                    if app.bundleId == self.bundleId {
+                        appExtension = app
+                        app.link(app: self)
+                    }
+                }
+            }
         }
         
         public func destroyWindows(force : Bool = false){

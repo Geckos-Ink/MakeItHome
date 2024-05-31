@@ -785,8 +785,9 @@ public struct CapturePreview: NSViewRepresentable {
                     winPlane.addToNode(node: self.node)
                 }
                 
-                // Check particle system
-                if true { //TODO: enable only on supported apps
+                // Check AppExtension
+                self.app.checkAppExtension()
+                if self.app.appExtension != nil { // enable only on supported apps
                     self.addAuroraBorealis()
                 }
             }

@@ -65,4 +65,8 @@ class AppExtension {
     init(bundleId : String){
         self.bundleId = bundleId
     }
+    
+    func link(app : Display.AppWindows){
+        self.app = app
+    }
 }
