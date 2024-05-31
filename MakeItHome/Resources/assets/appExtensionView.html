@@ -58,6 +58,7 @@
         let $body = $(document.body)
         let vars = {}
         let isHorizontal = true
+        let curBundleId = ''
 
         function createAppExtension(bundleId){
             bundleId = bundleId.replaceAll(".", "-")
@@ -77,8 +78,20 @@
             $(".appExtension").hide()
 
             bundleId = bundleId.replaceAll(".", "-")
+            curBundleId = bundleId
+
             let $ext = $('#'+bundleId)
             $ext.show()
+
+            // Check for event
+            let appEvent = vars[bundleId+'_event_show']
+            if(appEvent){
+                appEvent()
+            }
+        }
+
+        function setEvent(name, func){
+            vars[curBundleId+'_event_'+name] = name
         }
 
         function sendMessage(message) {
