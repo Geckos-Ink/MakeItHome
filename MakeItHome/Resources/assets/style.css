@@ -772,3 +772,19 @@ ons-list-item label:nth-child(1) {
 .myWidgetsItem .img {
   text-shadow: rgb(255, 255, 255) 0px 0 5px !important;
 }
+
+.myWidgetApp .reload {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+
+  padding: 10px;
+  border-radius: 100%;
+
+  background-color: orange;
+  border: 1px solid #ff6550;
+
+  cursor: pointer;
+
+  font-size: 20px;
+}

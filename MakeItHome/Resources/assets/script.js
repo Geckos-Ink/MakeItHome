@@ -1648,7 +1648,11 @@ function newWidget(widget=null) {
         widget.url = newUrl
 
         saveMyWidgets()
-    })    
+    })   
+    
+    $app.find('.reload').on('click', (e) => {
+        $app.find('iframe').attr('src', widget.url)
+    })
 
     // Create app
     $('.leftMenu').append($leftMenu)
