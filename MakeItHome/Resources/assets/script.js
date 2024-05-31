@@ -1249,6 +1249,14 @@ $('body').on('mousemove', (e)=>{
 /// Multi-sections managements
 ///
 
+function isElementDisplayed(element) {
+    // Traverse the element and its ancestors
+    return $(element).add($(element).parents()).filter(function () {
+        // Check if the element is hidden by checking its display property
+        return $(this).css('display') === 'none' || $(this).css('visibility') === 'hidden' || $(this).css('opacity') === '0';
+    }).length === 0;
+}
+
 function renderParagraph(id){
     let $id = $(id)
 
@@ -1286,10 +1294,24 @@ function renderParagraph(id){
             $menu.css('left', offset.left)
             $menu.css('width', $titles.width())
             $menu.css('height', $titles.height())
-
             clearInterval(interval)
         }
-    }, 100)
+    }, 50)
+
+    let displaying = false
+    setInterval(() => {
+        let disp = isElementDisplayed(id) 
+
+        if (disp) {
+            let off = $id.offset()
+            disp = off.top >= 0
+        }
+
+        if (displaying != disp) {
+            $menu.css('display', disp ? 'block' : 'none')
+            displaying = disp
+        }
+    }, 50)
     
     $contents.on('mousemove', (e)=>{
         let $conts = $contents //$id.find('.left')
