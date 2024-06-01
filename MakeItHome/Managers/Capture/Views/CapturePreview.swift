@@ -834,7 +834,7 @@ public struct CapturePreview: NSViewRepresentable {
                 
                 let duration : CGFloat = 4 * 2
                 
-                particleSystem.birthRate = 30
+                particleSystem.birthRate = 40
                 particleSystem.particleLifeSpan = duration
                 particleSystem.particleLifeSpanVariation = 0
                 particleSystem.emissionDuration = duration
@@ -844,10 +844,10 @@ public struct CapturePreview: NSViewRepresentable {
                 particleSystem.isLightingEnabled = true
                 
                 if isHorizontal{
-                    particleSystem.emitterShape = SCNPlane(width: requestedSize, height: parentView.onePixel)
+                    particleSystem.emitterShape = SCNPlane(width: otherSideSize, height: parentView.onePixel)
                 }
                 else {
-                    particleSystem.emitterShape = SCNPlane(width: parentView.onePixel, height: requestedSize)
+                    particleSystem.emitterShape = SCNPlane(width: parentView.onePixel, height: otherSideSize)
                 }
                 
                 // Color the particles to mimic the Aurora Borealis
