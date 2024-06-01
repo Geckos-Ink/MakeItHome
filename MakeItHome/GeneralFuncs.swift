@@ -49,3 +49,16 @@ func performHaptic(){
         }
     }
 }
+
+func generateRandomString(length: Int) -> String {
+    let characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    let charactersArray = Array(characters)
+    var randomString = ""
+
+    for _ in 0..<length {
+        let randomIndex = Int.random(in: 0..<charactersArray.count)
+        randomString.append(charactersArray[randomIndex])
+    }
+
+    return randomString
+}

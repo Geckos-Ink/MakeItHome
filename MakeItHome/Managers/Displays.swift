@@ -620,11 +620,35 @@ public class Display : Equatable {
         public var iconAvgColor : NSColor = NSColor.white
         
         public let id : pid_t
+        public let bundleId : String?
+        
+        var appExtension : AppExtension?
         
         init(runningApp: NSRunningApplication, display: Display){
             self.runningApp = runningApp
             self.display = display
             self.id = runningApp.processIdentifier
+            self.bundleId = runningApp.bundleIdentifier
+            
+            print("App bundleId", self.bundleId)
+            
+            DispatchQueue.global().async {
+                if runningApp.icon != nil {
+                    let avg = averageColor(of: runningApp.icon!)
+                    self.iconAvgColor = avg ?? self.iconAvgColor
+                }
+            }
+        }
+        
+        func checkAppExtension(){
+            if self.appExtension == nil && Static.appExtensionManager != nil {
+                for (id, app) in Static.appExtensionManager!.apps {
+                    if app.bundleId == self.bundleId {
+                        appExtension = app
+                        app.link(app: self)
+                    }
+                }
+            }
         }
         
         public func destroyWindows(force : Bool = false){
@@ -641,6 +665,10 @@ public class Display : Equatable {
             windows.removeAll()
             
             display.apps.removeValue(forKey: id)
+            
+            if self.appExtension != nil {
+                Static.appExtensionManager?.closedApp(bundleId: self.bundleId!)
+            }
         }
         
         public func hasLockedBy() -> Bool{
@@ -1054,7 +1082,7 @@ public class Display : Equatable {
         var prevRecorderUpdate : Double = 0
         var pauseMinMouseSpeed : Double = 0
         
-        let timeStart = Date.now
+        let timeStart = Date()
                 
         Timer.scheduledTimer(withTimeInterval: Static.CheckIfUpdateWindowScreenshotEvery / Double(definitionMultiplier), repeats: true) { timer in
             
@@ -1079,9 +1107,9 @@ public class Display : Equatable {
                 // Check if mouse is not moving
                 if self.mouseIn {
                     let limiter = self.avgSpeed * 0.1 * 0.25
-                    let startedFor = Date.now - timeStart.timeIntervalSince1970
+                    let startedFor = Date().timeIntervalSince1970 - timeStart.timeIntervalSince1970
                     
-                    if !force && mouseMoveMultiplier > 0 && (self.mouseSpeed_10s < limiter || (self.recordingPaused && pauseMinMouseSpeed > self.mouseSpeed_10s)) && startedFor.timeIntervalSince1970 > 10 {
+                    if !force && mouseMoveMultiplier > 0 && (self.mouseSpeed_10s < limiter || (self.recordingPaused && pauseMinMouseSpeed > self.mouseSpeed_10s)) && startedFor > 10 {
                         if !self.recordingPaused {
                             print("recorder paused")
                             self.recorderPause()
@@ -2005,10 +2033,12 @@ public class Display : Equatable {
     }
     
     func recorderPause(){
-        DispatchQueue.main.async{
-            let screenRecorder = (self.manager.contentView?.store.screenRecorder as! ScreenRecorder)
-            Task{
-                await screenRecorder.stop()
+        if #available(macOS 12.3, *){
+            DispatchQueue.main.async{
+                let screenRecorder = (self.manager.contentView?.store.screenRecorder as! ScreenRecorder)
+                Task{
+                    await screenRecorder.stop()
+                }
             }
         }
     }
@@ -2068,12 +2098,18 @@ public class Display : Equatable {
               
         //TODO: correct this condition in case of space-changing or prioritization issues
         if !Static.screenWake && (dontPrioritizeRunningApp && self.side != 3) {
-            manager.window?.orderFront(nil)
+            self.manager.window?.makeFirstResponder(Static.AppExtensionWebView)
+            manager.window?.makeKeyAndOrderFront(nil)
         }
         else {
-            NSApplication.shared.activate(ignoringOtherApps: true)
+            self.manager.window?.makeFirstResponder(Static.TopBarWebView)
             manager.window?.makeKeyAndOrderFront(nil)
             Static.screenWake = false
+        }
+        
+        // Delay because it use to slow down performances for some reason
+        delay(ms: 100){
+            NSApplication.shared.activate(ignoringOtherApps: true)
         }
         
         Static.mainWindowFirstShow = true
@@ -2372,10 +2408,13 @@ public class Display : Equatable {
     var dockPos : WBDockPosition = WBDockPosition.none
     
     ///# moreAboveBy
-    let moreAboveByEnabled = false
+    let moreAboveByEnabled = true
     let moreAboveByActivationPoint : CGFloat = 5 // pixels
     let moreAboveByActivationSize : CGFloat = 10 // pixels
     var onMoreAboveBy = false
+    
+    var overrideAboveByDiff : CGFloat = 0
+    var ignoreMousePositionForAboveBy = 0
     
     //MARK: Active area
     @MainActor func active(mouse: NSPoint){
@@ -2818,12 +2857,13 @@ public class Display : Equatable {
                 curAboveByDeFacto = 1
             }
             
+            let prevOnMoreAboveBy = onMoreAboveBy
             onMoreAboveBy = false
-            if moreAboveByEnabled && curAboveByDeFacto >= 1 && curSide != 3 {
+            if moreAboveByEnabled && Static.LastAppPreviewMouseOver?.appExtension != nil && curAboveByDeFacto >= 1 && curSide != 3 && !Static.isDragginApp{
                 let mouseMoreAboveLimitBy = mouseAboveLimitBy + Static.OverscreenSize
                 //print("moreAboveBy", curAboveByDeFacto, mouseMoreAboveLimitBy)
                 
-                if mouseMoreAboveLimitBy < moreAboveByActivationPoint {
+                if mouseMoreAboveLimitBy < moreAboveByActivationPoint && !self.activateNewApp {
                     var moreAboveBy = (mouseMoreAboveLimitBy - moreAboveByActivationPoint) / (-(moreAboveByActivationSize+moreAboveByActivationPoint))
                     
                     if moreAboveBy > 1 {
@@ -2836,6 +2876,11 @@ public class Display : Equatable {
                     if moreAboveBy != 0 && moreAboveBy != 1 {
                         print("activating moreAboveBy", mouseMoreAboveLimitBy, moreAboveBy)
                     }
+                    
+                    if prevOnMoreAboveBy == false {
+                        // prepare activated content
+                        Static.AppExtensionWebView?.setCurrentApp(app: Static.LastAppPreviewMouseOver!)
+                    }
                 }
                 else if aboveBy > 1 {
                     aboveBy = 1
@@ -2843,6 +2888,10 @@ public class Display : Equatable {
             }
             else {
                 //print("curAboveByDeFacto", curAboveByDeFacto)
+            }
+            
+            if !onMoreAboveBy && prevOnMoreAboveBy {
+                Static.AppExtensionWebView?.exiting()
             }
             
             Static.OnAppExtensionZone = onMoreAboveBy
@@ -2989,10 +3038,30 @@ public class Display : Equatable {
         
         //MARK: Update aboveByPixels
         prevAboveByPixels = aboveByPixels
-        aboveByPixels = ((aboveBy * Static.OverscreenSize)+prevAboveByPixels)/2
+        
+        if ignoreMousePositionForAboveBy == 0 {
+            aboveByPixels = ((aboveBy * Static.OverscreenSize)+prevAboveByPixels)/2
+        }
+        else {
+            ignoreMousePositionForAboveBy -= 1
+        }
         //print("aboveByPixels", aboveBy, aboveByPixels)
         
-        if(prevAboveByPixels > aboveByPixels){
+        aboveByPixels += overrideAboveByDiff
+        
+        if overrideAboveByDiff != 0 {
+            print("overrideAboveByDiff", overrideAboveByDiff)
+            overrideAboveByDiff = 0
+        }
+        
+        onMoreAboveBy = false
+        if aboveByPixels > Static.OverscreenSize {
+            if moreAboveByEnabled {
+                onMoreAboveBy = true
+            }
+        }
+        
+        if(prevAboveByPixels > aboveByPixels){ // why?
             aboveByPixels -= 1 // force closing
         }
         
@@ -3015,7 +3084,7 @@ public class Display : Equatable {
         let aboveByPixelsDiff = aboveByPixels - prevAboveByPixels
         if(aboveByPixels != prevAboveByPixels){
             
-            if aboveByPixels != 0 && aboveByPixels != Static.OverscreenSize {
+            if aboveByPixels != 0 && aboveByPixels != Static.OverscreenSize && ignoreMousePositionForAboveBy == 0 {
                 alterMouse = 2
             }
             
@@ -3232,7 +3301,7 @@ public class Display : Equatable {
                 
                 //print(mouse.x, "=>", moveTo.x, ", ", mouse.y, "=>", moveTo.y)
                             
-                if(abs(accumulatedAboveByDiff) > minMovement) && false{
+                if(abs(accumulatedAboveByDiff) > minMovement) {
                     if(sideSign == 0){
                         accumulatedAboveByDiff *= -1
                     }

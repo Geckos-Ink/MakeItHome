@@ -74,6 +74,59 @@ func getAssetsUrl() -> URL? {
     return sourceURL
 }
 
+func parseURLQueryItems(from urlString: String) -> [String: String]? {
+    // Ensure the URL is valid
+    guard let url = URL(string: urlString) else {
+        return nil
+    }
+    
+    // Create URLComponents from the URL
+    guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+        return nil
+    }
+    
+    // Get the query items and map them to an array of tuples (key, value)
+    guard let queryItems = components.queryItems else {
+        return nil
+    }
+    
+    let result = queryItems.map { ($0.name, $0.value ?? "") }
+    
+    var arr : [String: String] = [:]
+    
+    for (k, v) in result{
+        arr[k] = v
+    }
+    
+    return arr
+}
+
+func jsonStringToDictionary(jsonString: String) -> [String: Any?]? {
+    // Convert the JSON string to Data
+    guard let jsonData = jsonString.data(using: .utf8) else {
+        print("Failed to convert JSON string to Data")
+        return nil
+    }
+    
+    do {
+        // Deserialize the JSON data into a dictionary
+        if let jsonDict = try JSONSerialization.jsonObject(with: jsonData, options: []) as? [String: Any] {
+            // Convert the dictionary to [String: Any?]
+            var resultDict: [String: Any?] = [:]
+            for (key, value) in jsonDict {
+                resultDict[key] = value
+            }
+            return resultDict
+        } else {
+            print("Failed to cast JSON object to [String: Any?]")
+            return nil
+        }
+    } catch {
+        print("Error deserializing JSON data: \(error)")
+        return nil
+    }
+}
+
 public class SimpleHTTPServer {
     static public let CopyInDirectoryBundle = false
     
@@ -81,6 +134,10 @@ public class SimpleHTTPServer {
     private let directoryPath: String
     private var listener: NWListener?
     public var assetsAvailable = false
+    
+    // I know, this is chaotic, but for the moment has sense: AppExtension works using this HTTP server
+    // for communication, so this location remains a stable reference point
+    var appExtensionManager : AppExtensionManager
 
     init(port: UInt16) {
         self.port = NWEndpoint.Port(rawValue: port)!
@@ -92,6 +149,9 @@ public class SimpleHTTPServer {
         }
 
         self.directoryPath = containerDir?.path ?? ""
+        
+        self.appExtensionManager = AppExtensionManager()
+        Static.appExtensionManager = self.appExtensionManager
     }
 
     func start() async throws -> Bool {
@@ -116,30 +176,32 @@ public class SimpleHTTPServer {
         
         connection.start(queue: .main)
         connection.receive(minimumIncompleteLength: 1, maximumLength: Int.max) { (data, _, isComplete, error) in
-            if let data = data, !data.isEmpty {
-
-                guard let r = String(data: data, encoding: .utf8) else {
-                    let respData = "HTTP/1.1 400 Bad Request\r\n\r\n".data(using: .utf8)!
-                    connection.send(content: respData, completion: .contentProcessed({ _ in
-                        connection.cancel()
-                    }))
-                    return
+            DispatchQueue.global(qos: .background).async {
+                if let data = data, !data.isEmpty {
+                    
+                    guard let r = String(data: data, encoding: .utf8) else {
+                        let respData = "HTTP/1.1 400 Bad Request\r\n\r\n".data(using: .utf8)!
+                        connection.send(content: respData, completion: .contentProcessed({ _ in
+                            connection.cancel()
+                        }))
+                        return
+                    }
+                    
+                    request += r
+                    
+                    if(request.contains("\r\n\r\n")){
+                        let response = self.handleRequest(request: request)
+                        connection.send(content: response, completion: .contentProcessed({ _ in
+                            connection.cancel()
+                        }))
+                    }
+                    
+                } else if isComplete {
+                    connection.cancel()
+                } else if let error = error {
+                    print("Error receiving data: \(error)")
+                    connection.cancel()
                 }
-                
-                request += r
-                
-                if(request.contains("\r\n\r\n")){
-                    let response = self.handleRequest(request: request)
-                    connection.send(content: response, completion: .contentProcessed({ _ in
-                        connection.cancel()
-                    }))
-                }
-                
-            } else if isComplete {
-                connection.cancel()
-            } else if let error = error {
-                print("Error receiving data: \(error)")
-                connection.cancel()
             }
         }
     }
@@ -340,6 +402,28 @@ public class SimpleHTTPServer {
             }
         }
         
+        var jsonRes : String? = nil
+        
+        ///
+        /// Handle AppExtension
+        ///
+        
+        if url.hasPrefix("/appExtension/"){
+            let reply = appExtensionManager.httpRequest(url:String(url), dataReq: dataReq)
+            let data = try? JSONEncoder().encode(reply)
+            
+            if data != nil{
+                jsonRes = String(data: data!, encoding: .utf8)
+            }
+            else {
+                jsonRes = "{}"
+            }
+        }
+        
+        ///
+        ///
+        ///
+        
         if url.hasSuffix(".js.m"){
             url += "ap"
         }
@@ -353,7 +437,6 @@ public class SimpleHTTPServer {
         ///
         /// Handle API call
         ///
-        var jsonRes : String? = nil
         if url.hasPrefix("/fuse/api/"){
             let jsonName = url.replacingOccurrences(of: "/", with: "-") + ".json"
             

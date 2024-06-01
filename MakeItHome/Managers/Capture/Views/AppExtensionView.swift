@@ -130,6 +130,22 @@ public class AppExtensionWebViewCoordinator: NSObject, WKNavigationDelegate, Dra
                     print(json?.value);
                 }
                 
+                if json?.type == "status" && json?.value != nil {
+                    let curApp = Static.AppExtensionWebView?.curApp
+                    
+                    if curApp?.appExtension != nil {
+                        let ext = curApp?.appExtension
+                        ext?.addMessage(msg: json!.value!)
+                    }
+                }
+                
+                if json?.type == "closeOverscreen" {
+                    print("close overscreen")
+                    Static.curDisplay?.activateNewApp = true
+                    Static.curDisplay?.aboveBy = 0
+                    Static.curDisplay?.ignoreMousePositionForAboveBy = 10
+                }
+                
                 //...
                 
                 decisionHandler(.cancel)
@@ -185,6 +201,46 @@ public class AppExtensionWKWV : WKWebView{
     func load(){
         if let url = Bundle.main.url(forResource: "assets/appExtensionView", withExtension: "html") {
             self.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
+            
+            delay(ms: 100){
+                // for some reasons, that seems to not work
+                self.sendCurrentVersion()
+            }
         }
+    }
+    
+    ///
+    /// Current App Extension management
+    ///
+    
+    public override var acceptsFirstResponder: Bool { return true }
+    
+    var curApp : Display.AppWindows?
+    func setCurrentApp(app: Display.AppWindows){
+        self.curApp = app
+        
+        let bundleId = app.appExtension!.bundleId
+        let isHorizontal = Static.curDisplay?.side ?? 0 <= 1 ? "false" : "true"
+        
+        let callScript = "showAppExtension('\(bundleId)', \(isHorizontal));"
+        self.evaluateJavaScript(callScript, completionHandler: nil)
+        
+        // repeat every time, this is the mantra
+        self.sendCurrentVersion()
+        
+        app.appExtension?.flushJSMessage()
+    }
+    
+    func sendCurrentVersion(){
+        let version = (Bundle.main.infoDictionary!["CFBundleShortVersionString"] as! String)
+        self.genericEvaluateJavascript(script: "setVersion('\(version)');")
+    }
+    
+    func exiting() {
+        self.evaluateJavaScript("exitingAppExtension()", completionHandler: nil)
+    }
+    
+    func genericEvaluateJavascript(script: String){
+        self.evaluateJavaScript(script)
     }
 }

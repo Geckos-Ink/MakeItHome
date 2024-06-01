@@ -59,7 +59,7 @@ class ScreenRecorder: ObservableObject {
     /// A view that renders the screen content.
     lazy var capturePreview: CapturePreview = {
         //CapturePreview(screenRecorder: self)
-        CapturePreview(screenRecorder: self) // metal to the pedal
+        CapturePreview() // metal to the pedal
     }()
     
     private var availableApps = [SCRunningApplication]()

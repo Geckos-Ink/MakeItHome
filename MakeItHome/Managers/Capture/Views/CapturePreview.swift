@@ -12,18 +12,17 @@ import SceneKit
 
 import OrderedCollections
 
-@available(macOS 12.3, *) public struct CapturePreview: NSViewRepresentable {
+public struct CapturePreview: NSViewRepresentable {
     // A layer that renders the video contents.
     @State var contentLayer : CALayer? = nil
-    internal var screenRecorder : ScreenRecorder
+    
     public let device = MTLCreateSystemDefaultDevice()
 
     public let captureView : CaptureView
     
     public var view : ContentView?
     
-    init(screenRecorder: ScreenRecorder) {
-        self.screenRecorder = screenRecorder        
+    init() {
         contentLayer = CALayer()
         
         captureView = CaptureView()
@@ -325,6 +324,31 @@ import OrderedCollections
             NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(self.goodNight), name: NSWorkspace.willSleepNotification, object: nil)
         }
         
+        ///
+        ///# Two-finger (scrolling) gesture
+        ///
+        override public func scrollWheel(with event: NSEvent) {
+            super.scrollWheel(with: event)
+            
+            // Check if the event is a two-finger scroll
+            if event.phase == .began || event.phase == .changed {
+                if event.deltaX != 0 || event.deltaY != 0 {
+                    handleTwoFingerScroll(event)
+                }
+            }
+        }
+
+        private func handleTwoFingerScroll(_ event: NSEvent) {
+            // Handle the two-finger scroll gesture here
+            print("Two-finger scroll detected: deltaX = \(event.deltaX), deltaY = \(event.deltaY)")
+            
+            curDisplay?.overrideAboveByDiff = (curDisplay?.side ?? 0 <= 1 ? event.deltaX : event.deltaY) * -20
+            curDisplay?.ignoreMousePositionForAboveBy = 10 // 10 ticks where the mouse position doesn't matters
+        }
+        ///
+        ///
+        ///
+        
         @objc func screenWake() {
             print("screen wake up")
             
@@ -395,6 +419,7 @@ import OrderedCollections
                         
                         if self.clickStartedHere == NSPoint.zero {
                             self.clickedOnApp = app.value
+                            Static.isDragginApp = true
                         }
                     }
                 }
@@ -418,6 +443,7 @@ import OrderedCollections
                 
                 self.clickStartedHere = CGPoint.zero
                 self.clickedOnApp = nil
+                Static.isDragginApp = false
             }
         }
         
@@ -675,6 +701,7 @@ import OrderedCollections
             public var spacing : CGFloat = 0
             public var isHorizontal : Bool = false
             public var requestedSize : CGFloat = 0
+            public var otherSideSize : CGFloat = 0
             public var large : CGFloat = 0
             
             public var inUsing = false
@@ -707,6 +734,8 @@ import OrderedCollections
                 ///
                 let size = parentView.pixelsToScene(pixels: 96)
                 let iconPlane = Plane(width: size, height: size)
+                
+                otherSideSize = size
                 
                 let iconImgSize = 128
                 let iconImg = self.app.runningApp.icon
@@ -761,9 +790,12 @@ import OrderedCollections
                     winPlane.addToNode(node: self.node)
                 }
                 
-                // Check particle system
-                if false { //TODO: enable on supported apps
-                    self.addAuroraBorealis()
+                // Check AppExtension
+                self.app.checkAppExtension()
+                if self.app.appExtension != nil { // enable only on supported apps
+                    delay(ms: 100){
+                        self.addAuroraBorealis()
+                    }
                 }
             }
             
@@ -778,11 +810,15 @@ import OrderedCollections
                 // Create a node for the aurora
                 auroraBorealisNode = SCNNode()
                 
-                addAuroraBorealisWithBlend(blend: .additive, z:3)
-                addAuroraBorealisWithBlend(blend: .subtract, z:2)
+                addAuroraBorealisWithBlend(blend: .additive, z:2)
+                addAuroraBorealisWithBlend(blend: .subtract, z:3)
+                
+                addAuroraBorealisWithBlend(blend: .additive, z:2, defaultColor: NSColor.green)
+                addAuroraBorealisWithBlend(blend: .additive, z:2, defaultColor: NSColor.purple)
             }
             
-            func addAuroraBorealisWithBlend(blend : SCNParticleBlendMode, z : CGFloat) {
+            static var auroraBorealisAnimationCache : [NSColor: NSImage] = [:]
+            func addAuroraBorealisWithBlend(blend : SCNParticleBlendMode, z : CGFloat, defaultColor: NSColor? = nil) {
                 let auroraNode = auroraBorealisNode!
                 
                 node.addChildNode(auroraNode)
@@ -796,21 +832,22 @@ import OrderedCollections
                 let particleSystem = SCNParticleSystem()
                 auroraBorealisParticleSystem = particleSystem
                 
-                let duration : CGFloat = 4
+                let duration : CGFloat = 4 * 2
                 
-                particleSystem.birthRate = 30
+                particleSystem.birthRate = 40
                 particleSystem.particleLifeSpan = duration
                 particleSystem.particleLifeSpanVariation = 0
                 particleSystem.emissionDuration = duration
                 particleSystem.loops = true
                 particleSystem.blendMode = blend
                 particleSystem.isAffectedByGravity = false
+                particleSystem.isLightingEnabled = true
                 
                 if isHorizontal{
-                    particleSystem.emitterShape = SCNPlane(width: requestedSize, height: parentView.onePixel)
+                    particleSystem.emitterShape = SCNPlane(width: otherSideSize, height: parentView.onePixel)
                 }
                 else {
-                    particleSystem.emitterShape = SCNPlane(width: parentView.onePixel, height: requestedSize)
+                    particleSystem.emitterShape = SCNPlane(width: parentView.onePixel, height: otherSideSize)
                 }
                 
                 // Color the particles to mimic the Aurora Borealis
@@ -818,15 +855,33 @@ import OrderedCollections
                 particleSystem.particleColor = app.iconAvgColor
                 
                 if blend == .subtract {
-                    particleSystem.particleColor = NSColor.blue
+                    particleSystem.particleColor = NSColor.purple
+                }
+                else if defaultColor != nil {
+                    particleSystem.particleColor = defaultColor!
+                }
+                else {
+                    //particleSystem.birthRate = 15
                 }
                 
                 particleSystem.particleColorVariation = SCNVector4(0.2, 0.5, 0.5, 0.5)
-                particleSystem.particleSize = self.parentView.onePixel * 50
-                particleSystem.acceleration.y = self.parentView.onePixel * 2
-                particleSystem.particleSizeVariation = self.parentView.onePixel * 10
-     
-                particleSystem.particleImage = NSImage(named: "AuroraBorealis")
+                particleSystem.particleSize = self.parentView.onePixel * 30
+                particleSystem.acceleration.y = self.parentView.onePixel * 1
+                
+                particleSystem.particleAngularVelocity = self.parentView.onePixel * 10
+                particleSystem.particleVelocity = self.parentView.onePixel * 2
+                particleSystem.particleAngularVelocityVariation = self.parentView.onePixel * 10
+                particleSystem.particleVelocityVariation = self.parentView.onePixel * 2
+                
+                particleSystem.particleSizeVariation = self.parentView.onePixel * 20
+                
+                let animationImg = NSImage(named: "AuroraBorealis")!
+                
+                if AppNode.auroraBorealisAnimationCache[particleSystem.particleColor] == nil{
+                    AppNode.auroraBorealisAnimationCache[particleSystem.particleColor] = applyColorFilter(to: animationImg, with: particleSystem.particleColor) ?? animationImg
+                }
+                                
+                particleSystem.particleImage = AppNode.auroraBorealisAnimationCache[particleSystem.particleColor]
                 particleSystem.imageSequenceColumnCount = 4
                 particleSystem.imageSequenceRowCount = 8
                 particleSystem.imageSequenceAnimationMode = .autoReverse
@@ -857,6 +912,8 @@ import OrderedCollections
                     
                     win.geometry.width = w
                     win.geometry.height = self.asIcon ? w : w / win.win.widthHeightRatio
+                    
+                    otherSideSize = win.geometry.height
                     
                     let disSpacing = win.geometry.height // width * dim * disRapp
                     if(disSpacing > spacing){
@@ -895,6 +952,8 @@ import OrderedCollections
                     
                     win.geometry.width = self.asIcon ? h : h * win.win.widthHeightRatio
                     win.geometry.height = h
+                    
+                    otherSideSize = win.geometry.width
                     
                     let disSpacing = win.geometry.width // height * dim * disRapp
                     if(disSpacing > spacing){

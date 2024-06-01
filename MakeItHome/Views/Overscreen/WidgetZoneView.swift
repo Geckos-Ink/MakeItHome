@@ -19,7 +19,7 @@ import Cocoa
 struct WidgetZoneView: View {
     @State private var isDropTargeted = false
     
-    @StateObject fileprivate var viewModel = ViewModel()
+    //@StateObject fileprivate var viewModel = ViewModel() // useless
     
     var body: some View {
         VStack{
@@ -102,13 +102,15 @@ public struct TopWebView: NSViewRepresentable {
     public func makeNSView(context: Context) -> WKWebView {
         Static.topBarWebViewRepresentable = self
         
-        if false {
-            wkwv.setValue(true, forKey: "drawsBackground")
-            wkwv.underPageBackgroundColor = NSColor(red: 0.1, green: 0.1, blue: 0.1, alpha: 1)
-        }
-        else { // transparent background (desktop)
-            wkwv.setValue(false, forKey: "drawsBackground")
-            wkwv.underPageBackgroundColor = NSColor.clear
+        if #available(macOS 12.0, *){
+            if false {
+                wkwv.setValue(true, forKey: "drawsBackground")
+                wkwv.underPageBackgroundColor = NSColor(red: 0.1, green: 0.1, blue: 0.1, alpha: 1)
+            }
+            else { // transparent background (desktop)
+                wkwv.setValue(false, forKey: "drawsBackground")
+                wkwv.underPageBackgroundColor = NSColor.clear
+            }
         }
         
         wkwv.registerForDraggedTypes([.fileURL, .png, .string])
@@ -426,6 +428,15 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
                     )
                 }
                 
+                if json?.type == "reload" {
+                    if let url = URL(string: "http://127.0.1:19494/widgets.html?height="+String(format: "%.1f", Static.OverscreenSizeTop)) {
+                        let urlReq = URLRequest(url: url)
+                        self.parent.wkwv.load(urlReq)
+                    } else {
+                        print("Invalid URL")
+                    }
+                }
+                
                 //todo: type == "widget", where to redirect the request directly to widget core(?)
                 
                 decisionHandler(.cancel)
@@ -544,6 +555,8 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
 }
 
 public class TopWKWV : WKWebView, NSDraggingSource{
+    
+    public override var acceptsFirstResponder: Bool { return true }
     
     public var httpServer : SimpleHTTPServer?
     

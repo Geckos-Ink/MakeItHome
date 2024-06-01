@@ -71,5 +71,41 @@ class MyAppleEvents {
         }
         return nil
     }
-    
+
+    func play() {
+        let script = """
+        tell application "Music"
+            play
+        end tell
+        """
+        executeAppleScript(script: script)
+    }
+
+    func stop() {
+        let script = """
+        tell application "Music"
+            stop
+        end tell
+        """
+        executeAppleScript(script: script)
+    }
+
+    func nextTrack() {
+        let script = """
+        tell application "Music"
+            next track
+        end tell
+        """
+        executeAppleScript(script: script)
+    }
+
+    func executeAppleScript(script: String) {
+        if let appleScript = NSAppleScript(source: script) {
+            var error: NSDictionary?
+            appleScript.executeAndReturnError(&error)
+            if let error = error {
+                print("Error: \(error)")
+            }
+        }
+    }
 }

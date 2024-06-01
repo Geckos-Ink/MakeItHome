@@ -1,12 +1,135 @@
 <html>
     <head>
+        <script src="./jquery-3.7.1.min.js"></script>
+
+        <link rel="stylesheet" href="./fontawesome/css/all.min.css">
+
+        <!-- OsenUI -->
+        <link rel="stylesheet" href="./onsenui/css/onsenui.css">
+        <link rel="stylesheet" href="./onsenui/css/dark-onsen-css-components.min.css">
+        <script src="./onsenui/js/onsenui.min.js"></script>
+
+        <!-- pickr (color picker) -->
+        <script src="./thirds/pickr.min.js"></script>
+        <link rel="stylesheet" href="./thirds/pickr.nano.min.css">
+
+        <!-- Bootstrap 5 -->
+        <link href="./thirds/bootstrap.min.css" rel="stylesheet">
+        <script src="./thirds/bootstrap.bundle.min.js"></script>
+
         <style>
-            body{
-                background-color: rgba(255,0,0,0.1);
+            @font-face {
+                font-family: Lato;
+                src: url(Lato-Light.ttf);
+                font-weight: normal;
+            }
+
+            @font-face {
+                font-family: Lato;
+                src: url(Lato-Regular.ttf);
+                font-weight: bold;
+            }
+
+            @font-face {
+                font-family: OxygenMono;
+                src: url(OxygenMono-Regular.ttf);
+                font-weight: normal;
+            }
+
+            body {
+                font-family: Lato;
+            }
+
+            .appExtension {
+                width: 100%;
+                height: 100%;
+            }
+
+            body {
+                background-color: rgba(0,0,0,0) !important;
+            }
+
+            .extensionPlaceholder {
+                margin: 10px;
+                font-weight: bold;
+                background-color: rgba(255,255,255,0.25);
             }
         </style>
     </head>
     <body>
-        Hello world!
+        
     </body>
+
+    <script>
+        let $body = $(document.body)
+        let vars = {}
+        let isHorizontal = true
+        let curBundleId = ''
+        let isShowing = false
+        let version = ''
+
+        function createAppExtension(bundleId){
+            bundleId = bundleId.replaceAll(".", "-")
+            let $ext = $('<div class="appExtension" id="'+bundleId+'"><div class="extensionPlaceholder">Extension not already loaded...</div></div>')
+            $body.append($ext)
+        }
+
+        function setContent(bundleId, content){
+            bundleId = bundleId.replaceAll(".", "-")
+            let $ext = $('#'+bundleId)
+            $ext.html(content)
+        }
+
+        function showAppExtension(bundleId, _isHorizontal=true){
+            isHorizontal = _isHorizontal
+
+            $(".appExtension").hide()
+
+            bundleId = bundleId.replaceAll(".", "-")
+            curBundleId = bundleId
+
+            let $ext = $('#'+bundleId)
+            $ext.show()
+
+            // Check for event
+            let appEvent = vars[bundleId+'_event_show']
+            if(appEvent)
+                appEvent()    
+            
+            isShowing = true
+        }
+
+        function exitingAppExtension(){
+            let appEvent = vars[curBundleId+'_event_exit']
+            if(appEvent)
+                appEvent() 
+            
+            isShowing = false
+        }
+
+        function setEvent(name, func){
+            vars[curBundleId+'_event_'+name] = name
+        }
+
+        function sendMessage(message) {
+            if(typeof(message) == 'object')
+                message = JSON.stringify(message)
+
+            console.log("sending message", message)
+            message = encodeURIComponent(message)        
+            window.location.href = "myapp://message?text=" + message;
+        }
+
+        function sendStatus(status){
+            sendMessage({type:'status', value: status})
+        }
+
+        function closeOverscreen(){
+            sendMessage({type:'closeOverscreen'})
+        }
+
+        function setVersion(v){
+            version = v
+        }
+    </script>
 </html>

@@ -226,6 +226,8 @@ let dontDrop = false // useless stuff (for the moment)
 
 let $webSearchFrame = $("#webSearchFrame")
 
+let toDoAtOpening = [] // events array
+
 function receiveMessage(message){
 
     console.log("received message: ", message)
@@ -398,7 +400,12 @@ function receiveMessage(message){
         //reset
         clearOnScrollable()
 
-        stopFullscreenMode();        
+        stopFullscreenMode();   
+        
+        for (let cbk of toDoAtOpening) {
+            cbk()
+        }
+        toDoAtOpening = []
     }
 
     if(message == 'closing'){
@@ -1249,6 +1256,14 @@ $('body').on('mousemove', (e)=>{
 /// Multi-sections managements
 ///
 
+function isElementDisplayed(element) {
+    // Traverse the element and its ancestors
+    return $(element).add($(element).parents()).filter(function () {
+        // Check if the element is hidden by checking its display property
+        return $(this).css('display') === 'none' || $(this).css('visibility') === 'hidden' || $(this).css('opacity') === '0';
+    }).length === 0;
+}
+
 function renderParagraph(id){
     let $id = $(id)
 
@@ -1286,10 +1301,24 @@ function renderParagraph(id){
             $menu.css('left', offset.left)
             $menu.css('width', $titles.width())
             $menu.css('height', $titles.height())
-
             clearInterval(interval)
         }
-    }, 100)
+    }, 50)
+
+    let displaying = false
+    setInterval(() => {
+        let disp = isElementDisplayed(id) 
+
+        if (disp) {
+            let off = $id.offset()
+            disp = off.top >= 0
+        }
+
+        if (displaying != disp) {
+            $menu.css('display', disp ? 'block' : 'none')
+            displaying = disp
+        }
+    }, 50)
     
     $contents.on('mousemove', (e)=>{
         let $conts = $contents //$id.find('.left')
@@ -1506,6 +1535,7 @@ let myWidgets = []
 let pickers = []
 let myWidgetsListLoad = []
 
+let firstMyWidgetsLoad = true
 function loadMyWidgets() {
     let _myWidgets = localStorage.getItem("myWidgets")
     if (_myWidgets) {
@@ -1521,18 +1551,20 @@ function loadMyWidgets() {
         let res = newWidget(widget)        
 
         let $widget = res[1]
-        $widget.find('.name').html(widget.title)
-        $widget.find('.url').val(widget.url)
 
         let picker = res[2]
         pickers.push(picker)
 
         setTimeout(() => {
             myWidgetsListLoad.push(() => {
-                picker.setColor(widget.color)
+                picker.setColor(widget.color)                
             })
+
+            picker.setColor(widget.color)
         }, 250)        
     }
+
+    firstMyWidgetsLoad = false
 }
 
 $('ons-list-item.myWidgets').on('click', (e) => {
@@ -1551,12 +1583,36 @@ function clearMyWidgets() {
     loadMyWidgets()
 }
 
-loadMyWidgets()
+loadMyWidgets()  
 
 function saveMyWidgets() {
     let json = JSON.stringify(myWidgets)
     console.log("saving", json)
     localStorage.setItem("myWidgets", json)
+}
+
+function checkMyWidgetTitle($leftMenu) {    
+    let $img = $leftMenu.find('.img')
+    let $text = $leftMenu.find('.text')
+
+    let int = setInterval(() => {        
+        if ($text.offset().left == $img.offset().left) {
+            let curSize = parseInt($text.css('font-size').replace('px', ''))
+            curSize--
+
+            if (curSize == 0) {
+                $text.css('font-size', '18px')
+                clearInterval(int)
+                toDoAtOpening.push(()=>{checkMyWidgetTitle($leftMenu)})
+            }
+            else {
+                $text.css('font-size', curSize + 'px')
+            }
+        }  
+        else {
+            clearInterval(int)
+        }
+    }, 10)    
 }
 
 function newWidget(widget=null) {
@@ -1577,7 +1633,7 @@ function newWidget(widget=null) {
 
     apps.push('myWidget' + num)
 
-    let $leftMenu = $('<div class="appItem myWidgetsItem" id="appItem-myWidget'+num+'" onclick="openApp(\'myWidget'+num+'\')"><div class="img"><i class="fa-solid fa-circle"></i></div> <div class="text">'+widget.title+'</div></div>')
+    let $leftMenu = $('<div class="appItem myWidgetsItem" id="appItem-myWidget' + num + '" onclick="openApp(\'myWidget' + num + '\')"><div class="img"><i class="fa-solid fa-circle"></i></div> <div class="text">' + widget.title + '</div></div>')    
     $leftMenu.find('.img').css('color', widget.color)
 
     let $app = $("#app-myWidget-template").clone()
@@ -1618,6 +1674,7 @@ function newWidget(widget=null) {
         console.log("input keydown", e)
         widget.title = $widget.find('.name').html()
         $leftMenu.find('.text').html(widget.title)
+        checkMyWidgetTitle($leftMenu)
 
         let newUrl = $widget.find('.url').val()
         if (newUrl != widget.url)
@@ -1626,11 +1683,42 @@ function newWidget(widget=null) {
         widget.url = newUrl
 
         saveMyWidgets()
-    })    
+    })   
+    
+    $app.find('.reload').on('click', (e) => {
+        $app.find('iframe').attr('src', widget.url)
+    })
 
     // Create app
     $('.leftMenu').append($leftMenu)
     $('.overscreen').append($app)
 
+    if (firstMyWidgetsLoad) {
+        toDoAtOpening.push(() => {
+            checkMyWidgetTitle($leftMenu)
+        })
+    }
+    else {
+        checkMyWidgetTitle($leftMenu)
+    }
+
+    $widget.find('.name').html(widget.title)
+    $widget.find('.url').val(widget.url)
+
     return [widget, $widget, picker]
 }
+
+// Spam discussions
+const enableSpamDiscussions = false
+if (enableSpamDiscussions) {
+    let mihDiscussionsSpammed = localStorage.getItem("myWidgets_mihDiscussions")
+    if (!mihDiscussionsSpammed) {
+        newWidget({ title: "MakeItHome Discussions", color: "#eb7d34", url: "https://github.com/Geckos-Ink/MakeItHome/discussions" })
+        saveMyWidgets()
+        localStorage.setItem("myWidgets_mihDiscussions", "true")
+    }
+}
+
+$("#reloadWidgetsZone").on('click', (e) => { 
+    sendMessage({type: "reload"})
+})
