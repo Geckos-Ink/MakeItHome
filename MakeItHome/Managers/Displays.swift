@@ -3297,7 +3297,7 @@ public class Display : Equatable {
                 
                 //print(mouse.x, "=>", moveTo.x, ", ", mouse.y, "=>", moveTo.y)
                             
-                if(abs(accumulatedAboveByDiff) > minMovement) && false{
+                if(abs(accumulatedAboveByDiff) > minMovement) {
                     if(sideSign == 0){
                         accumulatedAboveByDiff *= -1
                     }
