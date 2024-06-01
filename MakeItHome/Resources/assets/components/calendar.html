@@ -671,7 +671,7 @@
             clearCalendar()
 
             let firstDay = new Date(year,month,1)
-            let iday = firstDay.getDay() - 1
+            let iday = firstDay.getDay() - 1            
 
             //let headerHeight = $(".month-header").height() + $(".weekdays").height()
 
@@ -690,7 +690,10 @@
 
                 let date = new Date(firstDay);
                 days.push(date)
-                date.setDate(iday - day);
+                date.setDate(Math.abs(iday - day)*-1);
+
+                console.log("calendar other month", date, iday, day)
+
                 generateDay(div, date)
 
                 if(firstDate == null) firstDate = date                 
