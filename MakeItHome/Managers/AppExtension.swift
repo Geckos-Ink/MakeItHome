@@ -12,7 +12,12 @@ class AppExtensionManager {
     var apps : [String: AppExtension] = [:]
     
     func closedApp(bundleId: String){
-        apps.removeValue(forKey: bundleId)
+        let app = apps[bundleId]
+        
+        if app != nil {
+            app?.addMessage(msg: "appExtensionRemoved")
+            apps.removeValue(forKey: bundleId)
+        }
     }
     
     func httpRequest(url: String, dataReq: String?) -> AppExtensionMsg {
