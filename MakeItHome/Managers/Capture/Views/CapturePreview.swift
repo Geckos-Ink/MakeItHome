@@ -701,6 +701,7 @@ public struct CapturePreview: NSViewRepresentable {
             public var spacing : CGFloat = 0
             public var isHorizontal : Bool = false
             public var requestedSize : CGFloat = 0
+            public var otherSideSize : CGFloat = 0
             public var large : CGFloat = 0
             
             public var inUsing = false
@@ -733,6 +734,8 @@ public struct CapturePreview: NSViewRepresentable {
                 ///
                 let size = parentView.pixelsToScene(pixels: 96)
                 let iconPlane = Plane(width: size, height: size)
+                
+                otherSideSize = size
                 
                 let iconImgSize = 128
                 let iconImg = self.app.runningApp.icon
@@ -910,6 +913,8 @@ public struct CapturePreview: NSViewRepresentable {
                     win.geometry.width = w
                     win.geometry.height = self.asIcon ? w : w / win.win.widthHeightRatio
                     
+                    otherSideSize = win.geometry.height
+                    
                     let disSpacing = win.geometry.height // width * dim * disRapp
                     if(disSpacing > spacing){
                         spacing = disSpacing
@@ -947,6 +952,8 @@ public struct CapturePreview: NSViewRepresentable {
                     
                     win.geometry.width = self.asIcon ? h : h * win.win.widthHeightRatio
                     win.geometry.height = h
+                    
+                    otherSideSize = win.geometry.width
                     
                     let disSpacing = win.geometry.width // height * dim * disRapp
                     if(disSpacing > spacing){
