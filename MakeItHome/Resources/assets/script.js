@@ -1693,3 +1693,7 @@ if (enableSpamDiscussions) {
         localStorage.setItem("myWidgets_mihDiscussions", "true")
     }
 }
+
+$("#reloadWidgetsZone").on('click', (e) => { 
+    sendMessage({type: "reload"})
+})

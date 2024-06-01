@@ -428,6 +428,15 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
                     )
                 }
                 
+                if json?.type == "reload" {
+                    if let url = URL(string: "http://127.0.1:19494/widgets.html?height="+String(format: "%.1f", Static.OverscreenSizeTop)) {
+                        let urlReq = URLRequest(url: url)
+                        self.parent.wkwv.load(urlReq)
+                    } else {
+                        print("Invalid URL")
+                    }
+                }
+                
                 //todo: type == "widget", where to redirect the request directly to widget core(?)
                 
                 decisionHandler(.cancel)

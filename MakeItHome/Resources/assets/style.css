@@ -788,3 +788,13 @@ ons-list-item label:nth-child(1) {
 
   font-size: 20px;
 }
+
+#reloadWidgetsZone{
+  padding: 5px;
+  margin: 5px;
+  font-weight: bold;
+  background-color: #de3f53;
+  border: 1px solid #ff6550;
+  border-radius: 10px;
+  cursor: pointer;
+}
