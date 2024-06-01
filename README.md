@@ -16,6 +16,7 @@ Current release version: 1.9.5
 ## Some messages for new and older users
 
 - The application uses Screen Recording to work and to create the magic. Don't be scared, the recorded images are not saved on storage nor sent through internet.
+- Don't be scared neither by the "Security" issues presented by GitHub: are all related to the Angular project used for the Notes and Tasks in the Widgets Zone, and are incosistent issues in the practice. Anyway, it's important to check sometimes issues related to the Swift code.
 
 ## How to
 <center>
@@ -55,7 +56,11 @@ These objectives are:
 - Widgets from external apps (todo)
 - App Extension: an application can extend its icon in the windows switching area. The work is in progress: when an application has the extension area, an aurora borealis is generated at the base of its preview. Then, if the user "break" more the screen boundaries on the aurora's side, he will access a doubled overscreen with a WebView where the application can render what he wants. My first intention about using this feature is to create a browser extension and create a rapid tab switching with web page preview. But an application is free to set what it wants: for example a music player app can display the songs queue and permit the rapid change of song. Respect than the Widgets Zone, the App Extension has no design structure, so all focus is about the APIs and the communication protocol between MakeItHome and the app. I aim to implement the App Extension "theoretically" with an update only with a demo app and documentation and then create the browsers extensions... well, when I'll have time. 
 
-As conclusion, all 1.9.x versions are, yes, essential bug fixing but also mainly features introduction. I aim to new features' stability on version 2.0.x
+<img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/appExtensionDemo.jpg?raw=true">
+<i>A preview of App Extension area, with the aurora borealis, an hello world page with a light red background color to highlight the WebView area.</i>
+
+<hr>
+In conclusion, all 1.9.x versions are, yes, essential bug fixing but also mainly features introduction. I aim to new features' stability on version 2.0.x
 
 ## Notes
 This project deserves a better documentation, most of all seen the fact that soon I should publish a new update, at least to improve the user experience and to complete the widgets zone. 
