@@ -11,6 +11,10 @@ import Foundation
 class AppExtensionManager {
     var apps : [String: AppExtension] = [:]
     
+    func closedApp(bundleId: String){
+        apps.removeValue(forKey: bundleId)
+    }
+    
     func httpRequest(url: String, dataReq: String?) -> AppExtensionMsg {
         var reply = AppExtensionMsg()
         
@@ -37,6 +41,7 @@ class AppExtensionManager {
                 app = AppExtension(bundleId: bundleId)
                 apps[bundleId] = app
                 
+                reply.secret = app?.secret
                 reply.description = "appConnected"
             }
             else {
@@ -46,16 +51,25 @@ class AppExtensionManager {
             reply.status = "ok"
             return reply
         }
-        
-        if req.hasPrefix("/setHtmlContent"){
-            print("set html content")
-            
+        else {
             if app == nil {
                 reply.status = "error"
-                reply.description = "App not connected"
+                reply.description = "appNotConnected"
                 return reply
             }
             
+            let secret = query!["secret"]
+            
+            if secret == nil || secret != app?.secret {
+                reply.status = "error"
+                reply.description = "invalidSecret"
+                return reply
+            }
+        }
+        
+        if req.hasPrefix("/setHtmlContent"){
+            print("set html content")
+
             if dataReq == nil {
                 reply.status = "error"
                 reply.description = "POST body missing"
@@ -82,11 +96,6 @@ class AppExtensionManager {
         }
         
         if req.hasPrefix("/sendJSMessage"){
-            if app == nil {
-                reply.status = "error"
-                reply.description = "App not connected"
-                return reply
-            }
             
             if dataReq == nil {
                 reply.status = "error"
@@ -159,12 +168,15 @@ struct AppExtensionMsg : Codable {
     var status: String?
     var description: String?
     
+    var secret: String?
+    
     var appExtensionIsShowing : Bool?
     var statusMessages : [String]?
 }
 
 class AppExtension {
     let bundleId : String
+    let secret : String
     var app : Display.AppWindows?
     var htmlContent : String = ""
     
@@ -175,6 +187,7 @@ class AppExtension {
     
     init(bundleId : String){
         self.bundleId = bundleId
+        self.secret = generateRandomString(length: 64)
         
         Static.AppExtensionWebView?.genericEvaluateJavascript(script: "createAppExtension('\(bundleId)');")
     }

@@ -665,6 +665,10 @@ public class Display : Equatable {
             windows.removeAll()
             
             display.apps.removeValue(forKey: id)
+            
+            if self.appExtension != nil {
+                Static.appExtensionManager?.closedApp(bundleId: self.bundleId!)
+            }
         }
         
         public func hasLockedBy() -> Bool{
