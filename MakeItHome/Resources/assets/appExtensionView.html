@@ -48,6 +48,12 @@
             body {
                 background-color: rgba(0,0,0,0) !important;
             }
+
+            .extensionPlaceholder {
+                margin: 10px;
+                font-weight: bold;
+                background-color: rgba(255,255,255,0.25);
+            }
         </style>
     </head>
     <body>
@@ -64,7 +70,7 @@
 
         function createAppExtension(bundleId){
             bundleId = bundleId.replaceAll(".", "-")
-            let $ext = $('<div class="appExtension" id="'+bundleId+'">Extension not already loaded...</div>')
+            let $ext = $('<div class="appExtension" id="'+bundleId+'"><div class="extensionPlaceholder">Extension not already loaded...</div></div>')
             $body.append($ext)
         }
 
