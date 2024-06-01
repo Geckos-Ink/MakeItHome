@@ -1694,9 +1694,9 @@ function newWidget(widget=null) {
     $('.overscreen').append($app)
 
     if (firstMyWidgetsLoad) {
-        setTimeout(() => {
+        toDoAtOpening.push(() => {
             checkMyWidgetTitle($leftMenu)
-        }, 1000)
+        })
     }
     else {
         checkMyWidgetTitle($leftMenu)
