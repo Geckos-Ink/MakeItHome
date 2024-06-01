@@ -82,7 +82,9 @@ I try to make a to do list as memorandum:
 
 <!--Currently I'm working on version **1.9.6** on the homonymous branch.-->
 
-<b>I have a huge problem about testing before its release. If I create a new feature, this mathematically bring a new bug that I don't notice. I'm looking for tester to make more stable the releases.</b>
+<b>I have a huge problem about testing before its release. If I create a new feature, this mathematically brings a new bug that I don't notice. I'm looking for tester to make more stable the releases.</b>
+
+SonarCloud link: <a>https://sonarcloud.io/project/overview?id=Geckos-Ink_MakeItHome</a>
 
 ### Credits
 Riccardo Cecchini \<rcecchini.ds@gmail.com> cekkr@github
