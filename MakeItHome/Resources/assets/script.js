@@ -1601,7 +1601,7 @@ function checkMyWidgetTitle($leftMenu) {
             curSize--
 
             if (curSize == 0) {
-                $text.css('font-size', '12px')
+                $text.css('font-size', '18px')
                 clearInterval(int)
                 toDoAtOpening.push(()=>{checkMyWidgetTitle($leftMenu)})
             }
