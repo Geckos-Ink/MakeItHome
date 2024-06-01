@@ -226,6 +226,8 @@ let dontDrop = false // useless stuff (for the moment)
 
 let $webSearchFrame = $("#webSearchFrame")
 
+let toDoAtOpening = [] // events array
+
 function receiveMessage(message){
 
     console.log("received message: ", message)
@@ -398,7 +400,12 @@ function receiveMessage(message){
         //reset
         clearOnScrollable()
 
-        stopFullscreenMode();        
+        stopFullscreenMode();   
+        
+        for (let cbk of toDoAtOpening) {
+            cbk()
+        }
+        toDoAtOpening = []
     }
 
     if(message == 'closing'){
@@ -1528,6 +1535,7 @@ let myWidgets = []
 let pickers = []
 let myWidgetsListLoad = []
 
+let firstMyWidgetsLoad = true
 function loadMyWidgets() {
     let _myWidgets = localStorage.getItem("myWidgets")
     if (_myWidgets) {
@@ -1555,6 +1563,8 @@ function loadMyWidgets() {
             picker.setColor(widget.color)
         }, 250)        
     }
+
+    firstMyWidgetsLoad = false
 }
 
 $('ons-list-item.myWidgets').on('click', (e) => {
@@ -1573,7 +1583,7 @@ function clearMyWidgets() {
     loadMyWidgets()
 }
 
-loadMyWidgets()
+loadMyWidgets()  
 
 function saveMyWidgets() {
     let json = JSON.stringify(myWidgets)
@@ -1581,15 +1591,23 @@ function saveMyWidgets() {
     localStorage.setItem("myWidgets", json)
 }
 
-function checkMyWidgetTitle($leftMenu) {
+function checkMyWidgetTitle($leftMenu) {    
     let $img = $leftMenu.find('.img')
     let $text = $leftMenu.find('.text')
 
-    let int = setInterval(() => {
+    let int = setInterval(() => {        
         if ($text.offset().left == $img.offset().left) {
             let curSize = parseInt($text.css('font-size').replace('px', ''))
             curSize--
-            $text.css('font-size', curSize + 'px')
+
+            if (curSize == 0) {
+                $text.css('font-size', '12px')
+                clearInterval(int)
+                toDoAtOpening.push(()=>{checkMyWidgetTitle($leftMenu)})
+            }
+            else {
+                $text.css('font-size', curSize + 'px')
+            }
         }  
         else {
             clearInterval(int)
@@ -1675,7 +1693,14 @@ function newWidget(widget=null) {
     $('.leftMenu').append($leftMenu)
     $('.overscreen').append($app)
 
-    checkMyWidgetTitle($leftMenu)
+    if (firstMyWidgetsLoad) {
+        setTimeout(() => {
+            checkMyWidgetTitle($leftMenu)
+        }, 1000)
+    }
+    else {
+        checkMyWidgetTitle($leftMenu)
+    }
 
     $widget.find('.name').html(widget.title)
     $widget.find('.url').val(widget.url)
