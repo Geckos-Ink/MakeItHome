@@ -93,6 +93,9 @@ class AppExtensionManager {
             }
              
             app?.setHTMLContent(content: content!)
+            
+            reply.status = "ok"
+            return reply
         }
         
         if req.hasPrefix("/sendJSMessage"){
