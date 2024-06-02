@@ -119,8 +119,6 @@
 		8B74406328E6A89B00E7AD36 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8B74406628E6A89B00E7AD36 /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		8B74406828E6A89B00E7AD36 /* MakeItHome.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MakeItHome.entitlements; sourceTree = "<group>"; };
-		8B74406D28E6A89B00E7AD36 /* MakeItHomeTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MakeItHomeTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		8B74407728E6A89B00E7AD36 /* MakeItHomeUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MakeItHomeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		8B761379296D670A00425767 /* UpdateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UpdateView.swift; sourceTree = "<group>"; };
 		8B81DDBE291B1D0A00B3E3CC /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
 		8B81DDC02927FF5300B3E3CC /* GeneralFuncs.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralFuncs.swift; sourceTree = "<group>"; };
@@ -151,20 +149,6 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		8B74406A28E6A89B00E7AD36 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		8B74407428E6A89B00E7AD36 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		8BB0E3A0293DC881006DA326 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -259,8 +243,6 @@
 		8B74405D28E6A89800E7AD36 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				8B74406D28E6A89B00E7AD36 /* MakeItHomeTests.xctest */,
-				8B74407728E6A89B00E7AD36 /* MakeItHomeUITests.xctest */,
 				8BB0E3B2293DC881006DA326 /* MakeItHome.app */,
 			);
 			name = Products;
@@ -392,40 +374,6 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		8B74406C28E6A89B00E7AD36 /* MakeItHomeTests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 8B74408428E6A89B00E7AD36 /* Build configuration list for PBXNativeTarget "MakeItHomeTests" */;
-			buildPhases = (
-				8B74406928E6A89B00E7AD36 /* Sources */,
-				8B74406A28E6A89B00E7AD36 /* Frameworks */,
-				8B74406B28E6A89B00E7AD36 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = MakeItHomeTests;
-			productName = MakeItHomeTests;
-			productReference = 8B74406D28E6A89B00E7AD36 /* MakeItHomeTests.xctest */;
-			productType = "com.apple.product-type.bundle.unit-test";
-		};
-		8B74407628E6A89B00E7AD36 /* MakeItHomeUITests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 8B74408728E6A89B00E7AD36 /* Build configuration list for PBXNativeTarget "MakeItHomeUITests" */;
-			buildPhases = (
-				8B74407328E6A89B00E7AD36 /* Sources */,
-				8B74407428E6A89B00E7AD36 /* Frameworks */,
-				8B74407528E6A89B00E7AD36 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = MakeItHomeUITests;
-			productName = MakeItHomeUITests;
-			productReference = 8B74407728E6A89B00E7AD36 /* MakeItHomeUITests.xctest */;
-			productType = "com.apple.product-type.bundle.ui-testing";
-		};
 		8BB0E382293DC881006DA326 /* MakeItHome */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 8BB0E3AF293DC881006DA326 /* Build configuration list for PBXNativeTarget "MakeItHome" */;
@@ -460,16 +408,6 @@
 				LastSwiftUpdateCheck = 1410;
 				LastUpgradeCheck = 1520;
 				ORGANIZATIONNAME = geckos.ink;
-				TargetAttributes = {
-					8B74406C28E6A89B00E7AD36 = {
-						CreatedOnToolsVersion = 14.1;
-						TestTargetID = 8B74405B28E6A89700E7AD36;
-					};
-					8B74407628E6A89B00E7AD36 = {
-						CreatedOnToolsVersion = 14.1;
-						TestTargetID = 8B74405B28E6A89700E7AD36;
-					};
-				};
 			};
 			buildConfigurationList = 8B74405728E6A89700E7AD36 /* Build configuration list for PBXProject "MakeItHome" */;
 			compatibilityVersion = "Xcode 15.0";
@@ -500,27 +438,11 @@
 			projectRoot = "";
 			targets = (
 				8BB0E382293DC881006DA326 /* MakeItHome */,
-				8B74406C28E6A89B00E7AD36 /* MakeItHomeTests */,
-				8B74407628E6A89B00E7AD36 /* MakeItHomeUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		8B74406B28E6A89B00E7AD36 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		8B74407528E6A89B00E7AD36 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		8BB0E3A8293DC881006DA326 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -546,20 +468,6 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		8B74406928E6A89B00E7AD36 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		8B74407328E6A89B00E7AD36 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		8BB0E386293DC881006DA326 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -734,82 +642,6 @@
 			};
 			name = Release;
 		};
-		8B74408528E6A89B00E7AD36 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = UYSXKZ8U4Z;
-				GENERATE_INFOPLIST_FILE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = ink.geckos.MakeItHomeTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MakeItHome.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MakeItHome";
-			};
-			name = Debug;
-		};
-		8B74408628E6A89B00E7AD36 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
-				BUNDLE_LOADER = "$(TEST_HOST)";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = UYSXKZ8U4Z;
-				GENERATE_INFOPLIST_FILE = YES;
-				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = ink.geckos.MakeItHomeTests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/MakeItHome.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/MakeItHome";
-			};
-			name = Release;
-		};
-		8B74408828E6A89B00E7AD36 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = UYSXKZ8U4Z;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = ink.geckos.MakeItHomeUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TEST_TARGET_NAME = MakeItHome;
-			};
-			name = Debug;
-		};
-		8B74408928E6A89B00E7AD36 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = UYSXKZ8U4Z;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = ink.geckos.MakeItHomeUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
-				TEST_TARGET_NAME = MakeItHome;
-			};
-			name = Release;
-		};
 		8BB0E3B0293DC881006DA326 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -892,24 +724,6 @@
 			buildConfigurations = (
 				8B74407F28E6A89B00E7AD36 /* Debug */,
 				8B74408028E6A89B00E7AD36 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		8B74408428E6A89B00E7AD36 /* Build configuration list for PBXNativeTarget "MakeItHomeTests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				8B74408528E6A89B00E7AD36 /* Debug */,
-				8B74408628E6A89B00E7AD36 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
-		8B74408728E6A89B00E7AD36 /* Build configuration list for PBXNativeTarget "MakeItHomeUITests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				8B74408828E6A89B00E7AD36 /* Debug */,
-				8B74408928E6A89B00E7AD36 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
