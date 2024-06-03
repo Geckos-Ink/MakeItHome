@@ -11,7 +11,7 @@
 
 <img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_0.gif?raw=true">
 
-Current release version: 1.9.5
+Current release version: 1.9.6
 
 ## Some messages for new and older users
 
@@ -80,7 +80,7 @@ I try to make a to do list as memorandum:
 ## Development guide
 - The top widgets zone web assets if located at MakeItHome/Resources/assets/, instead the Swift controller is located at MakeItHome/Views/Overscreen/WidgetZoneView.swift
 
-<!--Currently I'm working on version **1.9.6** on the homonymous branch.-->
+Currently I'm working on version **1.9.7** on the homonymous branch.
 
 <b>I have a huge problem about testing before its release. If I create a new feature, this mathematically brings a new bug that I don't notice. I'm looking for tester to make more stable the releases.</b>
 
