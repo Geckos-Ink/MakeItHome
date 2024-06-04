@@ -59,6 +59,8 @@ These objectives are:
 <img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/appExtensionDemo.jpg?raw=true">
 <i>A preview of App Extension area, with the aurora borealis, an hello world page with a light red background color to highlight the WebView area.</i>
 
+The App Extension is implemented in current release of MakeItHome. As soon as possible I'll write a tutorial about it.
+
 <hr>
 In conclusion, all 1.9.x versions are, yes, essential bug fixing but also mainly features introduction. I aim to new features' stability on version 2.0.x
 
