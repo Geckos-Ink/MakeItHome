@@ -70,6 +70,9 @@
 
         function createAppExtension(bundleId){
             bundleId = bundleId.replaceAll(".", "-")
+
+            $("#"+bundleId).remove() // ensure there are no duplicates
+
             let $ext = $('<div class="appExtension" id="'+bundleId+'"><div class="extensionPlaceholder">Extension not already loaded...</div></div>')
             $body.append($ext)
         }
