@@ -77,6 +77,8 @@
         function setContent(bundleId, content){
             bundleId = bundleId.replaceAll(".", "-")
             let $ext = $('#'+bundleId)
+
+            content = atob(content)
             $ext.html(content)
         }
 

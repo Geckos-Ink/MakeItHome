@@ -182,6 +182,26 @@ struct AppExtensionMsg : Codable {
     var statusMessages : [String]?
 }
 
+// another function in the spaghetti
+func escapeSingleQuotes(in input: String) -> String {
+    // Regular expression to match single quotes not preceded by a backslash
+    let pattern = "(?<!\\\\)'"
+    
+    // Create a regular expression object
+    guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else {
+        // Return the original string if regex creation fails
+        return input
+    }
+    
+    // Define the range for the whole string
+    let range = NSRange(input.startIndex..<input.endIndex, in: input)
+    
+    // Replace matches using the regular expression
+    let escapedString = regex.stringByReplacingMatches(in: input, options: [], range: range, withTemplate: "\\\\'")
+    
+    return escapedString
+}
+
 class AppExtension {
     let bundleId : String
     let secret : String
@@ -203,7 +223,7 @@ class AppExtension {
     func setHTMLContent(content: String){
         htmlContent = content
         
-        var escapedContent = content.replacingOccurrences(of: "'", with: "\\'")
+        let escapedContent = escapeSingleQuotes(in: content) //content.replacingOccurrences(of: "'", with: "\\'")
         Static.AppExtensionWebView?.genericEvaluateJavascript(script: "setContent('\(bundleId)', '\(escapedContent)');")
     }
     
