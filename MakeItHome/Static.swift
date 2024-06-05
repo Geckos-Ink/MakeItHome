@@ -242,6 +242,13 @@ public class Static {
             
             User.set(true, forKey: "UncleNerdBanner")
         }
+        else {
+            if !Static.OpenAtStartup {
+                delay(ms: 1000){
+                    showStartAtLoginAlert()
+                }
+            }
+        }
     }
     
     // Debug verboses
