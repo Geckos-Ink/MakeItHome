@@ -153,10 +153,10 @@ class AppExtensionManager {
             var isShowing = app!.imShowing()
             
             var maxCycles = 0
-            while wasShowing == isShowing && !app!.hasStatusUpdate && maxCycles < 100{
+            while wasShowing == isShowing && !app!.hasStatusUpdate && maxCycles < 10{
                 isShowing = app!.imShowing()
                 maxCycles += 1
-                Thread.sleep(forTimeInterval: 0.1)
+                Thread.sleep(forTimeInterval: 0.01)
             }
             
             reply.appExtensionIsShowing = isShowing
