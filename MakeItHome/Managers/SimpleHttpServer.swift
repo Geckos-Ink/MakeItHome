@@ -169,9 +169,8 @@ public class SimpleHTTPServer {
     }
 
     private func handleNewConnection(connection: NWConnection) {
-        
         var receivedData = Data()
-
+        
         func runOnComplete(){
             guard let r = String(data: receivedData, encoding: .utf8) else {
                 let respData = "HTTP/1.1 400 Bad Request\r\n\r\n".data(using: .utf8)!
@@ -180,7 +179,7 @@ public class SimpleHTTPServer {
                 }))
                 return
             }
-            
+                        
             DispatchQueue.global(qos: .background).async {
                 let response = self.handleRequest(request: r)
                 
@@ -220,9 +219,9 @@ public class SimpleHTTPServer {
                 }
             }
         }
-
+        
         receiveNextChunk()
-        connection.start(queue: .main)               
+        connection.start(queue: DispatchQueue.global(qos: .background))
     }
     
     private var savedMimes : [String:String] = [:]
