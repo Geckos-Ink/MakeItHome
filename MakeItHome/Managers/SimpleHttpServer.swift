@@ -122,6 +122,7 @@ func jsonStringToDictionary(jsonString: String) -> [String: Any?]? {
             return nil
         }
     } catch {
+        print(jsonString)
         print("Error deserializing JSON data: \(error)")
         return nil
     }
@@ -188,6 +189,7 @@ public class SimpleHTTPServer {
                     }
                     
                     request += r
+                    print("request length: ", request.count)
                     
                     if(request.contains("\r\n\r\n")){
                         let response = self.handleRequest(request: request)
@@ -196,12 +198,14 @@ public class SimpleHTTPServer {
                             return
                         }
                         
+                        request = ""
+                        
                         connection.send(content: response, completion: .contentProcessed({ _ in
                             connection.cancel()
                         }))
                     }
                     
-                } else if isComplete { // ?? explain this
+                } else if isComplete {
                     connection.cancel()
                 } else if let error = error {
                     print("Error receiving data: \(error)")
@@ -417,11 +421,16 @@ public class SimpleHTTPServer {
             if(dataParts.count > 1){
                 dataReq = dataParts[1]
                 
-                let strLength = getHeader(lines: lines.map { String($0) }, property: "Content-Length") ?? "0"
-                let len = Int(strLength) ?? 0
-                
-                if dataReq?.count ?? 0 < len {
-                    return nil
+                let dataReqCount = dataReq?.count ?? 0
+     
+                if false {
+                    let strLength = getHeader(lines: lines.map { String($0) }, property: "Body-Length") ?? "0"
+                    let len = Int(strLength) ?? 0
+                    
+                    if dataReqCount ?? 0 < len {
+                        //print("given POST data", dataReq)
+                        return nil
+                    }
                 }
             }
             else {

@@ -85,7 +85,7 @@ class AppExtensionManager {
             
             if body == nil {
                 reply.status = "error"
-                reply.description = "Invalid body JSON"
+                reply.description = "invalidJsonBody"
                 return reply
             }
             
@@ -115,7 +115,7 @@ class AppExtensionManager {
             
             if body == nil {
                 reply.status = "error"
-                reply.description = "Invalid body JSON"
+                reply.description = "invalidJsonBody"
                 return reply
             }
             
