@@ -175,7 +175,7 @@ public class SimpleHTTPServer {
         var request : String = ""
         
         connection.start(queue: .main)
-        connection.receive(minimumIncompleteLength: 1, maximumLength: Int.max) { (data, _, isComplete, error) in
+        connection.receive(minimumIncompleteLength: 0, maximumLength: Int.max) { (data, _, isComplete, error) in
             DispatchQueue.global(qos: .background).async {
                 if let data = data, !data.isEmpty {
                     
@@ -191,12 +191,17 @@ public class SimpleHTTPServer {
                     
                     if(request.contains("\r\n\r\n")){
                         let response = self.handleRequest(request: request)
+                        
+                        if response == nil {
+                            return
+                        }
+                        
                         connection.send(content: response, completion: .contentProcessed({ _ in
                             connection.cancel()
                         }))
                     }
                     
-                } else if isComplete {
+                } else if isComplete { // ?? explain this
                     connection.cancel()
                 } else if let error = error {
                     print("Error receiving data: \(error)")
@@ -372,7 +377,22 @@ public class SimpleHTTPServer {
         return nil
     }
     
-    private func handleRequest(request: String) -> Data {
+    private func getHeader(lines : [String], property: String) -> String?{
+        for line in lines {
+            if line.isEmpty {
+                break
+            }
+            
+            if line.starts(with: property){
+                let parts = line.components(separatedBy: ": ")
+                return parts.last
+            }
+        }
+        
+        return nil
+    }
+    
+    private func handleRequest(request: String) -> Data? {
         let lines = request.split(whereSeparator: \.isNewline)
         
         guard let firstLine = lines.first else {
@@ -396,9 +416,17 @@ public class SimpleHTTPServer {
             
             if(dataParts.count > 1){
                 dataReq = dataParts[1]
+                
+                let strLength = getHeader(lines: lines.map { String($0) }, property: "Content-Length") ?? "0"
+                let len = Int(strLength) ?? 0
+                
+                if dataReq?.count ?? 0 < len {
+                    return nil
+                }
             }
             else {
                 print("empty post...")
+                return nil
             }
         }
         
