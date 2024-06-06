@@ -179,7 +179,7 @@ public class SimpleHTTPServer {
                 }))
                 return
             }
-                        
+                   
             DispatchQueue.global(qos: .background).async {
                 let response = self.handleRequest(request: r)
                 
@@ -195,18 +195,17 @@ public class SimpleHTTPServer {
         }
         
         func receiveNextChunk() {
-            var lastMsg = Date.now.timeIntervalSince1970
             connection.receive(minimumIncompleteLength: 1, maximumLength: .max) { data, _, isComplete, error in
                 if let data = data, !data.isEmpty {
                     receivedData.append(data)
                     
                     let waitForIt = 25
+                    let lastMsg = Date.now.timeIntervalSince1970
                     delay(ms: waitForIt){
                         var now = Date.now.timeIntervalSince1970
                         if (now - lastMsg) > (Double(waitForIt) / 1000) {
                             runOnComplete()
                         }
-                        lastMsg = now
                     }
                 }
                 if isComplete {
@@ -221,6 +220,7 @@ public class SimpleHTTPServer {
         }
         
         receiveNextChunk()
+        
         connection.start(queue: DispatchQueue.global(qos: .background))
     }
     
