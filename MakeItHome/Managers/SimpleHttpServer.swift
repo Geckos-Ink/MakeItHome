@@ -199,11 +199,11 @@ public class SimpleHTTPServer {
                 if let data = data, !data.isEmpty {
                     receivedData.append(data)
                     
-                    let waitForIt = 25
+                    let waitForIt = 50
                     let lastMsg = Date.now.timeIntervalSince1970
                     delay(ms: waitForIt){
                         var now = Date.now.timeIntervalSince1970
-                        if (now - lastMsg) > (Double(waitForIt) / 1000) {
+                        if (now - lastMsg) >= (Double(waitForIt) / (1000*2)) {
                             runOnComplete()
                         }
                     }
