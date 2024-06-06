@@ -190,7 +190,14 @@ public class SimpleHTTPServer {
     private func handleNewConnection(connection: NWConnection) {
         var receivedData = Data()
         
+        var completed = false
         func runOnComplete(){
+            if completed {
+                return
+            }
+            
+            completed = true
+            
             guard let r = String(data: receivedData, encoding: .utf8) else {
                 let respData = "HTTP/1.1 400 Bad Request\r\n\r\n".data(using: .utf8)!
                 connection.send(content: respData, completion: .contentProcessed({ _ in
@@ -213,16 +220,17 @@ public class SimpleHTTPServer {
             }
         }
         
+        var lastMsg : Double = 0
         func receiveNextChunk() {
             connection.receive(minimumIncompleteLength: 1, maximumLength: .max) { data, _, isComplete, error in
                 if let data = data, !data.isEmpty {
                     receivedData.append(data)
                     
                     let waitForIt = 50
-                    let lastMsg = Date.now.timeIntervalSince1970
+                    lastMsg = Date.now.timeIntervalSince1970
                     delay(ms: waitForIt){
                         var now = Date.now.timeIntervalSince1970
-                        if (now - lastMsg) >= (Double(waitForIt) / (1000*2)) {
+                        if (now - lastMsg) >= (Double(waitForIt) / (1000)) {
                             runOnComplete()
                         }
                     }
@@ -239,6 +247,10 @@ public class SimpleHTTPServer {
         }
         
         receiveNextChunk()
+        
+        delay(ms: 250){
+            runOnComplete()
+        }
         
         connection.start(queue: DispatchQueue.global(qos: .background))
     }
