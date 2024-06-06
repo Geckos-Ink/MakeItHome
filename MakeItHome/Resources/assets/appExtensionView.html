@@ -116,13 +116,16 @@
             vars[curBundleId+'_event_'+name] = func
         }
 
-        function sendMessage(message) {
+        function sendMessage(message) {            
             if(typeof(message) == 'object')
                 message = JSON.stringify(message)
 
             console.log("sending message", message)
             message = encodeURIComponent(message)        
-            window.location.href = "myapp://message?text=" + message;
+
+            setTimeout(()=>{
+                window.location.href = "myapp://message?text=" + message;  
+            }, Math.ceil(Math.random()*25))            
         }
 
         function sendStatus(status){
