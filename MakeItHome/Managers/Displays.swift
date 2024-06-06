@@ -611,6 +611,7 @@ public class Display : Equatable {
         
         public var title : String = ""
         public var windows : [Int: Window] = [:]
+        public var lastWindow : Window?
         
         public var avgSelect : Double = 0
         public var avgTime : Double = NSDate().timeIntervalSince1970
@@ -698,6 +699,7 @@ public class Display : Equatable {
                 //display.curFrontApp = runningApp // let it know by itself
                 display.prevFrontWindow = display.curFrontWindow
                 display.curFrontWindow = win
+                self.lastWindow = win
                 
                 if win!.app == nil {
                     #if DEBUG
@@ -1665,6 +1667,7 @@ public class Display : Equatable {
                 prevFrontWindow = curFrontWindow
                 
                 self.curFrontWindow = appWin
+                appWin.app?.lastWindow = appWin
                 
                 appWin.isFullscreen = self.isFullscreen
                 

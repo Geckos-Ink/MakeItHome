@@ -146,6 +146,11 @@ public class AppExtensionWebViewCoordinator: NSObject, WKNavigationDelegate, Dra
                     Static.curDisplay?.ignoreMousePositionForAboveBy = 10
                 }
                 
+                if json?.type == "focusOnMe" {
+                    print("focus on extension's app")
+                    Static.LastAppPreviewMouseOver?.activate(win: Static.LastAppPreviewMouseOver?.lastWindow, force: true)
+                }
+                
                 //...
                 
                 decisionHandler(.cancel)
