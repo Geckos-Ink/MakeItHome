@@ -170,49 +170,59 @@ public class SimpleHTTPServer {
 
     private func handleNewConnection(connection: NWConnection) {
         
-        ///
-        ///
-        ///
-        var request : String = ""
-        
-        connection.start(queue: .main)
-        connection.receive(minimumIncompleteLength: 0, maximumLength: Int.max) { (data, _, isComplete, error) in
+        var receivedData = Data()
+
+        func runOnComplete(){
+            guard let r = String(data: receivedData, encoding: .utf8) else {
+                let respData = "HTTP/1.1 400 Bad Request\r\n\r\n".data(using: .utf8)!
+                connection.send(content: respData, completion: .contentProcessed({ _ in
+                    connection.cancel()
+                }))
+                return
+            }
+            
             DispatchQueue.global(qos: .background).async {
+                let response = self.handleRequest(request: r)
+                
+                
+                if response == nil {
+                    return
+                }
+                
+                connection.send(content: response, completion: .contentProcessed({ _ in
+                    connection.cancel()
+                }))
+            }
+        }
+        
+        func receiveNextChunk() {
+            var lastMsg = Date.now.timeIntervalSince1970
+            connection.receive(minimumIncompleteLength: 1, maximumLength: .max) { data, _, isComplete, error in
                 if let data = data, !data.isEmpty {
+                    receivedData.append(data)
                     
-                    guard let r = String(data: data, encoding: .utf8) else {
-                        let respData = "HTTP/1.1 400 Bad Request\r\n\r\n".data(using: .utf8)!
-                        connection.send(content: respData, completion: .contentProcessed({ _ in
-                            connection.cancel()
-                        }))
-                        return
-                    }
-                    
-                    request += r
-                    print("request length: ", request.count)
-                    
-                    if(request.contains("\r\n\r\n")){
-                        let response = self.handleRequest(request: request)
-                        
-                        if response == nil {
-                            return
+                    let waitForIt = 25
+                    delay(ms: waitForIt){
+                        var now = Date.now.timeIntervalSince1970
+                        if (now - lastMsg) > (Double(waitForIt) / 1000) {
+                            runOnComplete()
                         }
-                        
-                        request = ""
-                        
-                        connection.send(content: response, completion: .contentProcessed({ _ in
-                            connection.cancel()
-                        }))
+                        lastMsg = now
                     }
-                    
-                } else if isComplete {
-                    connection.cancel()
+                }
+                if isComplete {
+                    runOnComplete()
                 } else if let error = error {
-                    print("Error receiving data: \(error)")
+                    print("Connection error: \(error)")
                     connection.cancel()
+                } else {
+                    receiveNextChunk()
                 }
             }
         }
+
+        receiveNextChunk()
+        connection.start(queue: .main)               
     }
     
     private var savedMimes : [String:String] = [:]
