@@ -147,7 +147,7 @@ class AppExtensionManager {
             return reply
         }
         
-        if req.hasPrefix("/waitForStatus"){
+        if req.hasPrefix("/waitForStatus"){ // deprecate it (due to crashes), or redesign it
             ///#TODO
             let wasShowing = app!.imShowing()
             var isShowing = app!.imShowing()
@@ -156,7 +156,7 @@ class AppExtensionManager {
             while wasShowing == isShowing && !app!.hasStatusUpdate && maxCycles < 10{
                 isShowing = app!.imShowing()
                 maxCycles += 1
-                Thread.sleep(forTimeInterval: 0.01)
+                Thread.sleep(forTimeInterval: 0.01) // this seems to cause crashes
             }
             
             reply.appExtensionIsShowing = isShowing
