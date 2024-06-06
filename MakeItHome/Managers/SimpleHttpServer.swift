@@ -128,6 +128,25 @@ func jsonStringToDictionary(jsonString: String) -> [String: Any?]? {
     }
 }
 
+class MimeManager {
+    private var savedMimes: [String: Any] = [:] // Replace `Any` with the actual type of `res`
+    private let queue = DispatchQueue(label: "com.example.mimeManagerQueue")
+    
+    func setMime(for fileExtension: String, value: Any) { // Replace `Any` with the actual type of `res`
+        queue.async {
+            self.savedMimes[fileExtension] = value
+        }
+    }
+    
+    func getMime(for fileExtension: String) -> Any? { // Replace `Any?` with the actual type
+        var result: Any? // Replace `Any?` with the actual type
+        queue.sync {
+            result = self.savedMimes[fileExtension]
+        }
+        return result
+    }
+}
+
 public class SimpleHTTPServer {
     static public let CopyInDirectoryBundle = false
     
@@ -224,13 +243,14 @@ public class SimpleHTTPServer {
         connection.start(queue: DispatchQueue.global(qos: .background))
     }
     
-    private var savedMimes : [String:String] = [:]
+    //private var savedMimes : [String:String] = [:]
+    let mimeManager = MimeManager()
     
     func mimeType(for filePath: String, data : Data) -> String {
         let url = URL(fileURLWithPath: filePath)
         let fileExtension = url.pathExtension.lowercased()
         
-        var res = savedMimes[fileExtension]
+        var res = self.mimeManager.getMime(for: fileExtension) as? String // savedMimes[fileExtension]
         
         if res != nil {
             return res!
@@ -266,7 +286,8 @@ public class SimpleHTTPServer {
             res = "application/octet-stream"+detectEncoding(for: data) // generic binary data
         }
         
-        savedMimes[fileExtension] = res
+        //self.savedMimes[fileExtension] = res
+        self.mimeManager.setMime(for: fileExtension, value: res)
         
         return res!
     }
