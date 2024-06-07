@@ -2862,7 +2862,7 @@ public class Display : Equatable {
             
             let prevOnMoreAboveBy = onMoreAboveBy
             onMoreAboveBy = false
-            if moreAboveByEnabled && Static.LastAppPreviewMouseOver?.appExtension != nil && curAboveByDeFacto >= 1 && curSide != 3 && !Static.isDragginApp{
+            if moreAboveByEnabled && Static.LastAppPreviewMouseOver?.appExtension != nil && curAboveByDeFacto >= 1 && curSide != 3 && !Static.isDragginApp && !Static.isRemovingApp{
                 let mouseMoreAboveLimitBy = mouseAboveLimitBy + Static.OverscreenSize
                 //print("moreAboveBy", curAboveByDeFacto, mouseMoreAboveLimitBy)
                 

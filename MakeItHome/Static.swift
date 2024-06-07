@@ -316,6 +316,7 @@ public class Static {
     static var appExtensionManager : AppExtensionManager?
     
     static var isDragginApp : Bool = false
+    static var isRemovingApp : Bool = false
     
     ///
     ///# Cache
