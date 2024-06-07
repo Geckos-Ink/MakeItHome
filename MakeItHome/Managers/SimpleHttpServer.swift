@@ -206,7 +206,8 @@ public class SimpleHTTPServer {
                 return
             }
                    
-            DispatchQueue.global(qos: .background).async {
+            //DispatchQueue.global(qos: .background).async {
+            DispatchQueue.main.async {
                 let response = self.handleRequest(request: r)
                 
                 
@@ -252,7 +253,8 @@ public class SimpleHTTPServer {
             runOnComplete()
         }
         
-        connection.start(queue: DispatchQueue.global(qos: .background))
+        //connection.start(queue: DispatchQueue.global(qos: .background))
+        connection.start(queue: .main)
     }
     
     //private var savedMimes : [String:String] = [:]
