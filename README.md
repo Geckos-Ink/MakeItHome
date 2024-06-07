@@ -56,8 +56,8 @@ These objectives are:
 - Widgets from external apps (todo)
 - App Extension: an application can extend its icon in the windows switching area. The work is in progress: when an application has the extension area, an aurora borealis is generated at the base of its preview. Then, if the user "break" more the screen boundaries on the aurora's side, he will access a doubled overscreen with a WebView where the application can render what he wants. My first intention about using this feature is to create a browser extension and create a rapid tab switching with web page preview. But an application is free to set what it wants: for example a music player app can display the songs queue and permit the rapid change of song. Respect than the Widgets Zone, the App Extension has no design structure, so all focus is about the APIs and the communication protocol between MakeItHome and the app. I aim to implement the App Extension "theoretically" with an update only with a demo app and documentation and then create the browsers extensions... well, when I'll have time. 
 
-<img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/appExtensionDemo.jpg?raw=true">
-<i>A preview of App Extension area, with the aurora borealis, an hello world page with a light red background color to highlight the WebView area.</i>
+<img src="[https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/appExtensionDemo.jpg?raw=true](https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/makeithome-web-preview.gif?raw=true)">
+<i>A preview of App Extension area with MakeItHome Web for Safari.</i>
 
 The App Extension is implemented in current release of MakeItHome. As soon as possible I'll write a tutorial about it.
 Here's already available an App Extension demo: <a href="https://github.com/Geckos-Ink/MakeItHome-AppExtension-Demo">https://github.com/Geckos-Ink/MakeItHome-AppExtension-Demo</a>. 
