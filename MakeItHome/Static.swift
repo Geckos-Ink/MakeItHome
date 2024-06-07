@@ -318,6 +318,8 @@ public class Static {
     static var isDragginApp : Bool = false
     static var isRemovingApp : Bool = false
     
+    static let highPriorityQueue = DispatchQueue.global(qos: .userInitiated)
+    
     ///
     ///# Cache
     ///

@@ -911,7 +911,7 @@ public class Display : Equatable {
             }
             
             public func checkForCii(){
-                DispatchQueue.global(qos: .userInitiated).async {
+                Static.highPriorityQueue.async { // this may cause problems
                     if(self.lastCiiElabored || self.lastCii == nil || self.display == nil || self.display?.recordingPaused ?? false){
                         return
                     }
@@ -1713,8 +1713,8 @@ public class Display : Equatable {
                                 
                                 if(lf?.displayID == self.screen.displayID){
                                     
-                                    if(lf != nil){
-                                        DispatchQueue.global(qos: .userInitiated).async {
+                                    if(lf != nil){                                        
+                                        Static.highPriorityQueue.async {
                                             let context = CIContext()
                                             var cii = CIImage(cvPixelBuffer: lf!.pixelBuffer!)
                                             
@@ -2083,7 +2083,7 @@ public class Display : Equatable {
         if #available(macOS 12.3, *){
             if(self.side != 3){
                 if false { // if enable async setScreensApps
-                    DispatchQueue.global(qos: .userInitiated).async {
+                    Static.highPriorityQueue.async {
                         (self.manager.capturePreview as? CapturePreview)?.captureView.setScreenApps(display: self)
                     }
                 }
@@ -2743,8 +2743,7 @@ public class Display : Equatable {
                         sideToClose = -1
                         
                         if #available(macOS 12.3, *){
-                            //let highPriorityQueue = DispatchQueue.global(qos: .userInitiated)
-                            DispatchQueue.main.async {
+                            Static.highPriorityQueue.async {
                                 (self.manager.capturePreview as! CapturePreview).setCurrentAbove(side: s, aboveBy: 0, display: self)
                             }
                         }
