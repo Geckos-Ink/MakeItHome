@@ -87,6 +87,7 @@
 		8B11BBAB2C0900EC00E46355 /* AVScreenRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AVScreenRecorder.swift; sourceTree = "<group>"; };
 		8B11BBC82C09CB5000E46355 /* AppExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppExtension.swift; sourceTree = "<group>"; };
 		8B11BBEC2C106CAA00E46355 /* Modals.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Modals.swift; sourceTree = "<group>"; };
+		8B11BBFC2C1310A700E46355 /* gpt_automaticVariableSemaphore.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = gpt_automaticVariableSemaphore.md; sourceTree = "<group>"; };
 		8B3C5739290B7A87002C2146 /* Docker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Docker.swift; sourceTree = "<group>"; };
 		8B3D404F2AD70A26003DFAC7 /* preview.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = preview.html; sourceTree = "<group>"; };
 		8B3D40572AD70F93003DFAC7 /* mrWhite.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = mrWhite.html; sourceTree = "<group>"; };
@@ -227,6 +228,7 @@
 			children = (
 				8B5787B3290758FA00C626C3 /* Diario.md */,
 				8B5787B429098EEF00C626C3 /* Gold.md */,
+				8B11BBFC2C1310A700E46355 /* gpt_automaticVariableSemaphore.md */,
 			);
 			path = Notes;
 			sourceTree = "<group>";
