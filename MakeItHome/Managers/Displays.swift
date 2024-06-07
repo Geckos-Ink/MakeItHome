@@ -2743,8 +2743,8 @@ public class Display : Equatable {
                         sideToClose = -1
                         
                         if #available(macOS 12.3, *){
-                            let highPriorityQueue = DispatchQueue.global(qos: .userInitiated)
-                            highPriorityQueue.async {
+                            //let highPriorityQueue = DispatchQueue.global(qos: .userInitiated)
+                            DispatchQueue.main.async {
                                 (self.manager.capturePreview as! CapturePreview).setCurrentAbove(side: s, aboveBy: 0, display: self)
                             }
                         }
