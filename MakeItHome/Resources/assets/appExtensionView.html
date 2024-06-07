@@ -56,7 +56,7 @@
             }
         </style>
     </head>
-    <body>
+    <body oncontextmenu="return false;">
         
     </body>
 
@@ -70,6 +70,9 @@
 
         function createAppExtension(bundleId){
             bundleId = bundleId.replaceAll(".", "-")
+
+            $("#"+bundleId).remove() // ensure there are no duplicates
+
             let $ext = $('<div class="appExtension" id="'+bundleId+'"><div class="extensionPlaceholder">Extension not already loaded...</div></div>')
             $body.append($ext)
         }
@@ -77,6 +80,8 @@
         function setContent(bundleId, content){
             bundleId = bundleId.replaceAll(".", "-")
             let $ext = $('#'+bundleId)
+
+            content = atob(content)
             $ext.html(content)
         }
 
@@ -108,16 +113,19 @@
         }
 
         function setEvent(name, func){
-            vars[curBundleId+'_event_'+name] = name
+            vars[curBundleId+'_event_'+name] = func
         }
 
-        function sendMessage(message) {
+        function sendMessage(message) {            
             if(typeof(message) == 'object')
                 message = JSON.stringify(message)
 
             console.log("sending message", message)
             message = encodeURIComponent(message)        
-            window.location.href = "myapp://message?text=" + message;
+
+            setTimeout(()=>{
+                window.location.href = "myapp://message?text=" + message;  
+            }, Math.ceil(Math.random()*25))            
         }
 
         function sendStatus(status){
@@ -126,6 +134,10 @@
 
         function closeOverscreen(){
             sendMessage({type:'closeOverscreen'})
+        }
+
+        function focusOnMe(){
+            sendMessage({type:'focusOnMe'})
         }
 
         function setVersion(v){

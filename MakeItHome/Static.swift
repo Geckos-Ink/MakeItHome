@@ -242,6 +242,13 @@ public class Static {
             
             User.set(true, forKey: "UncleNerdBanner")
         }
+        else {
+            if !Static.OpenAtStartup {
+                delay(ms: 1000){
+                    showStartAtLoginAlert()
+                }
+            }
+        }
     }
     
     // Debug verboses
@@ -309,6 +316,7 @@ public class Static {
     static var appExtensionManager : AppExtensionManager?
     
     static var isDragginApp : Bool = false
+    static var isRemovingApp : Bool = false
     
     ///
     ///# Cache

@@ -232,73 +232,7 @@ public struct ContentView: View {
                 .offset(x: vars.appExtOverlayOffsetX, y: vars.appExtOverlayOffsetY)
                 .frame(width: vars.appExtOverlaySizeX, height: vars.appExtOverlaySizeY)
                 .opacity(vars.appExtOverlayOpacity)
-        }
-        
-        /*.overlay {
-            /*if userStopped {
-             Image(systemName: "nosign")
-             .font(.system(size: 250, weight: .bold))
-             .foregroundColor(Color(white: 0.3, opacity: 1.0))
-             .frame(maxWidth: .infinity, maxHeight: .infinity)
-             .background(Color(white: 0.0, opacity: 0.5))
-             }*/
-            
-            if false && isUnauthorized {
-                VStack() {
-                    Spacer()
-                    VStack {
-                        Text("No screen recording permission.")
-                            .font(.largeTitle)
-                            .padding(.top)
-                        Text("Open System Settings and go to Privacy & Security > Screen Recording to grant permission.")
-                            .font(.title2)
-                            .padding(.bottom)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .background(.red)
-                }
-            }
-            
-            VStack {
-                /*Image(systemName: "globe")
-                 .imageScale(.large)
-                 .foregroundColor(.accentColor)
-                 
-                 Text("\(textToUpdate)").onReceive(timer) { time in
-                 let curMouse = self.Displays.curMouseLoc
-                 self.textToUpdate = "\(curMouse.x), \(curMouse.y)"
-                 
-                 self.side = self.Displays.curDisplay?.side ?? -1;
-                 }*/
-                
-                if(side == -1 || (Static.Debug && Static.debugSideAboveBy)){
-                    Text("\(side)").onReceive(timer) { time in
-                        self.side = self.Displays.curDisplay?.side ?? -1;
-                    }
-                }
-                                   
-                /*Button("click") {
-                 self.showWindow.toggle()
-                 }
-                 .borderlessWindow(isVisible: self.$showWindow,
-                 anchor: .bottomLeading,
-                 windowAnchor: .topLeading,
-                 windowOffset: CGPoint(x: 0, y: 0)
-                 ){
-                 VStack {
-                 Text("Checked ✓")
-                 Button {
-                 self.showWindow = false
-                 } label: {
-                 Text("Close")
-                 }
-                 }
-                 .frame(width: 100, height: 100)
-                 
-                 }
-                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)*/
-            }
-        }*/
+        }               
         .onChange(of: refresh, perform: { val in
             //this prevents the overlay stuck? (to check)
             self.refresh = val

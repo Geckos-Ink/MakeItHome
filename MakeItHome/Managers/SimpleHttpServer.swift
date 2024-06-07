@@ -122,8 +122,28 @@ func jsonStringToDictionary(jsonString: String) -> [String: Any?]? {
             return nil
         }
     } catch {
+        print(jsonString)
         print("Error deserializing JSON data: \(error)")
         return nil
+    }
+}
+
+class MimeManager {
+    private var savedMimes: [String: Any] = [:] // Replace `Any` with the actual type of `res`
+    private let queue = DispatchQueue(label: "com.example.mimeManagerQueue")
+    
+    func setMime(for fileExtension: String, value: Any) { // Replace `Any` with the actual type of `res`
+        queue.async {
+            self.savedMimes[fileExtension] = value
+        }
+    }
+    
+    func getMime(for fileExtension: String) -> Any? { // Replace `Any?` with the actual type
+        var result: Any? // Replace `Any?` with the actual type
+        queue.sync {
+            result = self.savedMimes[fileExtension]
+        }
+        return result
     }
 }
 
@@ -168,51 +188,83 @@ public class SimpleHTTPServer {
     }
 
     private func handleNewConnection(connection: NWConnection) {
+        var receivedData = Data()
         
-        ///
-        ///
-        ///
-        var request : String = ""
+        var completed = false
+        func runOnComplete(){
+            if completed {
+                return
+            }
+            
+            completed = true
+            
+            guard let r = String(data: receivedData, encoding: .utf8) else {
+                let respData = "HTTP/1.1 400 Bad Request\r\n\r\n".data(using: .utf8)!
+                connection.send(content: respData, completion: .contentProcessed({ _ in
+                    connection.cancel()
+                }))
+                return
+            }
+                   
+            //DispatchQueue.global(qos: .background).async {
+            DispatchQueue.main.async {
+                let response = self.handleRequest(request: r)
+                
+                
+                if response == nil {
+                    return
+                }
+                
+                connection.send(content: response, completion: .contentProcessed({ _ in
+                    connection.cancel()
+                }))
+            }
+        }
         
-        connection.start(queue: .main)
-        connection.receive(minimumIncompleteLength: 1, maximumLength: Int.max) { (data, _, isComplete, error) in
-            DispatchQueue.global(qos: .background).async {
+        var lastMsg : Double = 0
+        func receiveNextChunk() {
+            connection.receive(minimumIncompleteLength: 1, maximumLength: .max) { data, _, isComplete, error in
                 if let data = data, !data.isEmpty {
+                    receivedData.append(data)
                     
-                    guard let r = String(data: data, encoding: .utf8) else {
-                        let respData = "HTTP/1.1 400 Bad Request\r\n\r\n".data(using: .utf8)!
-                        connection.send(content: respData, completion: .contentProcessed({ _ in
-                            connection.cancel()
-                        }))
-                        return
+                    let waitForIt = 50
+                    lastMsg = Date.now.timeIntervalSince1970
+                    delay(ms: waitForIt){
+                        var now = Date.now.timeIntervalSince1970
+                        if (now - lastMsg) >= (Double(waitForIt) / (1000)) {
+                            runOnComplete()
+                        }
                     }
-                    
-                    request += r
-                    
-                    if(request.contains("\r\n\r\n")){
-                        let response = self.handleRequest(request: request)
-                        connection.send(content: response, completion: .contentProcessed({ _ in
-                            connection.cancel()
-                        }))
-                    }
-                    
-                } else if isComplete {
-                    connection.cancel()
+                }
+                if isComplete {
+                    runOnComplete()
                 } else if let error = error {
-                    print("Error receiving data: \(error)")
+                    print("Connection error: \(error)")
                     connection.cancel()
+                } else {
+                    receiveNextChunk()
                 }
             }
         }
+        
+        receiveNextChunk()
+        
+        delay(ms: 250){
+            runOnComplete()
+        }
+        
+        //connection.start(queue: DispatchQueue.global(qos: .background))
+        connection.start(queue: .main)
     }
     
-    private var savedMimes : [String:String] = [:]
+    //private var savedMimes : [String:String] = [:]
+    let mimeManager = MimeManager()
     
     func mimeType(for filePath: String, data : Data) -> String {
         let url = URL(fileURLWithPath: filePath)
         let fileExtension = url.pathExtension.lowercased()
         
-        var res = savedMimes[fileExtension]
+        var res = self.mimeManager.getMime(for: fileExtension) as? String // savedMimes[fileExtension]
         
         if res != nil {
             return res!
@@ -248,7 +300,8 @@ public class SimpleHTTPServer {
             res = "application/octet-stream"+detectEncoding(for: data) // generic binary data
         }
         
-        savedMimes[fileExtension] = res
+        //self.savedMimes[fileExtension] = res
+        self.mimeManager.setMime(for: fileExtension, value: res)
         
         return res!
     }
@@ -372,7 +425,22 @@ public class SimpleHTTPServer {
         return nil
     }
     
-    private func handleRequest(request: String) -> Data {
+    private func getHeader(lines : [String], property: String) -> String?{
+        for line in lines {
+            if line.isEmpty {
+                break
+            }
+            
+            if line.starts(with: property){
+                let parts = line.components(separatedBy: ": ")
+                return parts.last
+            }
+        }
+        
+        return nil
+    }
+    
+    private func handleRequest(request: String) -> Data? {
         let lines = request.split(whereSeparator: \.isNewline)
         
         guard let firstLine = lines.first else {
@@ -396,9 +464,22 @@ public class SimpleHTTPServer {
             
             if(dataParts.count > 1){
                 dataReq = dataParts[1]
+                
+                let dataReqCount = dataReq?.count ?? 0
+     
+                if false {
+                    let strLength = getHeader(lines: lines.map { String($0) }, property: "Body-Length") ?? "0"
+                    let len = Int(strLength) ?? 0
+                    
+                    if dataReqCount ?? 0 < len {
+                        //print("given POST data", dataReq)
+                        return nil
+                    }
+                }
             }
             else {
                 print("empty post...")
+                return nil
             }
         }
         

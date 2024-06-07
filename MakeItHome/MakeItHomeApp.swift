@@ -6,12 +6,24 @@
 //
 
 import SwiftUI
+import Foundation
+
+// Setup uncaught exception handlers
+func setupExceptionHandlers() {
+    NSSetUncaughtExceptionHandler { exception in
+        print("Uncaught exception: \(exception)")
+        print("Stack trace: \(exception.callStackSymbols)")
+        // Handle the exception or log it
+    }
+}
 
 @main
 class MakeItHomeApp : App {
        
     required init(){
-        Static.Init()                
+        setupExceptionHandlers()
+        
+        Static.Init()
                 
         //
         // Activation checker

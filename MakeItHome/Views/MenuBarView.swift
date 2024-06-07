@@ -370,7 +370,7 @@ struct MenuBarView: View {
         workingDisplay.activateSide[1] = thisDisplayEnableRight
         workingDisplay.activateSide[2] = thisDisplayEnableBottom
         
-        workingDisplay.activateSide[3] = thisDisplayEnableTop        
+        workingDisplay.activateSide[3] = thisDisplayEnableTop                     
     }
 }
 

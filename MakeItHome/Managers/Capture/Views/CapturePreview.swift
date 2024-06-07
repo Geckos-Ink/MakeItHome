@@ -579,6 +579,12 @@ public struct CapturePreview: NSViewRepresentable {
                                     if(abs(offset) > Static.OverscreenSize / 2){
                                         // Close application
                                         onApp?.goToOffset = -self.pixelsToScene(pixels: Static.OverscreenSize) * mul
+                                        
+                                        Static.isRemovingApp = true
+                                        delay(ms: 1000){
+                                            Static.isRemovingApp = false
+                                            Static.LastAppPreviewMouseOver = nil
+                                        }
                                     }
                                     else {
                                         onApp?.goToOffset = 0
