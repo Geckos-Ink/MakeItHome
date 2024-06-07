@@ -50,7 +50,7 @@ class AppExtensionManager {
                 reply.description = "appConnected"
             }
             else {
-                reply.description = "appAlredyConnected" // fantastic. A typo in release.
+                reply.description = "appAlreadyConnected" // fantastic. A typo in release.
             }
             
             reply.status = "ok"
