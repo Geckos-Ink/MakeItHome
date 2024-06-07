@@ -11,7 +11,7 @@
 
 <img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_0.gif?raw=true">
 
-Current release version: 1.9.5
+Current release version: 1.9.6
 
 ## Some messages for new and older users
 
@@ -59,6 +59,9 @@ These objectives are:
 <img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/appExtensionDemo.jpg?raw=true">
 <i>A preview of App Extension area, with the aurora borealis, an hello world page with a light red background color to highlight the WebView area.</i>
 
+The App Extension is implemented in current release of MakeItHome. As soon as possible I'll write a tutorial about it.
+Here's already available an App Extension demo: <a href="https://github.com/Geckos-Ink/MakeItHome-AppExtension-Demo">https://github.com/Geckos-Ink/MakeItHome-AppExtension-Demo</a>. 
+
 <hr>
 In conclusion, all 1.9.x versions are, yes, essential bug fixing but also mainly features introduction. I aim to new features' stability on version 2.0.x
 
@@ -80,7 +83,7 @@ I try to make a to do list as memorandum:
 ## Development guide
 - The top widgets zone web assets if located at MakeItHome/Resources/assets/, instead the Swift controller is located at MakeItHome/Views/Overscreen/WidgetZoneView.swift
 
-<!--Currently I'm working on version **1.9.6** on the homonymous branch.-->
+Currently I'm working on version **1.9.7** on the homonymous branch.
 
 <b>I have a huge problem about testing before its release. If I create a new feature, this mathematically brings a new bug that I don't notice. I'm looking for tester to make more stable the releases.</b>
 
