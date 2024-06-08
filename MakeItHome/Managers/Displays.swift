@@ -916,11 +916,12 @@ public class Display : Equatable {
                         return
                     }
                     
-                    if self.lastCii == nil { // double check
+                    let _cii = self.lastCii // guard laziness
+                    if _cii == nil { // double check
                         return
                     }
                     
-                    var cii = self.lastCii!
+                    var cii = _cii!
                     
                     // Resize
                     //let divideBy : CGFloat = 4
