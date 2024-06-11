@@ -1480,6 +1480,7 @@ public class Display : Equatable {
                     }
                 }
                 else {
+                    //TODO: Thread 1: EXC_BAD_ACCESS (code=1, address=0x20) (placeholders)
                     if curPlaceholder == nil {
                         for placeholder in placeholders {
                             if(placeholder.id == -1){
