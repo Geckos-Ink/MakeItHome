@@ -664,7 +664,7 @@
 
         let firstDate = null 
         let lastDate = null
-        let firstDateIndex = 0
+        //let firstDateIndex = 0
         let days = []
 
         function generateMonth(year, month){
@@ -684,7 +684,7 @@
 
             let day = 0
 
-            for(let i=0; i<iday; i++){
+            for(let i=0; i<=iday; i++){
                 let div = getDay(day)
                 div.addClass("other-month")
 
@@ -701,7 +701,7 @@
                 day++
             }
 
-            firstDateIndex = day == 0 ? 0 : (day * 2)-1
+            //firstDateIndex = day == 0 ? 0 : (day * 2)-1
 
             for(let d=0; d<totalDays; d++){
                 let div = getDay(day)
@@ -826,7 +826,7 @@
 
             for(let d=0; d<gridDays; d++){
                 if(date.getFullYear() == currentDate.getFullYear() && date.getMonth() == currentDate.getMonth() && date.getDate() == currentDate.getDate())
-                    return d + firstDateIndex
+                    return d
 
                 // Add 24 hours to the current date
                 currentDate.setHours(currentDate.getHours() + 24);
@@ -837,6 +837,8 @@
              
         function appReceive_calendar(obj){
             if(obj.op == 'setEvent'){
+                console.log("setEvent", obj)
+
                 let day = obj.day = new Date(obj.day + 'T00:00:00')
                 let index = getDateIndex(day)
 
