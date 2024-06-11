@@ -70,15 +70,14 @@ This project deserves a better documentation, most of all seen the fact that soo
 
 I try to make a to do list as memorandum:
 
-- Find a way to improve the performances.
-- Find a way to have the community advise about the development of the feature.
+- Find a way to improve the performances. (nearly found, I'm improving multi threading design)
+- Find a way to have the community advise about the development of the feature. (is it GitHub discussion page enough accessible?)
 - Improve Notes and Tasks widgets. The most problem is about the saving way, that used to saves the entire database every time.
-- Correct the calendar permission request. The user is able to edit it even if he refused the permission. The in-using crashes are problematic, mostly in case of "Show in Dock" disabled.
 - Correct the freeze happening while using MS RDP, probably due to the clipboard manager(?)
 - Find a solution for the lack of localization in the Widgets Zone (written in WebKit)
-- Found an issue about screen recording when you change users 
-- As said, the multi space management is a critical code. I continue to improve and correct it, but it's a mess. This due to the fact that you can have a notification only when the space *did* change, but not during. For doing this, you have to check if multiple place holders are present at the same time. But if a place holder is not already existing, this is not revealed. Happens also to create multiple SwifterPlaceholder on the same space. So I had to create an array to check if multiple placeholders (or spaceholders) belongs the same space.
-- The aboveBy management in Display class is full of unused variables. To clear it.
+- Found an issue about screen recording when you change users.
+- Find a solution about the local http server in multi user session. The solution to implement would be stop and restart the server when the screen is locked. <b>!!!PRIORITY!!!</b>
+- The aboveBy management in Display class is full of unused variables. Clear it.
 
 ## Development guide
 - The top widgets zone web assets if located at MakeItHome/Resources/assets/, instead the Swift controller is located at MakeItHome/Views/Overscreen/WidgetZoneView.swift
