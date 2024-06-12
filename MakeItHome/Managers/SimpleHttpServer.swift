@@ -8,6 +8,7 @@
 
 import Foundation
 import Network
+import AppKit
 
 // http://127.0.0.1:19494/index.html
 
@@ -172,9 +173,30 @@ public class SimpleHTTPServer {
         
         self.appExtensionManager = AppExtensionManager()
         Static.appExtensionManager = self.appExtensionManager
+        
+        observeSystemNotifications()
+    }
+    
+    private func observeSystemNotifications() {
+        let nc = DistributedNotificationCenter.default()
+
+        nc.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: nil) { _ in
+            self.stop()
+        }
+
+        nc.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: nil) { _ in
+            Task.detached {
+                do {
+                    try await self.start()
+                }
+                catch {
+                    
+                }
+            }
+        }
     }
 
-    func start() async throws -> Bool {
+    func start() async throws -> Bool { // is it important to make it async(?)
         if !assetsAvailable {
             return false
         }
@@ -185,6 +207,12 @@ public class SimpleHTTPServer {
         listener?.start(queue: .main)
         print("Server started on port \(port)")
         return true
+    }
+    
+    func stop(){
+        listener?.cancel()
+        listener = nil
+        print("Server stopped")
     }
 
     private func handleNewConnection(connection: NWConnection) {
