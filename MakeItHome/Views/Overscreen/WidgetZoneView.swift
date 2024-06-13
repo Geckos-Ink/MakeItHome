@@ -226,7 +226,7 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
         print("Perform drop: \(info)")
         return true
     }
-
+    
     // Implement WKNavigationDelegate method to allow navigation for dropped items
     public func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         
@@ -284,6 +284,16 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
         
         let frame = navigationAction.targetFrame
         if !(frame?.isMainFrame ?? true){ // it's an internal frame
+                    
+            // this MAY help iframe on some websites
+            // try to alter iframe header to allow every website
+            var modifiedRequest = navigationAction.request // Create a mutable copy
+            modifiedRequest.setValue(webView.url?.absoluteString, forHTTPHeaderField: "Referer") // Set the referer
+
+            if navigationAction.targetFrame?.isMainFrame == false {
+                // This is an iframe request
+                modifiedRequest.setValue(nil, forHTTPHeaderField: "X-Frame-Options") // Remove X-Frame-Options
+            }
             
             decisionHandler(.allow)
             return;
