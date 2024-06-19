@@ -175,6 +175,16 @@ public class StoreVars: ObservableObject {
     @Published public var appExtOverlayOpacity: CGFloat = 1
 }
 
+//TODO: move in a better position
+// Setup uncaught exception handlers
+func setupExceptionHandlers() {
+    NSSetUncaughtExceptionHandler { exception in
+        print("Uncaught exception: \(exception)")
+        print("Stack trace: \(exception.callStackSymbols)")
+        // Handle the exception or log it
+    }
+}
+
 @MainActor
 public struct ContentView: View {
     @ObservedObject public var vars = StoreVars()
@@ -262,6 +272,8 @@ public struct ContentView: View {
     }
             
     init(){
+        setupExceptionHandlers()
+        
         self.Displays = DisplaysManager()
         //self.store = StoreView()
 
@@ -329,6 +341,23 @@ public struct ContentView: View {
                     }
                     else {
                         checkAuthorizationTicks += 1
+                    }
+                }
+            }
+            
+            ///
+            /// Auto close main window
+            ///
+            if Static.EnableCloseMainWindowAfterInactivity {
+                Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { timer in
+                    if(Static.mainWindow != nil){
+                        if(!Static.mainWindowClosed && !Static.mainWindowInUsing && Static.curDisplay?.recordingPaused ?? true){
+                            let lastUsing = Date().timeIntervalSince1970 - Static.lastUsing
+                            if lastUsing > Static.CloseMainWindowAfterSecondsOfInactivity {
+                                Static.mainWindow?.close()
+                                Static.mainWindowClosed = true
+                            }
+                        }
                     }
                 }
             }

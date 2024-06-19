@@ -47,7 +47,7 @@ public struct NavigateWebView: NSViewRepresentable {
         wkwv.uiDelegate = context.coordinator
         wkwv.navigationDelegate = context.coordinator
         
-        wkwv.configuration.setValue(true, forKey: "_allowUniversalAccessFromFileURLs")
+        //wkwv.configuration.setValue(true, forKey: "_allowUniversalAccessFromFileURLs")
         wkwv.configuration.userInterfaceDirectionPolicy = .system
         
         return wkwv

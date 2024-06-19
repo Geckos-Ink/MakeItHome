@@ -41,7 +41,7 @@ public struct AppExtensionWebView: NSViewRepresentable {
         wkwv.uiDelegate = context.coordinator
         wkwv.navigationDelegate = context.coordinator
         
-        wkwv.configuration.setValue(true, forKey: "_allowUniversalAccessFromFileURLs")
+        //wkwv.configuration.setValue(true, forKey: "_allowUniversalAccessFromFileURLs")
         wkwv.configuration.userInterfaceDirectionPolicy = .system
      
         //wkwv.configuration.preferences.setValue(true, forKey: "developerExtrasEnabled")

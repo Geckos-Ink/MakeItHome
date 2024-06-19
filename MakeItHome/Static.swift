@@ -33,7 +33,7 @@ public class Static {
     public static let User : UserDefaults = UserDefaults.standard
     
     public static let VersionStr = "1"
-    public static var ActivationStatus = -1
+    public static var ActivationStatus = 1 //-1
     public static var UpdateAvailable = false
     
     public static let ShowOnEverySpace : Bool = false
