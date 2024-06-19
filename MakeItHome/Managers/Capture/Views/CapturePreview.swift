@@ -397,7 +397,7 @@ public struct CapturePreview: NSViewRepresentable {
         var leftMouse = true
         
         public override func mouseDown(with evt: NSEvent) {
-            DispatchQueue.global(qos: .userInitiated).async {
+            Static.highPriorityQueue.async {
                 if self.curDisplay == nil || self.curDisplay?.aboveBy == 0 {
                     return
                 }
@@ -431,7 +431,7 @@ public struct CapturePreview: NSViewRepresentable {
         }
         
         override public func mouseUp(with event: NSEvent) {
-            DispatchQueue.global(qos: .userInitiated).async {
+            Static.highPriorityQueue.async {
                 let diff = NSDate().timeIntervalSince(self.clickStartTime as Date)
                 if(!self.draggedClickedApp && diff < Static.ClickMaximumDifference){
                     //Static.curDisplay?.activateNewApp = true
@@ -448,7 +448,7 @@ public struct CapturePreview: NSViewRepresentable {
         }
         
         override public func rightMouseDown(with event: NSEvent) {
-            DispatchQueue.global(qos: .userInitiated).async {
+            Static.highPriorityQueue.async {
                 self.leftMouse = false
                 
                 // Handle right mouse down event here
@@ -487,7 +487,7 @@ public struct CapturePreview: NSViewRepresentable {
         }
         
         override public func rightMouseUp(with event: NSEvent) {
-            DispatchQueue.global(qos: .userInitiated).async {
+            Static.highPriorityQueue.async {
                 // Handle right mouse up event here
                 super.rightMouseUp(with: event)
             }
@@ -501,7 +501,7 @@ public struct CapturePreview: NSViewRepresentable {
         //MARK: Mouse move
         var mouseOnApp : AppNode?
         func mouseMove(display: Display){
-            DispatchQueue.global(qos: .userInitiated).async {
+            Static.highPriorityQueue.async {
                 
                 if self.listApp != nil && self.curDisplay != nil {
                     
