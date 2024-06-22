@@ -633,7 +633,7 @@ public class Display : Equatable {
             
             print("App bundleId", self.bundleId)
             
-            DispatchQueue.global().async {
+            Static.highPriorityQueue.async {
                 if runningApp.icon != nil {
                     let avg = averageColor(of: runningApp.icon!)
                     self.iconAvgColor = avg ?? self.iconAvgColor
@@ -1482,7 +1482,8 @@ public class Display : Equatable {
                 else {
                     //TODO: Thread 1: EXC_BAD_ACCESS (code=1, address=0x20) (placeholders)
                     if curPlaceholder == nil {
-                        for placeholder in placeholders {
+                        let _placeholders = self.placeholders
+                        for placeholder in _placeholders {
                             if(placeholder.id == -1){
                                 placeholder.id = currentSpaceId
                             }
