@@ -22,6 +22,15 @@ public class GeneralFuncs {
         return true
         #endif
     }
+    
+    func warnAboutInputMonitoringPermission() {
+        // Permission denied
+        let alert = NSAlert()
+        alert.messageText = "Input Monitoring Permission Required"
+        alert.informativeText = "This app requires Input Monitoring permission to function properly. Please enable it in System Preferences -> Security & Privacy -> Input Monitoring."
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
 }
 
 func calculateDistance(point1: NSPoint, point2: NSPoint) -> CGFloat {

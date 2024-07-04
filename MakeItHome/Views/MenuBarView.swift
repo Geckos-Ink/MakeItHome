@@ -139,7 +139,17 @@ struct MenuBarView: View {
                     Text("\(Image(systemName: "videoprojector")) Basic how to use").padding(10)
                 })
                 .background(Color(red: 0.4, green: 0.52, blue: 0.0)).cornerRadius(5).buttonStyle(.bordered)
+                .frame(width: 250)
+                
                 Spacer()
+
+                Button(action: {
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security")!)
+                }, label: {
+                    Text("Open mouse permissions").padding(5)
+                })
+                .background(Color(red: 0.5, green: 0.0, blue: 0.5)).cornerRadius(5).buttonStyle(.bordered)
+                .frame(width: 250)
                 
                 /*Toggle("\(Image(systemName: "hare")) Require acceleration", isOn: $requireAcceleration).onChange(of: requireAcceleration){ newVal in
                     Static.EnableRequiredAcceleration = newVal

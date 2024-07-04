@@ -302,7 +302,7 @@ public struct ContentView: View {
             Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { timer in
                 if #available(macOS 12.3, *){
                                     
-                    DispatchQueue.main.async {
+                    DispatchQueue.main.async {                        
                         if me.Displays.contentView == nil {
                             me.Displays.contentView = me
                         }
