@@ -2425,6 +2425,11 @@ public class Display : Equatable {
     //MARK: Active area
     @MainActor func active(mouse: NSPoint){
         
+        if !AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeRetainedValue() as NSString: true] as CFDictionary) {
+            // Require accessibility permissions
+            PermissionsService.acquireAccessibilityPrivileges()
+        }
+        
         if(Static.ScreenRecordingUnauthorized && !Static.debugForceWorking){
             return
         }
