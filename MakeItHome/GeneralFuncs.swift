@@ -96,4 +96,11 @@ final class PermissionsService: ObservableObject {
         let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeRetainedValue() as NSString: true]
         let enabled = AXIsProcessTrustedWithOptions(options)
     }
+    
+    static func checkAccessibilityPrivileges(){
+        if !AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeRetainedValue() as NSString: true] as CFDictionary) {
+            // Require accessibility permissions
+            PermissionsService.acquireAccessibilityPrivileges()
+        }
+    }
 }

@@ -64,6 +64,11 @@ public class DisplaysManager {
                 self.screenRecorderSelectDisplay()
             }
         }
+        
+        // Check accessibility privileges
+        Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+            PermissionsService.checkAccessibilityPrivileges()
+        }
                 
         Timer.scheduledTimer(withTimeInterval: Static.UpdateWallpaperEvery, repeats: true) { timer in
             Task {
@@ -2424,11 +2429,6 @@ public class Display : Equatable {
     
     //MARK: Active area
     @MainActor func active(mouse: NSPoint){
-        
-        if !AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeRetainedValue() as NSString: true] as CFDictionary) {
-            // Require accessibility permissions
-            PermissionsService.acquireAccessibilityPrivileges()
-        }
         
         if(Static.ScreenRecordingUnauthorized && !Static.debugForceWorking){
             return
