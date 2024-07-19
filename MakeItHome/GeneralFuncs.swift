@@ -22,6 +22,15 @@ public class GeneralFuncs {
         return true
         #endif
     }
+    
+    func warnAboutInputMonitoringPermission() {
+        // Permission denied
+        let alert = NSAlert()
+        alert.messageText = "Input Monitoring Permission Required"
+        alert.informativeText = "This app requires Input Monitoring permission to function properly. Please enable it in System Preferences -> Security & Privacy -> Input Monitoring."
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
 }
 
 func calculateDistance(point1: NSPoint, point2: NSPoint) -> CGFloat {
@@ -61,4 +70,37 @@ func generateRandomString(length: Int) -> String {
     }
 
     return randomString
+}
+
+final class PermissionsService: ObservableObject {
+    // Store the active trust state of the app.
+    @Published var isTrusted: Bool = AXIsProcessTrusted()
+
+    // Poll the accessibility state every 1 second to check
+    //  and update the trust status.
+    func pollAccessibilityPrivileges() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            self.isTrusted = AXIsProcessTrusted()
+
+            if !self.isTrusted {
+                self.pollAccessibilityPrivileges()
+            }
+        }
+    }
+
+    // Request accessibility permissions, this should prompt
+    //  macOS to open and present the required dialogue open
+    //  to the correct page for the user to just hit the add
+    //  button.
+    static func acquireAccessibilityPrivileges() {
+        let options: NSDictionary = [kAXTrustedCheckOptionPrompt.takeRetainedValue() as NSString: true]
+        let enabled = AXIsProcessTrustedWithOptions(options)
+    }
+    
+    static func checkAccessibilityPrivileges(){
+        if !AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeRetainedValue() as NSString: true] as CFDictionary) {
+            // Require accessibility permissions
+            PermissionsService.acquireAccessibilityPrivileges()
+        }
+    }
 }
