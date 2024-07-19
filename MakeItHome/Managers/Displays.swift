@@ -1489,14 +1489,16 @@ public class Display : Equatable {
                     if curPlaceholder == nil {
                         let _placeholders = self.placeholders
                         for placeholder in _placeholders {
-                            if(placeholder.id == -1){
-                                placeholder.id = currentSpaceId
-                            }
-                            
-                            if(placeholder.id == currentSpaceId){
-                                curPlaceholder = placeholder
-                                self.spaces[currentSpaceId] = self.curPlaceholder
-                                break;
+                            if let pl = placeholder as? SwifterPlaceholder {
+                                if(placeholder.id == -1){
+                                    placeholder.id = currentSpaceId
+                                }
+                                
+                                if(placeholder.id == currentSpaceId){
+                                    curPlaceholder = placeholder
+                                    self.spaces[currentSpaceId] = self.curPlaceholder
+                                    break;
+                                }
                             }
                         }
                     }
