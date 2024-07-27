@@ -1198,6 +1198,8 @@ public class Display : Equatable {
     
     public var frontMostAppSince : Int64 = 0
     
+    let placeholdersQueue = DispatchQueue(label: "ink.makeithome.placeholdersQueue")
+    
     public func checkForScreenshot(forceShot: Bool = false) -> Bool{
         if !mouseIn{ // if mouse is not in display
             return false
@@ -1487,17 +1489,19 @@ public class Display : Equatable {
                 else {
                     //TODO: Thread 1: EXC_BAD_ACCESS (code=1, address=0x20) (placeholders)
                     if curPlaceholder == nil {
-                        let _placeholders = self.placeholders
-                        for placeholder in _placeholders {
-                            if let pl = placeholder as? SwifterPlaceholder {
-                                if(placeholder.id == -1){
-                                    placeholder.id = currentSpaceId
-                                }
-                                
-                                if(placeholder.id == currentSpaceId){
-                                    curPlaceholder = placeholder
-                                    self.spaces[currentSpaceId] = self.curPlaceholder
-                                    break;
+                        placeholdersQueue.async {
+                            let _placeholders = self.placeholders
+                            for placeholder in _placeholders {
+                                if let pl = placeholder as? SwifterPlaceholder {
+                                    if(placeholder.id == -1){
+                                        placeholder.id = self.currentSpaceId
+                                    }
+                                    
+                                    if(placeholder.id == self.currentSpaceId){
+                                        self.curPlaceholder = placeholder
+                                        self.spaces[self.currentSpaceId] = self.curPlaceholder
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -1661,7 +1665,10 @@ public class Display : Equatable {
                         winHolder.show()
                         
                         self.curPlaceholder = winHolder
-                        self.placeholders.append(winHolder)
+                        
+                        placeholdersQueue.async {
+                            self.placeholders.append(winHolder)
+                        }
                     }
                 }
                                 
