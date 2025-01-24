@@ -78,6 +78,7 @@ I try to make a to do list as memorandum:
 - Found an issue about screen recording when you change users.
 - Find a solution about the local http server in multi user session. The solution to implement would be stop and restart the server when the screen is locked. <b>!!!PRIORITY!!!</b>
 - The aboveBy management in Display class is full of unused variables. Clear it.
+- <b>VERY IMPORTANT: solve this holy threads "overflow" issue (only a debug problem?)</b>
 
 ## Development guide
 - The top widgets zone web assets if located at MakeItHome/Resources/assets/, instead the Swift controller is located at MakeItHome/Views/Overscreen/WidgetZoneView.swift
