@@ -270,7 +270,9 @@ public struct ContentView: View {
             //Displays.curDisplay?.hideWindow()
         }*/
     }
-            
+    
+    var firstAuthorizeScreenRecordingDone : Bool = false
+    
     init(){
         setupExceptionHandlers()
         
@@ -298,8 +300,8 @@ public struct ContentView: View {
         var checkAuthorizationTicks = 0
         
         //MARK: Show NoRecordingPermissionView if neccessary
-        Timer.scheduledTimer(withTimeInterval: Static.WaitBeforeStarting, repeats: false) { timer in            
-            Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { timer in
+        Timer.scheduledTimer(withTimeInterval: Static.WaitBeforeStarting, repeats: false) { timer in
+            Timer.scheduledTimer(withTimeInterval: 4.0, repeats: true) { timer in
                 if #available(macOS 12.3, *){
                                     
                     DispatchQueue.main.async {                        
@@ -308,10 +310,8 @@ public struct ContentView: View {
                         }
                     }
                     
-                    var checkAfter = 0
-                    if !Static.ScreenRecordingUnauthorized {
-                        checkAfter = 5
-                    }
+                    var checkAfter = (myself.firstAuthorizeScreenRecordingDone || !Static.ScreenRecordingUnauthorized) ? 5 : 0
+                    myself.firstAuthorizeScreenRecordingDone = true
                     
                     if checkAuthorizationTicks >= checkAfter {
                         DispatchQueue.main.async {
