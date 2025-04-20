@@ -1114,8 +1114,10 @@ public class Display : Equatable {
                 
                 // Check if mouse is not moving
                 if self.mouseIn {
-                    let limiter = self.avgSpeed * 0.1 * 0.25
+                    let limiter = self.avgSpeed * 0.5
                     let startedFor = Date().timeIntervalSince1970 - timeStart.timeIntervalSince1970
+                    
+                    //print(self.mouseSpeed_10s, limiter) // !! DEBUG PAUSE RECORDING !!
                     
                     if !force && mouseMoveMultiplier > 0 && (self.mouseSpeed_10s < limiter || (self.recordingPaused && pauseMinMouseSpeed > self.mouseSpeed_10s)) && startedFor > 10 {
                         if !self.recordingPaused {
@@ -2466,8 +2468,14 @@ public class Display : Equatable {
                 (manager.capturePreview as? CapturePreview)?.onMouseShouldUpdate(display: self)
             }
         }
-                
+        
+        ///#! Pointer calculations
+        
         let mouseDelta = CGPoint(x: mouse.x - prevMouse.x, y: mouse.y - prevMouse.y)
+        
+        mouseSpeed = sqrt((pow(mouseDelta.x,2)+pow(mouseDelta.y,2)))
+        mouseSpeed_10s = ((mouseSpeed_10s*(Static.MouseHertz * 10))+mouseSpeed)/((Static.MouseHertz * 10)+1)
+        avgSpeed = ((avgSpeed*avgWeight)+mouseSpeed)/(avgWeight+1)
         
         let acceleration = sqrt(pow((mouse.x - prevMouse.x),2)+pow((mouse.y - prevMouse.y),2))
         avgAcceleration = ((avgAcceleration*avgWeight)+acceleration)/(avgWeight+1)
@@ -2572,10 +2580,7 @@ public class Display : Equatable {
         ///
         /// Mouse...
         ///
-        mouseSpeed = sqrt((pow(mouseDelta.x,2)+pow(mouseDelta.y,2)))
-        mouseSpeed_10s = ((mouseSpeed_10s*(Static.MouseHertz * 10))+mouseSpeed)/((Static.MouseHertz * 10)+1)
-        avgSpeed = ((avgSpeed*avgWeight)+mouseSpeed)/(avgWeight+1)
-        
+
         if(maxSpeed < avgSpeed){
             maxSpeed = (maxSpeed + avgSpeed) / 2
             
