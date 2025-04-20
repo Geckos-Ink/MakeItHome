@@ -36,7 +36,7 @@ public class StoreView {
             self.statusBarItem = statusBar.statusItem(
                 withLength: NSStatusItem.squareLength)
             
-            self.statusBarItem.button?.image = NSImage(named: "bar_icon")
+            self.statusBarItem.button?.image = NSImage(named: "icon-circle")
             self.statusBarItem.button?.imageScaling = .scaleProportionallyDown
             
             self.statusBarItem.button?.action = #selector(self.orderABurrito(sender:))
