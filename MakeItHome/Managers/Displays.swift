@@ -2317,7 +2317,7 @@ public class Display : Equatable {
     
     let useRelativePointer = false
     
-    static let sensivityBaseConstant = 0.0005 // was 0.002
+    static let sensivityBaseConstant = 0.001 // was 0.002
     var scarfWeight : CGFloat = sensivityBaseConstant * Static.Sensivity
     var activateOnPixelsLimit : CGFloat = 35
     var moveOnPixels : CGFloat = 0
@@ -2569,10 +2569,6 @@ public class Display : Equatable {
             }
         }
         
-        let scarfWeight = curSide == 3 ? scarfWeight * 0.5 : scarfWeight
-        mouseScarf.x = ((mouseScarf.x*scarfWeight)+relMouse.x)/(scarfWeight+1);
-        mouseScarf.y = ((mouseScarf.y*scarfWeight)+relMouse.y)/(scarfWeight+1);
-        
         ///
         /// Mouse...
         ///
@@ -2581,7 +2577,9 @@ public class Display : Equatable {
         avgSpeed = ((avgSpeed*avgWeight)+mouseSpeed)/(avgWeight+1)
         
         if(maxSpeed < avgSpeed){
-            maxSpeed = (maxSpeed + avgSpeed)/2
+            maxSpeed = (maxSpeed + avgSpeed) / 2
+            
+            weight *= 0.5 * (curSide == 3 ? 0.5 : 1.0)
         }
         else {
             if avgSpeed > 1 {
@@ -2592,6 +2590,10 @@ public class Display : Equatable {
         
         var accDelta = CGPoint(x: abs(abs(mouse.x) - abs(prevMouse.x)), y: abs(abs(mouse.y) - abs(prevMouse.y)))
         accDelta = mouseDelta.clone
+        
+        let scarfWeight = curSide == 3 ? scarfWeight * 0.25 : scarfWeight
+        mouseScarf.x = ((mouseScarf.x*scarfWeight)+relMouse.x)/(scarfWeight+1);
+        mouseScarf.y = ((mouseScarf.y*scarfWeight)+relMouse.y)/(scarfWeight+1);
         
         let mouseForecast = self.pointForecast(from: mouseScarf, to: relMouse, weight: weight)
         let absForecastMouse = NSPoint(x: mouseForecast.x + frame.origin.x, y: mouseForecast.y + frame.origin.y)
