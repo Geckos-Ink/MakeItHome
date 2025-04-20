@@ -156,6 +156,24 @@ public class Static {
         }
     }
     
+    public static var OpenAtStartupPrompts : Int {
+        get {
+            let res = User.object(forKey: "OpenAtStartupPrompts") as? Int
+            
+            if(res == nil){ // default action
+                let defaultAction = 0
+                self.OpenAtStartupPrompts = defaultAction
+                return defaultAction
+            }
+            
+            return res!
+        }
+        
+        set {
+            Static.User.set(newValue, forKey: "OpenAtStartupPrompts")
+        }
+    }
+    
     public static func CheckOpenAtStartup(launch: Bool){
         if #available(macOS 13, *){
             let appService = SMAppService()
@@ -244,8 +262,12 @@ public class Static {
         }
         else {
             if !Static.OpenAtStartup {
-                delay(ms: 1000){
-                    showStartAtLoginAlert()
+                if Static.OpenAtStartupPrompts < 2 {
+                    Static.OpenAtStartupPrompts += 1
+                    
+                    delay(ms: 1000){
+                        showStartAtLoginAlert()
+                    }
                 }
             }
         }
