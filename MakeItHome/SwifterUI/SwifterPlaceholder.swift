@@ -79,7 +79,13 @@ public class SwifterPlaceholder : NSWindow {
      
     /// Close and toggle presentation, so that it matches the current state of the panel
     override public func close() {
-        super.close()
+        if self.isVisible && !(self.contentView?.isInFullScreenMode ?? false) {
+            super.close()
+        }
+    }
+    
+    func stillValid() -> Bool {
+        return self.isVisible && !(self.contentView?.isInFullScreenMode ?? false)
     }
     
     func show() {

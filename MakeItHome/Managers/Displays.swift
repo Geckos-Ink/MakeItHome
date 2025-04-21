@@ -1422,6 +1422,8 @@ public class Display : Equatable {
                             winnerTitle = winTitle ?? ""
                             //appWin?.lastRect = rect
                             
+                            isFullscreen = winnerRect.size.width >= self.frame.width && winnerRect.size.height >= self.frame.height - self.menuHeight
+                            
                         }
                         else if !winOwnerChecked && winner == nil{
                             if rect != self.screen.frame{
@@ -1429,6 +1431,11 @@ public class Display : Equatable {
                             } // else Dock
                         }
                     }
+                }
+                
+                // replicated belows, if this works remove it
+                if isFullscreen {
+                    return
                 }
                 
                 //MARK: spaceHolder MGMT
@@ -1449,7 +1456,7 @@ public class Display : Equatable {
                             }
                         }
                     }
-                    
+                                        
                     if self.currentSpaceId != spaceHolderId || (spaceHolderFound < 0 && self.currentSpaceId > 0){
                         if !currentSpaceIds.contains(spaceHolderId){
                             samePlaceholderSince = 0
@@ -1479,7 +1486,10 @@ public class Display : Equatable {
                         self.spaceInChanging()
                     }
                     
-                    curPlaceholder = nil
+                    // after fullscreen: Thread 1: EXC_BAD_ACCESS (code=1, address=0x20)
+                    DispatchQueue.main.async {
+                        self.curPlaceholder = nil
+                    }
                 }
                 
                 if self.spaceIsChanging {
@@ -1493,11 +1503,11 @@ public class Display : Equatable {
                 }
                 else {
                     //TODO: Thread 1: EXC_BAD_ACCESS (code=1, address=0x20) (placeholders)
-                    if curPlaceholder == nil {
-                        placeholdersQueue.async {
+                    DispatchQueue.main.async {
+                        if self.curPlaceholder == nil {
                             let _placeholders = self.placeholders
                             for placeholder in _placeholders {
-                                if let pl = placeholder as? SwifterPlaceholder {
+                                if let pl = placeholder as? SwifterPlaceholder{
                                     if(placeholder.id == -1){
                                         placeholder.id = self.currentSpaceId
                                     }
@@ -1546,12 +1556,13 @@ public class Display : Equatable {
                 }
             }
             
-            var windows = CGWindowListCopyWindowInfo([CGWindowListOption.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [CFDictionary]
+            // used to have .excludeDesktopElements
+            var windows = CGWindowListCopyWindowInfo([CGWindowListOption.optionOnScreenOnly], kCGNullWindowID) as? [CFDictionary]
             
             for aWin in lastAllWins{
                 windows?.insert(aWin, at: 0)
             }
-            
+                       
             cycleWindows(windows: windows)
             
             if spaceIsChanging {
