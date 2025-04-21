@@ -1443,10 +1443,10 @@ public class Display : Equatable {
                 
                 if (spaceHolderId == -1 || spaceHolderFound > -1 || spaceHolderFound == -2) {
                     
-                    if true && (!spaceIsChanging && !activateNewApp) && spaceHolderId >= 0 && spaceHolderId != currentSpaceId {
+                    if true && (!spaceIsChanging && !activateNewApp) && spaceHolderId >= 0 && spaceHolderId != currentSpaceId && self.curPlaceholder?.stillValid() ?? false {
                         DispatchQueue.main.async {
                             for placeholder in self.placeholders {
-                                if self.curPlaceholder?.id != spaceHolderId {
+                                if placeholder.stillValid() && self.curPlaceholder?.id != spaceHolderId {
                                     if placeholder.numWindows == self.curPlaceholder?.numWindows && spaceHolderId != self.currentSpaceId {
                                         self.removeDuplicatePlaceholder(idNew: spaceHolderId, idOld: self.currentSpaceId)
                                         spaceHolderId = self.currentSpaceId
@@ -1678,7 +1678,10 @@ public class Display : Equatable {
                         print("creating new SwifterPlaceholder")
                         let winHolder = SwifterPlaceholder()
                         winHolder.numWindows = windows!.count
-                        winHolder.show()
+                        
+                        // It cause useless space change after fullscreen
+                        // check in case of opening a window in another space
+                        //winHolder.show()
                         
                         self.curPlaceholder = winHolder
                         
