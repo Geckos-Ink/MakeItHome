@@ -648,6 +648,7 @@ public class Display : Equatable {
         
         func checkAppExtension(){
             if self.appExtension == nil && Static.appExtensionManager != nil {
+                print("app extension apps: ", Static.appExtensionManager!.apps)
                 for (id, app) in Static.appExtensionManager!.apps {
                     if app.bundleId == self.bundleId {
                         appExtension = app
@@ -864,6 +865,8 @@ public class Display : Equatable {
                 if isFakeWin {
                     return 0.5
                 }
+                
+                let avgPixel = avgPixel.usingColorSpace(.sRGB) ?? avgPixel
                 
                 return (avgPixel.redComponent + avgPixel.greenComponent + avgPixel.blueComponent)/3
             }

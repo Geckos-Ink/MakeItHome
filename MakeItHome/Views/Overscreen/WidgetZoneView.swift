@@ -571,6 +571,8 @@ public class TopWKWV : WKWebView, NSDraggingSource{
     public var httpServer : SimpleHTTPServer?
     
     public func initHttpServer(){
+        if httpServer != nil { return }
+        
         httpServer = SimpleHTTPServer(port: 19494)
         
         Task {
