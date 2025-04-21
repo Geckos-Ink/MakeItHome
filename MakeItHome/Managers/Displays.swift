@@ -2322,7 +2322,7 @@ public class Display : Equatable {
     
     let useRelativePointer = false
     
-    static let sensivityBaseConstant = 0.001 // was 0.002
+    static let sensivityBaseConstant = 0.0015 // was 0.002
     var scarfWeight : CGFloat = sensivityBaseConstant * Static.Sensivity
     var activateOnPixelsLimit : CGFloat = 35
     var moveOnPixels : CGFloat = 0
