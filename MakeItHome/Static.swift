@@ -42,6 +42,7 @@ public class Static {
     
     public static var ShowInDock : Bool {
         get {
+            _showInDock = User.bool(forKey: "ShowInDock") ?? _showInDock
             return _showInDock
         }
         
@@ -57,7 +58,7 @@ public class Static {
     
     public static func checkShowInDock(){
         if let app = NSApp {
-            if(_showInDock){
+            if(ShowInDock){
                 app.setActivationPolicy(.regular)
             }
             else {
@@ -226,9 +227,11 @@ public class Static {
         MaxApps = User.object(forKey: "MaxApps") as? Int ?? MaxApps
         EnableDragDropDetection = User.object(forKey: "EnableDragDropDetection") as? Bool ?? EnableDragDropDetection
         
-        if let showInDock = User.object(forKey: "ShowInDock") as? Bool {
+        /*if let showInDock = User.object(forKey: "ShowInDock") as? Bool {
             Static.ShowInDock = showInDock
-        }
+        }*/
+        
+        checkShowInDock()
         
         // Removed
         EnableRequiredAcceleration = true // User.object(forKey: "EnableRequiredAcceleration") as? Bool ?? EnableRequiredAcceleration
