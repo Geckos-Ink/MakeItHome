@@ -1669,7 +1669,7 @@ public class Display : Equatable {
                     self.isFullscreen = isFullSize
                 }
                 
-                if self.isFullscreen{
+                if self.isFullscreen && self.currentSpaceId >= 0 {
                     return false
                 }
                 
@@ -1684,7 +1684,7 @@ public class Display : Equatable {
                         //winHolder.show()
                         
                         self.curPlaceholder = winHolder
-                        self.currentSpaceId = -2 // wait for new id
+                        self.currentSpaceId = winHolder.windowNumber
                         
                         placeholdersQueue.async {
                             self.placeholders.append(winHolder)
