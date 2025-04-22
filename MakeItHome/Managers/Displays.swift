@@ -715,6 +715,12 @@ public class Display : Equatable {
                     return;
                 }
                 
+                if win!.spaceId != self.display.currentSpaceId {
+                    let ph = display.getPlaceholderById(win!.spaceId)
+                    ph?.show()
+                    Thread.sleep(forTimeInterval: 0.5) // is this smooth?
+                }
+                
                 // Force it, i want to see the error
                 let openApp = win!.app!.runningApp // ?? runningApp
                 display.curFrontApp = openApp
