@@ -838,11 +838,11 @@ public struct CapturePreview: NSViewRepresentable {
                 let particleSystem = SCNParticleSystem()
                 auroraBorealisParticleSystem = particleSystem
                 
-                let duration : CGFloat = 4 * 2
+                let duration : CGFloat = 4.0 // seconds(?)
                 
-                particleSystem.birthRate = 40
+                particleSystem.birthRate = 60
                 particleSystem.particleLifeSpan = duration
-                particleSystem.particleLifeSpanVariation = 0
+                particleSystem.particleLifeSpanVariation = duration / 1.5
                 particleSystem.emissionDuration = duration
                 particleSystem.loops = true
                 particleSystem.blendMode = blend
@@ -870,14 +870,16 @@ public struct CapturePreview: NSViewRepresentable {
                     //particleSystem.birthRate = 15
                 }
                 
+                let accelerationFactor : CGFloat = 0.5
+                
                 particleSystem.particleColorVariation = SCNVector4(0.2, 0.5, 0.5, 0.5)
                 particleSystem.particleSize = self.parentView.onePixel * 30
-                particleSystem.acceleration.y = self.parentView.onePixel * 1
+                particleSystem.acceleration.y = self.parentView.onePixel * 1 * accelerationFactor
                 
                 particleSystem.particleAngularVelocity = self.parentView.onePixel * 10
-                particleSystem.particleVelocity = self.parentView.onePixel * 2
+                particleSystem.particleVelocity = self.parentView.onePixel * 2 * accelerationFactor
                 particleSystem.particleAngularVelocityVariation = self.parentView.onePixel * 10
-                particleSystem.particleVelocityVariation = self.parentView.onePixel * 2
+                particleSystem.particleVelocityVariation = self.parentView.onePixel * 2 * accelerationFactor
                 
                 particleSystem.particleSizeVariation = self.parentView.onePixel * 20
                 
