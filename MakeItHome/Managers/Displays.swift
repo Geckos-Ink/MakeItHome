@@ -1226,10 +1226,7 @@ public class Display : Equatable {
         
         return placeholder
     }
-    
-    var lastFullscreenWindow : AppWindows? = nil
-    var lastFullscreenNumWindows : Int = 0
-    
+ 
     public func checkForScreenshot(forceShot: Bool = false) -> Bool{
         if !mouseIn{ // if mouse is not in display
             return false
@@ -1452,16 +1449,6 @@ public class Display : Equatable {
                             //appWin?.lastRect = rect
                             
                             isFullscreen = winnerRect.size.width >= self.frame.width && winnerRect.size.height >= self.frame.height - self.menuHeight
-                            
-                            if isFullscreen {
-                                lastFullscreenWindow = appWins
-                                lastFullscreenNumWindows = windows?.count ?? 0
-                            }
-                            else {
-                                if lastFullscreenWindow?.runningApp == appWins?.runningApp && lastFullscreenNumWindows == windows?.count ?? 0 {
-                                    isFullscreen = true
-                                }
-                            }
                         }
                         else if !winOwnerChecked && winner == nil{
                             if rect != self.screen.frame{
@@ -1719,8 +1706,8 @@ public class Display : Equatable {
                 // "isFullscreen" check
                 let isFinderDragging = appWin.appTitle == "Finder" && appWin.winTitle == ""
                 
-                if !isFinderDragging{
-                    self.isFullscreen = isFullSize
+                if isFinderDragging{
+                    self.isFullscreen = false
                 }
                 
                 if self.isFullscreen && self.currentSpaceId >= 0 {
@@ -2529,7 +2516,7 @@ public class Display : Equatable {
     var ignoreMousePositionForAboveBy = 0
     
     //MARK: Active area
-    @MainActor func active(mouse: NSPoint){
+    func active(mouse: NSPoint){ // was @MainActor
         
         if(Static.ScreenRecordingUnauthorized && !Static.debugForceWorking){
             return
@@ -2706,7 +2693,7 @@ public class Display : Equatable {
         }
         
         //MARK: Top side mouse
-        if(curSide == 3 && activateSide[curSide] && self.aboveByPixels == 0) && !self.isFullscreen {
+        if(curSide == 3 && activateSide[curSide] && self.aboveByPixels == 0) {
             aroundTopSide = true
             
             
@@ -2877,7 +2864,7 @@ public class Display : Equatable {
         var sideVertical = self.side < 2
         var sideSign = self.side % 2
           
-        if(self.side >= 0){
+        if(self.side >= 0) {
             
             self.checkPreviewsElaborated()
             
@@ -3181,7 +3168,9 @@ public class Display : Equatable {
         }
         
         if(prevAboveByPixels == 0 && aboveByPixels > 0){
-            self.manager.contentView?.store.setWindowsProperties()
+            DispatchQueue.main.async {
+                self.manager.contentView?.store.setWindowsProperties()
+            }
         }
         
         //MARK: Show/hide capture window
