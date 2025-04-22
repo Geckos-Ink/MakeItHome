@@ -1202,10 +1202,12 @@ public class Display : Equatable {
     public var previewUpdated = false
     
     public var frontMostAppSince : Int64 = 0
-    var exitedFromFullscreen = 0
+    
+    var exitedFromFullscreen = 0 // how many cycles passed after exiting fullscreen mode
+    var noSpaceholderFor = 0 // how many cycles passed without a found space holder
+    let waitCyclesCoolDown = 30 // how many checkForScreenshot cycles needed to unlock a checking
     
     let placeholdersQueue = DispatchQueue(label: "ink.makeithome.placeholdersQueue")
-    var fullscreenObserver : FullscreenObserver? = nil
     
     public func checkForScreenshot(forceShot: Bool = false) -> Bool{
         if !mouseIn{ // if mouse is not in display
@@ -1222,15 +1224,8 @@ public class Display : Equatable {
         if self.side == 3 {
             return false
         }
-        
-        if fullscreenObserver == nil {
-            fullscreenObserver = FullscreenObserver()
-            fullscreenObserver?.startObserving()
-        }
-        
-        let observedFullscreenMode = fullscreenObserver?.inFullscreenMode ?? false
-        
-        if(self.curFrontApp != nil && (self.curFrontApp?.isActive ?? false && !(self.curFrontApp?.isHidden ?? true) || aboveBy > 0)) && !observedFullscreenMode {
+               
+        if(self.curFrontApp != nil && (self.curFrontApp?.isActive ?? false && !(self.curFrontApp?.isHidden ?? true) || aboveBy > 0)) {
             
             
             var winOwnerName : String?
@@ -1318,8 +1313,8 @@ public class Display : Equatable {
                         //print(dict)
                         
                         /* Notes:
-                            winLayer => more is higher, more is ahead
-                                the dict is order by the higher to the back
+                         winLayer => more is higher, more is ahead
+                         the dict is order by the higher to the back
                          */
                         
                         // Go ahead
@@ -1367,11 +1362,12 @@ public class Display : Equatable {
                             else {
                                 print("space holder found ", spaceHolderFound, winId)
                                 
-                                if spaceHolderFound == -1{
+                                if spaceHolderFound == -1 {
                                     spaceHolderFound = winId
                                 }
                                 else {
                                     spaceHolderFound = -2
+                                    self.spaceIsChanging = true
                                 }
                             }
                         }
@@ -1387,13 +1383,13 @@ public class Display : Equatable {
                             //print(winnerRect)
                             
                             var biggerThanPreviousWinner = winner == nil || rectContainsWinnerRect(rect: rect)
-         
+                            
                             // Check if winner is contained by this window
                             /*if winner != nil{ // these lines show chrome mini banners...
-                                if(!rect.contains(winnerRect)){
-                                    biggerThanPreviousWinner = false
-                                }
-                            }*/
+                             if(!rect.contains(winnerRect)){
+                             biggerThanPreviousWinner = false
+                             }
+                             }*/
                             
                             if(!biggerThanPreviousWinner){
                                 continue;
@@ -1409,22 +1405,22 @@ public class Display : Equatable {
                                 let intersection = NSIntersectionRect(rect, aheadRect)
                                 
                                 let isInside =
-                                    rect.contains(CGPoint(x: aheadRect.minX, y: aheadRect.minY)) &&
-                                    rect.contains(CGPoint(x: aheadRect.maxX, y: aheadRect.maxY))
+                                rect.contains(CGPoint(x: aheadRect.minX, y: aheadRect.minY)) &&
+                                rect.contains(CGPoint(x: aheadRect.maxX, y: aheadRect.maxY))
                                 
                                 let aheadSide = (intersection.height + intersection.width)/2
-                                                    
+                                
                                 if !isInside || aheadSide < (winnerSide/10){
                                     continue;
                                 }
                                 
                                 //var contains = winnerRect.intersects(aheadRect) || winnerRect.contains(aheadRect.origin)
-                                                                
+                                
                                 winnerBehindSomething = true
                                 appWins?.timeSelection = 0
                             }
                             
-        
+                            
                             winner = dict
                             winnerLayer = winLayer
                             winnerRect = rect
@@ -1451,112 +1447,121 @@ public class Display : Equatable {
                 
                 exitedFromFullscreen += 1
                 
-                if exitedFromFullscreen < 5 {
+                if exitedFromFullscreen < waitCyclesCoolDown {
                     return
                 }
                 
-                //MARK: spaceHolder MGMT
-                samePlaceholderSince += 1
-                
-                if (spaceHolderId == -1 || spaceHolderFound > -1 || spaceHolderFound == -2) {
+                ///#
+                ///# spaceHolder managent
+                ///#
+                DispatchQueue.main.async { // done on main thread
+                    //MARK: spaceHolder MGMT
+                    self.samePlaceholderSince += 1
                     
-                    if true && (!spaceIsChanging && !activateNewApp) && spaceHolderId >= 0 && spaceHolderId != currentSpaceId && self.curPlaceholder?.stillValid() ?? false {
-                        DispatchQueue.main.async {
-                            for placeholder in self.placeholders {
-                                if placeholder.stillValid() && self.curPlaceholder?.id != spaceHolderId {
-                                    if placeholder.numWindows == self.curPlaceholder?.numWindows && spaceHolderId != self.currentSpaceId {
-                                        self.removeDuplicatePlaceholder(idNew: spaceHolderId, idOld: self.currentSpaceId)
-                                        spaceHolderId = self.currentSpaceId
-                                        print("duplicate space holder removed")
+                    if (spaceHolderId == -1 || spaceHolderFound > -1 || spaceHolderFound == -2) {
+                        
+                        if true && (!self.spaceIsChanging && !self.activateNewApp) && spaceHolderId >= 0 && spaceHolderId != self.currentSpaceId && self.curPlaceholder?.stillValid() ?? false {
+                            DispatchQueue.main.async {
+                                for placeholder in self.placeholders {
+                                    if placeholder.stillValid() && self.curPlaceholder?.id != spaceHolderId {
+                                        if placeholder.numWindows == self.curPlaceholder?.numWindows && spaceHolderId != self.currentSpaceId {
+                                            self.removeDuplicatePlaceholder(idNew: spaceHolderId, idOld: self.currentSpaceId)
+                                            spaceHolderId = self.currentSpaceId
+                                            print("duplicate space holder removed")
+                                        }
                                     }
                                 }
                             }
-                        }
-                    }
-                                        
-                    if self.currentSpaceId != spaceHolderId || (spaceHolderFound < 0 && self.currentSpaceId > 0){
-                        if !currentSpaceIds.contains(spaceHolderId){
-                            samePlaceholderSince = 0
                         }
                         
-                        sameSpaceHolderId = spaceHolderId
-                    }
-                    
-                    // register the space holder in the list of "current space holders"
-                    // this is an ugly but realistic approach. the space holder managament is a mess
-                    if spaceHolderId > 0 {
-                        if !currentSpaceIds.contains(spaceHolderId){
-                            currentSpaceIds.append(spaceHolderId)
+                        if self.currentSpaceId != spaceHolderId || (spaceHolderFound < 0 && self.currentSpaceId > 0){
+                            if !self.currentSpaceIds.contains(spaceHolderId){
+                                self.samePlaceholderSince = 0
+                            }
+                            
+                            sameSpaceHolderId = spaceHolderId
+                        }
+                        
+                        // register the space holder in the list of "current space holders"
+                        // this is an ugly but realistic approach. the space holder managament is a mess
+                        if spaceHolderId > 0 {
+                            if !self.currentSpaceIds.contains(spaceHolderId){
+                                self.currentSpaceIds.append(spaceHolderId)
+                            }
+                        }
+                        
+                        
+                        if spaceHolderFound >= 0 {
+                            self.currentSpaceId = spaceHolderId
+                            print("unique space holder found", spaceHolderId)
+                        }
+                        
+                        //spaceHolderFound = -2 // force "space changing" status (it means that two space holders were found)
+                        if spaceHolderFound == -2 && !self.spaceIsChanging {
+                            print("space changing")
+                            self.spaceIsChanging = true
+                            self.spaceInChanging()
+                        }
+                        
+                        // after fullscreen: Thread 1: EXC_BAD_ACCESS (code=1, address=0x20)
+                        DispatchQueue.main.async {
+                            self.curPlaceholder = nil
                         }
                     }
                     
-                    
-                    if spaceHolderFound >= 0 {
-                        self.currentSpaceId = spaceHolderId
-                        print("unique space holder found", spaceHolderId)
-                    }
-                    
-                    //spaceHolderFound = -2 // force "space changing" status (it means that two space holders were found)
-                    if spaceHolderFound == -2 && !self.spaceIsChanging {
-                        print("space changing")
-                        self.spaceIsChanging = true
-                        self.spaceInChanging()
-                    }
-                    
-                    // after fullscreen: Thread 1: EXC_BAD_ACCESS (code=1, address=0x20)
-                    DispatchQueue.main.async {
-                        self.curPlaceholder = nil
-                    }
-                }
-                
-                if self.spaceIsChanging {
-                    if samePlaceholderSince > Static.WaitAfterSpaceChange {
-                        self.spaceIsChanging = false
-                        print("space no more changing due to timeout")
+                    if self.spaceIsChanging {
+                        if self.samePlaceholderSince > Static.WaitAfterSpaceChange {
+                            self.spaceIsChanging = false
+                            print("space no more changing due to timeout")
+                        }
+                        else {
+                            print("space is still changing because of ", self.samePlaceholderSince, " <= ", Static.WaitAfterSpaceChange)
+                        }
                     }
                     else {
-                        print("space is still changing because of ", samePlaceholderSince, " <= ", Static.WaitAfterSpaceChange)
-                    }
-                }
-                else {
-                    //TODO: Thread 1: EXC_BAD_ACCESS (code=1, address=0x20) (placeholders)
-                    DispatchQueue.main.async {
-                        if self.curPlaceholder == nil {
-                            let _placeholders = self.placeholders
-                            for placeholder in _placeholders {
-                                if let pl = placeholder as? SwifterPlaceholder{
-                                    if(placeholder.id == -1){
-                                        placeholder.id = self.currentSpaceId
-                                    }
-                                    
-                                    if(placeholder.id == self.currentSpaceId){
-                                        self.curPlaceholder = placeholder
-                                        self.spaces[self.currentSpaceId] = self.curPlaceholder
-                                        break;
+                        //TODO: Thread 1: EXC_BAD_ACCESS (code=1, address=0x20) (placeholders)
+                        DispatchQueue.main.async {
+                            if self.curPlaceholder == nil {
+                                let _placeholders = self.placeholders
+                                for placeholder in _placeholders {
+                                    if let pl = placeholder as? SwifterPlaceholder{
+                                        if(placeholder.id == -1){
+                                            placeholder.id = self.currentSpaceId
+                                        }
+                                        
+                                        if(placeholder.id == self.currentSpaceId){
+                                            self.curPlaceholder = placeholder
+                                            self.spaces[self.currentSpaceId] = self.curPlaceholder
+                                            break;
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
-                
-                if spaceHolderFound == -1 {
-                    if !self.spaceIsChanging && !self.activateNewApp{
-                        for win in windows!{
-                            if let dict = win as? [String: AnyObject] {
-                                let winId = dict["kCGWindowNumber"] as? Int ?? -1
-                                
-                                let appWin = getWindow(winId: winId)
-                                appWin?.spaceId = curPlaceholder?.id ?? currentSpaceId // update every time
+                    
+                    if spaceHolderFound == -1 {
+                        if !self.spaceIsChanging && !self.activateNewApp{
+                            for win in windows!{
+                                if let dict = win as? [String: AnyObject] {
+                                    let winId = dict["kCGWindowNumber"] as? Int ?? -1
+                                    
+                                    let appWin = getWindow(winId: winId)
+                                    appWin?.spaceId = self.curPlaceholder?.id ?? self.currentSpaceId // update every time
+                                }
                             }
                         }
                     }
-                }
-                
-                if spaceHolderFound >= 0 {
-                    self.spaceIsChanging = false
+                    
+                    if spaceHolderFound >= 0 {
+                        self.spaceIsChanging = false
+                    }
                 }
             }
+            
+            ///#
+            ///# back on current window mgmt
+            ///#
             
             //Check if application is still running
             for app in self.apps {
@@ -1699,24 +1704,31 @@ public class Display : Equatable {
                 
                 if !self.isFullscreen && !spaceIsChanging{
                     if self.currentSpaceId == -1 {
-                        print("creating new SwifterPlaceholder")
-                        let winHolder = SwifterPlaceholder()
-                        winHolder.numWindows = windows!.count
+                        noSpaceholderFor += 1
                         
-                        // It cause useless space change after fullscreen
-                        // check in case of opening a window in another space
-                        winHolder.show()
-                        
-                        self.curPlaceholder = winHolder
-                        self.currentSpaceId = winHolder.windowNumber
-                        
-                        if self.currentSpaceId == -1 {
-                            self.currentSpaceId  = -2
+                        if noSpaceholderFor > waitCyclesCoolDown {
+                            print("creating new SwifterPlaceholder")
+                            let winHolder = SwifterPlaceholder()
+                            winHolder.numWindows = windows!.count
+                            
+                            // It cause useless space change after fullscreen
+                            // check in case of opening a window in another space
+                            winHolder.show()
+                            
+                            self.curPlaceholder = winHolder
+                            self.currentSpaceId = winHolder.windowNumber
+                            
+                            if self.currentSpaceId == -1 {
+                                self.currentSpaceId  = -2
+                            }
+                            
+                            placeholdersQueue.async {
+                                self.placeholders.append(winHolder)
+                            }
                         }
-                        
-                        placeholdersQueue.async {
-                            self.placeholders.append(winHolder)
-                        }
+                    }
+                    else {
+                        noSpaceholderFor = 0
                     }
                 }
                                 
