@@ -1202,8 +1202,10 @@ public class Display : Equatable {
     public var previewUpdated = false
     
     public var frontMostAppSince : Int64 = 0
+    var exitedFromFullscreen = 0
     
     let placeholdersQueue = DispatchQueue(label: "ink.makeithome.placeholdersQueue")
+    var fullscreenObserver : FullscreenObserver? = nil
     
     public func checkForScreenshot(forceShot: Bool = false) -> Bool{
         if !mouseIn{ // if mouse is not in display
@@ -1220,8 +1222,16 @@ public class Display : Equatable {
         if self.side == 3 {
             return false
         }
-                        
-        if(self.curFrontApp != nil && (self.curFrontApp?.isActive ?? false && !(self.curFrontApp?.isHidden ?? true) || aboveBy > 0)){
+        
+        if fullscreenObserver == nil {
+            fullscreenObserver = FullscreenObserver()
+            fullscreenObserver?.startObserving()
+        }
+        
+        let observedFullscreenMode = fullscreenObserver?.inFullscreenMode ?? false
+        
+        if(self.curFrontApp != nil && (self.curFrontApp?.isActive ?? false && !(self.curFrontApp?.isHidden ?? true) || aboveBy > 0)) && !observedFullscreenMode {
+            
             
             var winOwnerName : String?
             
@@ -1435,6 +1445,13 @@ public class Display : Equatable {
                 
                 // replicated belows, if this works remove it
                 if isFullscreen {
+                    exitedFromFullscreen = 0
+                    return
+                }
+                
+                exitedFromFullscreen += 1
+                
+                if exitedFromFullscreen < 5 {
                     return
                 }
                 

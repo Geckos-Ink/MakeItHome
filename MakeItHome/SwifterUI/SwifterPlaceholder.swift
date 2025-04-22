@@ -71,6 +71,8 @@ public class SwifterPlaceholder : NSWindow {
         return true
     }
     
+    public var closed = false
+    
     /// Close automatically when out of focus, e.g. outside click
     override public func resignMain() {
         super.resignMain()
@@ -79,8 +81,9 @@ public class SwifterPlaceholder : NSWindow {
      
     /// Close and toggle presentation, so that it matches the current state of the panel
     override public func close() {
-        if self.isVisible && !(self.contentView?.isInFullScreenMode ?? false) {
+        if !closed && self.isVisible && !(self.contentView?.isInFullScreenMode ?? false) {
             super.close()
+            closed = true
         }
     }
     
