@@ -1673,6 +1673,13 @@ public class Display : Equatable {
                     return false
                 }
                 
+                if self.currentSpaceId == -2 && self.curPlaceholder != nil {
+                    self.currentSpaceId = self.curPlaceholder?.windowNumber ?? -2
+                    if self.currentSpaceId == -1 {
+                        self.currentSpaceId = -2
+                    }
+                }
+                
                 if !self.isFullscreen && !spaceIsChanging{
                     if self.currentSpaceId == -1 {
                         print("creating new SwifterPlaceholder")
@@ -1681,10 +1688,14 @@ public class Display : Equatable {
                         
                         // It cause useless space change after fullscreen
                         // check in case of opening a window in another space
-                        //winHolder.show()
+                        winHolder.show()
                         
                         self.curPlaceholder = winHolder
                         self.currentSpaceId = winHolder.windowNumber
+                        
+                        if self.currentSpaceId == -1 {
+                            self.currentSpaceId  = -2
+                        }
                         
                         placeholdersQueue.async {
                             self.placeholders.append(winHolder)
