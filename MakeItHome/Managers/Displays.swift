@@ -1684,6 +1684,7 @@ public class Display : Equatable {
                         //winHolder.show()
                         
                         self.curPlaceholder = winHolder
+                        self.currentSpaceId = -2 // wait for new id
                         
                         placeholdersQueue.async {
                             self.placeholders.append(winHolder)

@@ -117,12 +117,6 @@ struct MenuBarView: View {
                     Static.User.set(Static.EnableDockMouseSlowering, forKey: "EnableDockMouseSlowering")
                 }*/
                 
-                Toggle(" \(Image(systemName: "dock.rectangle"))  Disable on Dock side", isOn: $disableDockSide).onChange(of: disableDockSide){ newVal in
-                    Static.DisableOnDockSide = newVal
-                    
-                    Static.User.set(Static.DisableOnDockSide, forKey: "DisableOnDockSide")
-                }
-                
                 if false { // moved in Widgets Zone settings
                     Toggle(" \(Image(systemName: "drop.circle.fill"))  Enable top drag & drop detect", isOn: $enableDragDropDetection).onChange(of: enableDragDropDetection){ newVal in
                         Static.EnableDragDropDetection = newVal
@@ -162,6 +156,12 @@ struct MenuBarView: View {
 
             HStack{
                 VStack {
+                    
+                    Toggle(" \(Image(systemName: "dock.rectangle"))  Disable on Dock side", isOn: $disableDockSide).onChange(of: disableDockSide){ newVal in
+                        Static.DisableOnDockSide = newVal
+                        
+                        Static.User.set(Static.DisableOnDockSide, forKey: "DisableOnDockSide")
+                    }
                     
                     Toggle("\(Image(systemName: "appclip")) Show in Dock", isOn: $showInDock).onChange(of: showInDock){ newVal in
                         Static.ShowInDock = newVal
