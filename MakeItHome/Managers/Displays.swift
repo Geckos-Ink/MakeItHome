@@ -1227,6 +1227,9 @@ public class Display : Equatable {
         return placeholder
     }
     
+    var lastFullscreenWindow : AppWindows? = nil
+    var lastFullscreenNumWindows : Int = 0
+    
     public func checkForScreenshot(forceShot: Bool = false) -> Bool{
         if !mouseIn{ // if mouse is not in display
             return false
@@ -1362,7 +1365,7 @@ public class Display : Equatable {
                         let winOwnerChecked = (winOwnerName == name || pid == winPid!)
                         
                         if winLayer == 0 && !excludedApps.contains(winOwnerName ?? "") {
-                            // In case of emergency break the glass: https://developer.apple.com/documentation/appkit/nswindowwillenterfullscreennotification
+                            // In case of emergency break the glass: https://developer.apple.com/documentation/appkit/nswindowwillenterfullscreennotification (seems not working for other apps)
                             if rect.height >= (screen.frame.height-removeMenuHeight) && rect.width >= screen.frame.width {
                                 self.isFullscreen = true
                             }
@@ -1450,6 +1453,15 @@ public class Display : Equatable {
                             
                             isFullscreen = winnerRect.size.width >= self.frame.width && winnerRect.size.height >= self.frame.height - self.menuHeight
                             
+                            if isFullscreen {
+                                lastFullscreenWindow = appWins
+                                lastFullscreenNumWindows = windows?.count ?? 0
+                            }
+                            else {
+                                if lastFullscreenWindow?.runningApp == appWins?.runningApp && lastFullscreenNumWindows == windows?.count ?? 0 {
+                                    isFullscreen = true
+                                }
+                            }
                         }
                         else if !winOwnerChecked && winner == nil{
                             if rect != self.screen.frame{
