@@ -2694,7 +2694,7 @@ public class Display : Equatable {
         }
         
         //MARK: Top side mouse
-        if(curSide == 3 && activateSide[curSide] && self.aboveByPixels == 0){
+        if(curSide == 3 && activateSide[curSide] && self.aboveByPixels == 0) && !self.isFullscreen {
             aroundTopSide = true
             
             
