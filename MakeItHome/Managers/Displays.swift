@@ -1205,9 +1205,21 @@ public class Display : Equatable {
     
     var exitedFromFullscreen = 0 // how many cycles passed after exiting fullscreen mode
     var noSpaceholderFor = 0 // how many cycles passed without a found space holder
-    let waitCyclesCoolDown = 30 // how many checkForScreenshot cycles needed to unlock a checking
+    let waitCyclesCoolDown = 10 // how many checkForScreenshot cycles needed to unlock a checking
     
     let placeholdersQueue = DispatchQueue(label: "ink.makeithome.placeholdersQueue")
+        
+    func getPlaceholderById(_ id: Int) -> SwifterPlaceholder? {
+        var placeholder : SwifterPlaceholder?
+        for ph in self.placeholders {
+            if ph.id == id {
+                placeholder = ph
+                break
+            }
+        }
+        
+        return placeholder
+    }
     
     public func checkForScreenshot(forceShot: Bool = false) -> Bool{
         if !mouseIn{ // if mouse is not in display
@@ -1369,6 +1381,8 @@ public class Display : Equatable {
                                     spaceHolderFound = -2
                                     self.spaceIsChanging = true
                                 }
+                                
+                                self.currentSpaceId = spaceHolderFound
                             }
                         }
                         else if (winner == nil || thisTimeHasTitle) && (winOnScreen == 1 && self.frame.contains(CGPoint(x: rect.origin.x, y: self.frame.minY)) && !excludedApps.contains(winOwnerName ?? "") && winOwnerChecked && (rect.width+rect.height)/2 > 150)/* window must be enough big */{
@@ -1706,7 +1720,7 @@ public class Display : Equatable {
                     if self.currentSpaceId == -1 {
                         noSpaceholderFor += 1
                         
-                        if noSpaceholderFor > waitCyclesCoolDown {
+                        if noSpaceholderFor > (waitCyclesCoolDown) {
                             print("creating new SwifterPlaceholder")
                             let winHolder = SwifterPlaceholder()
                             winHolder.numWindows = windows!.count
