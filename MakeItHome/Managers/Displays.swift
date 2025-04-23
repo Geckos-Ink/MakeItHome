@@ -66,8 +66,10 @@ public class DisplaysManager {
         }
         
         // Check accessibility privileges
-        Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
-            PermissionsService.checkAccessibilityPrivileges()
+        if Static.RequestAccessibility {
+            Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+                PermissionsService.checkAccessibilityPrivileges()
+            }
         }
                 
         Timer.scheduledTimer(withTimeInterval: Static.UpdateWallpaperEvery, repeats: true) { timer in

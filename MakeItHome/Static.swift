@@ -122,6 +122,10 @@ public class Static {
     
     public static var GroupMiniPreviews = true
     
+    ///# Requests
+    // Accessibility is fundamental to mouse pointer position compensation
+    public static let RequestAccessibility : Bool = true
+    
     // FaceID
     //public static var myFace : MyFace? = nil
     
