@@ -1055,8 +1055,10 @@ public struct CapturePreview: NSViewRepresentable {
             }
             
             public func moveEmissionAlpha(to: CGFloat = 0){
-                for win in windows{
-                    win.setEmissionAlpha(to: to)
+                DispatchQueue.main.async {
+                    for win in self.windows{
+                        win.setEmissionAlpha(to: to)
+                    }
                 }
             }
         }
