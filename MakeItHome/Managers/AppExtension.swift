@@ -50,6 +50,9 @@ class AppExtensionManager {
                 reply.description = "appConnected"
             }
             else {
+                apps[bundleId] = app                
+                reply.secret = app?.secret
+                
                 reply.description = "appAlreadyConnected" // fantastic. A typo in release.
             }
             
@@ -139,6 +142,8 @@ class AppExtensionManager {
             reply.appExtensionIsShowing = isShowing
             reply.statusMessages = app!.statusMessages
             
+            reply.appLinked = app?.app != nil
+            
             reply.status = "ok"
             
             app!.hasStatusUpdate = false
@@ -183,6 +188,8 @@ struct AppExtensionMsg : Codable {
     
     var appExtensionIsShowing : Bool?
     var statusMessages : [String]?
+    
+    var appLinked : Bool?
 }
 
 // another function in the spaghetti

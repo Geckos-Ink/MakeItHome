@@ -42,6 +42,7 @@ public class Static {
     
     public static var ShowInDock : Bool {
         get {
+            _showInDock = User.bool(forKey: "ShowInDock") ?? _showInDock
             return _showInDock
         }
         
@@ -57,7 +58,7 @@ public class Static {
     
     public static func checkShowInDock(){
         if let app = NSApp {
-            if(_showInDock){
+            if(ShowInDock){
                 app.setActivationPolicy(.regular)
             }
             else {
@@ -111,7 +112,7 @@ public class Static {
     
     public static let ScreenRecorderHighPriorityFPS = 30 // FPS
     public static let CheckIfUpdateWindowScreenshotEvery : Double = 1 // seconds
-    public static let UpdateWindowScreenshotAfter : Double = 6 // seconds
+    public static let UpdateWindowScreenshotAfter : Double = 3 // seconds
     public static let EnableRecordingHalfInLowPriority = false
         
     public static let ClickMaximumDifference : Double = 0.5
@@ -121,6 +122,10 @@ public class Static {
     
     public static var GroupMiniPreviews = true
     
+    ///# Requests
+    // Accessibility is fundamental to mouse pointer position compensation
+    public static let RequestAccessibility : Bool = true
+    
     // FaceID
     //public static var myFace : MyFace? = nil
     
@@ -128,7 +133,7 @@ public class Static {
     public static let WaitAfterSpaceChange = 3 // ticks
     
     // Clipboard
-    public static let ClipboardForgetElementsOlderThan = 30
+    public static let ClipboardForgetElementsOlderThan = 30 // ergo: maximum clipboard items
     
     ///# TOP BAR
     public static var EnableDragDropDetection : Bool = false
@@ -153,6 +158,24 @@ public class Static {
         set {
             Static.User.set(newValue, forKey: "OpenAtStartup")
             CheckOpenAtStartup(launch: newValue)
+        }
+    }
+    
+    public static var OpenAtStartupPrompts : Int {
+        get {
+            let res = User.object(forKey: "OpenAtStartupPrompts") as? Int
+            
+            if(res == nil){ // default action
+                let defaultAction = 0
+                self.OpenAtStartupPrompts = defaultAction
+                return defaultAction
+            }
+            
+            return res!
+        }
+        
+        set {
+            Static.User.set(newValue, forKey: "OpenAtStartupPrompts")
         }
     }
     
@@ -208,9 +231,11 @@ public class Static {
         MaxApps = User.object(forKey: "MaxApps") as? Int ?? MaxApps
         EnableDragDropDetection = User.object(forKey: "EnableDragDropDetection") as? Bool ?? EnableDragDropDetection
         
-        if let showInDock = User.object(forKey: "ShowInDock") as? Bool {
+        /*if let showInDock = User.object(forKey: "ShowInDock") as? Bool {
             Static.ShowInDock = showInDock
-        }
+        }*/
+        
+        checkShowInDock()
         
         // Removed
         EnableRequiredAcceleration = true // User.object(forKey: "EnableRequiredAcceleration") as? Bool ?? EnableRequiredAcceleration
@@ -244,8 +269,12 @@ public class Static {
         }
         else {
             if !Static.OpenAtStartup {
-                delay(ms: 1000){
-                    showStartAtLoginAlert()
+                if Static.OpenAtStartupPrompts < 2 {
+                    Static.OpenAtStartupPrompts += 1
+                    
+                    delay(ms: 1000){
+                        showStartAtLoginAlert()
+                    }
                 }
             }
         }

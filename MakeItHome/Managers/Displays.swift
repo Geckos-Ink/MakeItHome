@@ -66,8 +66,10 @@ public class DisplaysManager {
         }
         
         // Check accessibility privileges
-        Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
-            PermissionsService.checkAccessibilityPrivileges()
+        if Static.RequestAccessibility {
+            Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+                PermissionsService.checkAccessibilityPrivileges()
+            }
         }
                 
         Timer.scheduledTimer(withTimeInterval: Static.UpdateWallpaperEvery, repeats: true) { timer in
@@ -648,6 +650,7 @@ public class Display : Equatable {
         
         func checkAppExtension(){
             if self.appExtension == nil && Static.appExtensionManager != nil {
+                print("app extension apps: ", Static.appExtensionManager!.apps)
                 for (id, app) in Static.appExtensionManager!.apps {
                     if app.bundleId == self.bundleId {
                         appExtension = app
@@ -712,6 +715,12 @@ public class Display : Equatable {
                     #endif
                     
                     return;
+                }
+                
+                if win!.spaceId != self.display.currentSpaceId {
+                    let ph = display.getPlaceholderById(win!.spaceId)
+                    ph?.show()
+                    Thread.sleep(forTimeInterval: 0.5) // is this smooth?
                 }
                 
                 // Force it, i want to see the error
@@ -864,6 +873,8 @@ public class Display : Equatable {
                 if isFakeWin {
                     return 0.5
                 }
+                
+                let avgPixel = avgPixel.usingColorSpace(.sRGB) ?? avgPixel
                 
                 return (avgPixel.redComponent + avgPixel.greenComponent + avgPixel.blueComponent)/3
             }
@@ -1114,8 +1125,10 @@ public class Display : Equatable {
                 
                 // Check if mouse is not moving
                 if self.mouseIn {
-                    let limiter = self.avgSpeed * 0.1 * 0.25
+                    let limiter = self.avgSpeed * 0.5
                     let startedFor = Date().timeIntervalSince1970 - timeStart.timeIntervalSince1970
+                    
+                    //print(self.mouseSpeed_10s, limiter) // !! DEBUG PAUSE RECORDING !!
                     
                     if !force && mouseMoveMultiplier > 0 && (self.mouseSpeed_10s < limiter || (self.recordingPaused && pauseMinMouseSpeed > self.mouseSpeed_10s)) && startedFor > 10 {
                         if !self.recordingPaused {
@@ -1198,8 +1211,24 @@ public class Display : Equatable {
     
     public var frontMostAppSince : Int64 = 0
     
-    let placeholdersQueue = DispatchQueue(label: "ink.makeithome.placeholdersQueue")
+    var exitedFromFullscreen = 0 // how many cycles passed after exiting fullscreen mode
+    var noSpaceholderFor = 0 // how many cycles passed without a found space holder
+    let waitCyclesCoolDown = 10 // how many checkForScreenshot cycles needed to unlock a checking
     
+    let placeholdersQueue = DispatchQueue(label: "ink.makeithome.placeholdersQueue")
+        
+    func getPlaceholderById(_ id: Int) -> SwifterPlaceholder? {
+        var placeholder : SwifterPlaceholder?
+        for ph in self.placeholders {
+            if ph.id == id {
+                placeholder = ph
+                break
+            }
+        }
+        
+        return placeholder
+    }
+ 
     public func checkForScreenshot(forceShot: Bool = false) -> Bool{
         if !mouseIn{ // if mouse is not in display
             return false
@@ -1215,8 +1244,9 @@ public class Display : Equatable {
         if self.side == 3 {
             return false
         }
-                        
-        if(self.curFrontApp != nil && (self.curFrontApp?.isActive ?? false && !(self.curFrontApp?.isHidden ?? true) || aboveBy > 0)){
+               
+        if(self.curFrontApp != nil && (self.curFrontApp?.isActive ?? false && !(self.curFrontApp?.isHidden ?? true) || aboveBy > 0)) {
+            
             
             var winOwnerName : String?
             
@@ -1303,8 +1333,8 @@ public class Display : Equatable {
                         //print(dict)
                         
                         /* Notes:
-                            winLayer => more is higher, more is ahead
-                                the dict is order by the higher to the back
+                         winLayer => more is higher, more is ahead
+                         the dict is order by the higher to the back
                          */
                         
                         // Go ahead
@@ -1334,7 +1364,7 @@ public class Display : Equatable {
                         let winOwnerChecked = (winOwnerName == name || pid == winPid!)
                         
                         if winLayer == 0 && !excludedApps.contains(winOwnerName ?? "") {
-                            // In case of emergency break the glass: https://developer.apple.com/documentation/appkit/nswindowwillenterfullscreennotification
+                            // In case of emergency break the glass: https://developer.apple.com/documentation/appkit/nswindowwillenterfullscreennotification (seems not working for other apps)
                             if rect.height >= (screen.frame.height-removeMenuHeight) && rect.width >= screen.frame.width {
                                 self.isFullscreen = true
                             }
@@ -1352,12 +1382,15 @@ public class Display : Equatable {
                             else {
                                 print("space holder found ", spaceHolderFound, winId)
                                 
-                                if spaceHolderFound == -1{
+                                if spaceHolderFound == -1 {
                                     spaceHolderFound = winId
                                 }
                                 else {
                                     spaceHolderFound = -2
+                                    self.spaceIsChanging = true
                                 }
+                                
+                                self.currentSpaceId = spaceHolderFound
                             }
                         }
                         else if (winner == nil || thisTimeHasTitle) && (winOnScreen == 1 && self.frame.contains(CGPoint(x: rect.origin.x, y: self.frame.minY)) && !excludedApps.contains(winOwnerName ?? "") && winOwnerChecked && (rect.width+rect.height)/2 > 150)/* window must be enough big */{
@@ -1372,13 +1405,13 @@ public class Display : Equatable {
                             //print(winnerRect)
                             
                             var biggerThanPreviousWinner = winner == nil || rectContainsWinnerRect(rect: rect)
-         
+                            
                             // Check if winner is contained by this window
                             /*if winner != nil{ // these lines show chrome mini banners...
-                                if(!rect.contains(winnerRect)){
-                                    biggerThanPreviousWinner = false
-                                }
-                            }*/
+                             if(!rect.contains(winnerRect)){
+                             biggerThanPreviousWinner = false
+                             }
+                             }*/
                             
                             if(!biggerThanPreviousWinner){
                                 continue;
@@ -1394,22 +1427,22 @@ public class Display : Equatable {
                                 let intersection = NSIntersectionRect(rect, aheadRect)
                                 
                                 let isInside =
-                                    rect.contains(CGPoint(x: aheadRect.minX, y: aheadRect.minY)) &&
-                                    rect.contains(CGPoint(x: aheadRect.maxX, y: aheadRect.maxY))
+                                rect.contains(CGPoint(x: aheadRect.minX, y: aheadRect.minY)) &&
+                                rect.contains(CGPoint(x: aheadRect.maxX, y: aheadRect.maxY))
                                 
                                 let aheadSide = (intersection.height + intersection.width)/2
-                                                    
+                                
                                 if !isInside || aheadSide < (winnerSide/10){
                                     continue;
                                 }
                                 
                                 //var contains = winnerRect.intersects(aheadRect) || winnerRect.contains(aheadRect.origin)
-                                                                
+                                
                                 winnerBehindSomething = true
                                 appWins?.timeSelection = 0
                             }
                             
-        
+                            
                             winner = dict
                             winnerLayer = winLayer
                             winnerRect = rect
@@ -1417,6 +1450,7 @@ public class Display : Equatable {
                             winnerTitle = winTitle ?? ""
                             //appWin?.lastRect = rect
                             
+                            isFullscreen = winnerRect.size.width >= self.frame.width && winnerRect.size.height >= self.frame.height - self.menuHeight
                         }
                         else if !winOwnerChecked && winner == nil{
                             if rect != self.screen.frame{
@@ -1426,105 +1460,129 @@ public class Display : Equatable {
                     }
                 }
                 
-                //MARK: spaceHolder MGMT
-                samePlaceholderSince += 1
+                // replicated belows, if this works remove it
+                if isFullscreen {
+                    exitedFromFullscreen = 0
+                    return
+                }
                 
-                if (spaceHolderId == -1 || spaceHolderFound > -1 || spaceHolderFound == -2) {
+                exitedFromFullscreen += 1
+                
+                if exitedFromFullscreen < waitCyclesCoolDown {
+                    return
+                }
+                
+                ///#
+                ///# spaceHolder managent
+                ///#
+                DispatchQueue.main.async { // done on main thread
+                    //MARK: spaceHolder MGMT
+                    self.samePlaceholderSince += 1
                     
-                    if true && (!spaceIsChanging && !activateNewApp) && spaceHolderId >= 0 && spaceHolderId != currentSpaceId {
-                        DispatchQueue.main.async {
-                            for placeholder in self.placeholders {
-                                if self.curPlaceholder?.id != spaceHolderId {
-                                    if placeholder.numWindows == self.curPlaceholder?.numWindows && spaceHolderId != self.currentSpaceId {
-                                        self.removeDuplicatePlaceholder(idNew: spaceHolderId, idOld: self.currentSpaceId)
-                                        spaceHolderId = self.currentSpaceId
-                                        print("duplicate space holder removed")
+                    if (spaceHolderId == -1 || spaceHolderFound > -1 || spaceHolderFound == -2) {
+                        
+                        if true && (!self.spaceIsChanging && !self.activateNewApp) && spaceHolderId >= 0 && spaceHolderId != self.currentSpaceId && self.curPlaceholder?.stillValid() ?? false {
+                            DispatchQueue.main.async {
+                                for placeholder in self.placeholders {
+                                    if placeholder.stillValid() && self.curPlaceholder?.id != spaceHolderId {
+                                        if placeholder.numWindows == self.curPlaceholder?.numWindows && spaceHolderId != self.currentSpaceId {
+                                            self.removeDuplicatePlaceholder(idNew: spaceHolderId, idOld: self.currentSpaceId)
+                                            spaceHolderId = self.currentSpaceId
+                                            print("duplicate space holder removed")
+                                        }
                                     }
                                 }
                             }
-                        }
-                    }
-                    
-                    if self.currentSpaceId != spaceHolderId || (spaceHolderFound < 0 && self.currentSpaceId > 0){
-                        if !currentSpaceIds.contains(spaceHolderId){
-                            samePlaceholderSince = 0
                         }
                         
-                        sameSpaceHolderId = spaceHolderId
-                    }
-                    
-                    // register the space holder in the list of "current space holders"
-                    // this is an ugly but realistic approach. the space holder managament is a mess
-                    if spaceHolderId > 0 {
-                        if !currentSpaceIds.contains(spaceHolderId){
-                            currentSpaceIds.append(spaceHolderId)
+                        if self.currentSpaceId != spaceHolderId || (spaceHolderFound < 0 && self.currentSpaceId > 0){
+                            if !self.currentSpaceIds.contains(spaceHolderId){
+                                self.samePlaceholderSince = 0
+                            }
+                            
+                            sameSpaceHolderId = spaceHolderId
+                        }
+                        
+                        // register the space holder in the list of "current space holders"
+                        // this is an ugly but realistic approach. the space holder managament is a mess
+                        if spaceHolderId > 0 {
+                            if !self.currentSpaceIds.contains(spaceHolderId){
+                                self.currentSpaceIds.append(spaceHolderId)
+                            }
+                        }
+                        
+                        
+                        if spaceHolderFound >= 0 {
+                            self.currentSpaceId = spaceHolderId
+                            print("unique space holder found", spaceHolderId)
+                        }
+                        
+                        //spaceHolderFound = -2 // force "space changing" status (it means that two space holders were found)
+                        if spaceHolderFound == -2 && !self.spaceIsChanging {
+                            print("space changing")
+                            self.spaceIsChanging = true
+                            self.spaceInChanging()
+                        }
+                        
+                        // after fullscreen: Thread 1: EXC_BAD_ACCESS (code=1, address=0x20)
+                        DispatchQueue.main.async {
+                            self.curPlaceholder = nil
                         }
                     }
                     
-                    
-                    if spaceHolderFound >= 0 {
-                        self.currentSpaceId = spaceHolderId
-                        print("unique space holder found", spaceHolderId)
-                    }
-                    
-                    //spaceHolderFound = -2 // force "space changing" status (it means that two space holders were found)
-                    if spaceHolderFound == -2 && !self.spaceIsChanging {
-                        print("space changing")
-                        self.spaceIsChanging = true
-                        self.spaceInChanging()
-                    }
-                    
-                    curPlaceholder = nil
-                }
-                
-                if self.spaceIsChanging {
-                    if samePlaceholderSince > Static.WaitAfterSpaceChange {
-                        self.spaceIsChanging = false
-                        print("space no more changing due to timeout")
+                    if self.spaceIsChanging {
+                        if self.samePlaceholderSince > Static.WaitAfterSpaceChange {
+                            self.spaceIsChanging = false
+                            print("space no more changing due to timeout")
+                        }
+                        else {
+                            print("space is still changing because of ", self.samePlaceholderSince, " <= ", Static.WaitAfterSpaceChange)
+                        }
                     }
                     else {
-                        print("space is still changing because of ", samePlaceholderSince, " <= ", Static.WaitAfterSpaceChange)
-                    }
-                }
-                else {
-                    //TODO: Thread 1: EXC_BAD_ACCESS (code=1, address=0x20) (placeholders)
-                    if curPlaceholder == nil {
-                        placeholdersQueue.async {
-                            let _placeholders = self.placeholders
-                            for placeholder in _placeholders {
-                                if let pl = placeholder as? SwifterPlaceholder {
-                                    if(placeholder.id == -1){
-                                        placeholder.id = self.currentSpaceId
-                                    }
-                                    
-                                    if(placeholder.id == self.currentSpaceId){
-                                        self.curPlaceholder = placeholder
-                                        self.spaces[self.currentSpaceId] = self.curPlaceholder
-                                        break;
+                        //TODO: Thread 1: EXC_BAD_ACCESS (code=1, address=0x20) (placeholders)
+                        DispatchQueue.main.async {
+                            if self.curPlaceholder == nil {
+                                let _placeholders = self.placeholders
+                                for placeholder in _placeholders {
+                                    if let pl = placeholder as? SwifterPlaceholder{
+                                        if(placeholder.id == -1){
+                                            placeholder.id = self.currentSpaceId
+                                        }
+                                        
+                                        if(placeholder.id == self.currentSpaceId){
+                                            self.curPlaceholder = placeholder
+                                            self.spaces[self.currentSpaceId] = self.curPlaceholder
+                                            break;
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
-                
-                if spaceHolderFound == -1 {
-                    if !self.spaceIsChanging && !self.activateNewApp{
-                        for win in windows!{
-                            if let dict = win as? [String: AnyObject] {
-                                let winId = dict["kCGWindowNumber"] as? Int ?? -1
-                                
-                                let appWin = getWindow(winId: winId)
-                                appWin?.spaceId = curPlaceholder?.id ?? currentSpaceId // update every time
+                    
+                    if spaceHolderFound == -1 {
+                        if !self.spaceIsChanging && !self.activateNewApp{
+                            for win in windows!{
+                                if let dict = win as? [String: AnyObject] {
+                                    let winId = dict["kCGWindowNumber"] as? Int ?? -1
+                                    
+                                    let appWin = getWindow(winId: winId)
+                                    appWin?.spaceId = self.curPlaceholder?.id ?? self.currentSpaceId // update every time
+                                }
                             }
                         }
                     }
-                }
-                
-                if spaceHolderFound >= 0 {
-                    self.spaceIsChanging = false
+                    
+                    if spaceHolderFound >= 0 {
+                        self.spaceIsChanging = false
+                    }
                 }
             }
+            
+            ///#
+            ///# back on current window mgmt
+            ///#
             
             //Check if application is still running
             for app in self.apps {
@@ -1541,12 +1599,13 @@ public class Display : Equatable {
                 }
             }
             
-            var windows = CGWindowListCopyWindowInfo([CGWindowListOption.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [CFDictionary]
+            // used to have .excludeDesktopElements
+            var windows = CGWindowListCopyWindowInfo([CGWindowListOption.optionOnScreenOnly], kCGNullWindowID) as? [CFDictionary]
             
             for aWin in lastAllWins{
                 windows?.insert(aWin, at: 0)
             }
-            
+                       
             cycleWindows(windows: windows)
             
             if spaceIsChanging {
@@ -1649,26 +1708,48 @@ public class Display : Equatable {
                 // "isFullscreen" check
                 let isFinderDragging = appWin.appTitle == "Finder" && appWin.winTitle == ""
                 
-                if !isFinderDragging{
-                    self.isFullscreen = isFullSize
+                if isFinderDragging{
+                    self.isFullscreen = false
                 }
                 
-                if self.isFullscreen{
+                if self.isFullscreen && self.currentSpaceId >= 0 {
                     return false
+                }
+                
+                if self.currentSpaceId == -2 && self.curPlaceholder != nil {
+                    self.currentSpaceId = self.curPlaceholder?.windowNumber ?? -2
+                    if self.currentSpaceId == -1 {
+                        self.currentSpaceId = -2
+                    }
                 }
                 
                 if !self.isFullscreen && !spaceIsChanging{
                     if self.currentSpaceId == -1 {
-                        print("creating new SwifterPlaceholder")
-                        let winHolder = SwifterPlaceholder()
-                        winHolder.numWindows = windows!.count
-                        winHolder.show()
+                        noSpaceholderFor += 1
                         
-                        self.curPlaceholder = winHolder
-                        
-                        placeholdersQueue.async {
-                            self.placeholders.append(winHolder)
+                        if noSpaceholderFor > (waitCyclesCoolDown) {
+                            print("creating new SwifterPlaceholder")
+                            let winHolder = SwifterPlaceholder()
+                            winHolder.numWindows = windows!.count
+                            
+                            // It cause useless space change after fullscreen
+                            // check in case of opening a window in another space
+                            winHolder.show()
+                            
+                            self.curPlaceholder = winHolder
+                            self.currentSpaceId = winHolder.windowNumber
+                            
+                            if self.currentSpaceId == -1 {
+                                self.currentSpaceId  = -2
+                            }
+                            
+                            placeholdersQueue.async {
+                                self.placeholders.append(winHolder)
+                            }
                         }
+                    }
+                    else {
+                        noSpaceholderFor = 0
                     }
                 }
                                 
@@ -2317,8 +2398,8 @@ public class Display : Equatable {
     
     let useRelativePointer = false
     
-    let sensivityBaseConstant = 0.002    
-    var scarfWeight : CGFloat = 0.002 * Static.Sensivity
+    static let sensivityBaseConstant = 0.0015 // was 0.002
+    var scarfWeight : CGFloat = sensivityBaseConstant * Static.Sensivity
     var activateOnPixelsLimit : CGFloat = 35
     var moveOnPixels : CGFloat = 0
     let decelerateAboveBy : CGFloat = 0.25
@@ -2400,7 +2481,7 @@ public class Display : Equatable {
     public var alongLine = AlongLine()
     
     func reSetDynamicSettings(){
-        self.scarfWeight = sensivityBaseConstant * Static.Sensivity
+        //self.scarfWeight = sensivityBaseConstant * Static.Sensivity
         self.batteryDivider = GeneralFuncs.ComputerIsConnectedToAdapter() ? 2 : 1
     }
     
@@ -2437,7 +2518,7 @@ public class Display : Equatable {
     var ignoreMousePositionForAboveBy = 0
     
     //MARK: Active area
-    @MainActor func active(mouse: NSPoint){
+    func active(mouse: NSPoint){ // was @MainActor
         
         if(Static.ScreenRecordingUnauthorized && !Static.debugForceWorking){
             return
@@ -2466,8 +2547,14 @@ public class Display : Equatable {
                 (manager.capturePreview as? CapturePreview)?.onMouseShouldUpdate(display: self)
             }
         }
-                
+        
+        ///#! Pointer calculations
+        
         let mouseDelta = CGPoint(x: mouse.x - prevMouse.x, y: mouse.y - prevMouse.y)
+        
+        mouseSpeed = sqrt((pow(mouseDelta.x,2)+pow(mouseDelta.y,2)))
+        mouseSpeed_10s = ((mouseSpeed_10s*(Static.MouseHertz * 10))+mouseSpeed)/((Static.MouseHertz * 10)+1)
+        avgSpeed = ((avgSpeed*avgWeight)+mouseSpeed)/(avgWeight+1)
         
         let acceleration = sqrt(pow((mouse.x - prevMouse.x),2)+pow((mouse.y - prevMouse.y),2))
         avgAcceleration = ((avgAcceleration*avgWeight)+acceleration)/(avgWeight+1)
@@ -2483,28 +2570,6 @@ public class Display : Equatable {
             }
             initTimerCheckPreviews = true
         }
-        
-        ///
-        /// Mouse...
-        ///
-        mouseSpeed = sqrt((pow(mouseDelta.x,2)+pow(mouseDelta.y,2)))
-        
-        mouseSpeed_10s = ((mouseSpeed_10s*(Static.MouseHertz * 10))+mouseSpeed)/((Static.MouseHertz * 10)+1)
-        
-        avgSpeed = ((avgSpeed*avgWeight)+mouseSpeed)/(avgWeight+1)
-        
-        if(maxSpeed < avgSpeed){
-            maxSpeed = (maxSpeed + avgSpeed)/2
-        }
-        else {
-            if avgSpeed > 1 {
-                let scarfMaxSpeed = scarfWeight * 0.01
-                maxSpeed = (maxSpeed + (avgSpeed*scarfMaxSpeed))/(1+scarfMaxSpeed)
-            }
-        }
-        
-        var accDelta = CGPoint(x: abs(abs(mouse.x) - abs(prevMouse.x)), y: abs(abs(mouse.y) - abs(prevMouse.y)))
-        accDelta = mouseDelta.clone
         
         ///# Currently deprecated
         //accumulateAvg.x = ((accumulateAvg.x*accumulateWeight)+mouseDelta.x)/(accumulateWeight+1)
@@ -2550,9 +2615,6 @@ public class Display : Equatable {
             mouseScarf = accMouse;
         }
         
-        mouseScarf.x = ((mouseScarf.x*scarfWeight)+relMouse.x)/(scarfWeight+1);
-        mouseScarf.y = ((mouseScarf.y*scarfWeight)+relMouse.y)/(scarfWeight+1);
-        
         if recordingPaused {
             return
         }
@@ -2594,6 +2656,29 @@ public class Display : Equatable {
             }
         }
         
+        ///
+        /// Mouse...
+        ///
+
+        if(maxSpeed < avgSpeed){
+            maxSpeed = (maxSpeed + avgSpeed) / 2
+            
+            weight *= 0.5 * (curSide == 3 ? 0.5 : 1.0)
+        }
+        else {
+            if avgSpeed > 1 {
+                let scarfMaxSpeed = scarfWeight * 0.01
+                maxSpeed = (maxSpeed + (avgSpeed*scarfMaxSpeed))/(1+scarfMaxSpeed)
+            }
+        }
+        
+        var accDelta = CGPoint(x: abs(abs(mouse.x) - abs(prevMouse.x)), y: abs(abs(mouse.y) - abs(prevMouse.y)))
+        accDelta = mouseDelta.clone
+        
+        let scarfWeight = curSide == 3 ? scarfWeight * 0.25 : scarfWeight
+        mouseScarf.x = ((mouseScarf.x*scarfWeight)+relMouse.x)/(scarfWeight+1);
+        mouseScarf.y = ((mouseScarf.y*scarfWeight)+relMouse.y)/(scarfWeight+1);
+        
         let mouseForecast = self.pointForecast(from: mouseScarf, to: relMouse, weight: weight)
         let absForecastMouse = NSPoint(x: mouseForecast.x + frame.origin.x, y: mouseForecast.y + frame.origin.y)
              
@@ -2610,7 +2695,7 @@ public class Display : Equatable {
         }
         
         //MARK: Top side mouse
-        if(curSide == 3 && activateSide[curSide] && self.aboveByPixels == 0){
+        if(curSide == 3 && activateSide[curSide] && self.aboveByPixels == 0) {
             aroundTopSide = true
             
             
@@ -2781,7 +2866,7 @@ public class Display : Equatable {
         var sideVertical = self.side < 2
         var sideSign = self.side % 2
           
-        if(self.side >= 0){
+        if(self.side >= 0) {
             
             self.checkPreviewsElaborated()
             
@@ -3085,7 +3170,9 @@ public class Display : Equatable {
         }
         
         if(prevAboveByPixels == 0 && aboveByPixels > 0){
-            self.manager.contentView?.store.setWindowsProperties()
+            DispatchQueue.main.async {
+                self.manager.contentView?.store.setWindowsProperties()
+            }
         }
         
         //MARK: Show/hide capture window

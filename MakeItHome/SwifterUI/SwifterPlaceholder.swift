@@ -71,24 +71,45 @@ public class SwifterPlaceholder : NSWindow {
         return true
     }
     
+    public var closed = false
+    
     /// Close automatically when out of focus, e.g. outside click
     override public func resignMain() {
-        super.resignMain()
-        //close()
+        DispatchQueue.main.async {
+            super.resignMain()
+            //close()
+        }
     }
      
     /// Close and toggle presentation, so that it matches the current state of the panel
     override public func close() {
-        super.close()
+        DispatchQueue.main.async {
+            if !self.closed && self.isVisible && !(self.contentView?.isInFullScreenMode ?? false) {
+                super.close()
+                self.closed = true
+            }
+        }
+    }
+    
+    func stillValid() -> Bool {
+        return self.isVisible && !(self.contentView?.isInFullScreenMode ?? false)
     }
     
     func show() {
-        self.orderFront(nil)
+        if !self.closed {
+            DispatchQueue.main.async {
+                self.orderFront(nil)
+            }
+        }
     }
     
     func activate(){
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        self.makeKeyAndOrderFront(self)
+        if !self.closed {
+            DispatchQueue.main.async {
+                NSApplication.shared.activate(ignoringOtherApps: true)
+                self.makeKeyAndOrderFront(self)
+            }
+        }
     }
 }
 
