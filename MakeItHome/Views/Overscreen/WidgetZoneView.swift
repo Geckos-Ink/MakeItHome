@@ -346,6 +346,7 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
                 }
                 
                 decisionHandler(.cancel)
+                return
             }
         }
         else if let url = navigationAction.request.url, // is a message
