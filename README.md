@@ -69,14 +69,6 @@ In conclusion, all 1.9.x versions are, yes, essential bug fixing but also mainly
 This project deserves a better documentation, most of all seen the fact that soon I should publish a new update, at least to improve the user experience and to complete the widgets zone. 
 
 I try to make a to do list as memorandum:
-
-- Find a way to improve the performances. (nearly found, I'm improving multi threading design)
-- Find a way to have the community advise about the development of the feature. (is it GitHub discussion page enough accessible?)
-- Improve Notes and Tasks widgets. The most problem is about the saving way, that used to saves the entire database every time.
-- Correct the freeze happening while using MS RDP, probably due to the clipboard manager(?)
-- Find a solution for the lack of localization in the Widgets Zone (written in WebKit)
-- Found an issue about screen recording when you change users.
-- Find a solution about the local http server in multi user session. The solution to implement would be stop and restart the server when the screen is locked. <b>!!!PRIORITY!!!</b>
 - The aboveBy management in Display class is full of unused variables. Clear it.
 - <b>VERY IMPORTANT: solve this holy threads "overflow" issue (only a debug problem?)</b>
 
@@ -88,6 +80,10 @@ Currently I'm working on version **1.9.7** on the homonymous branch.
 <b>I have a huge problem about testing before its release. If I create a new feature, this mathematically brings a new bug that I don't notice. I'm looking for tester to make more stable the releases.</b>
 
 SonarCloud link: <a>https://sonarcloud.io/project/overview?id=Geckos-Ink_MakeItHome</a>
+
+### Articles:
+
+<a href="https://www.macworld.news/article/1533463/why-breaking-your-macs-screen-is-a-good-idea.html">MacWorld: Why breaking your Mac’s screen is a good idea<a>
 
 ### Credits
 Riccardo Cecchini \<rcecchini.ds@gmail.com> cekkr@github
