@@ -83,7 +83,7 @@ SonarCloud link: <a>https://sonarcloud.io/project/overview?id=Geckos-Ink_MakeItH
 
 ### Articles:
 
-<a href="https://www.macworld.news/article/1533463/why-breaking-your-macs-screen-is-a-good-idea.html">MacWorld: Why breaking your Mac’s screen is a good idea<a>
+<a href="https://www.macworld.com/article/1533463/why-breaking-your-macs-screen-is-a-good-idea.html">MacWorld: Why breaking your Mac’s screen is a good idea<a>
 
 ### Credits
 Riccardo Cecchini \<rcecchini.ds@gmail.com> cekkr@github
