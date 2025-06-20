@@ -334,6 +334,7 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
             if(firstLoad || url.lastPathComponent == "mrWhite.html"){
                 decisionHandler(.allow)
                 firstLoad = url.lastPathComponent == "mrWhite.html"
+                return
             }
             else {
                 // Handle dropped file URL here
@@ -469,9 +470,11 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
         
         if url.host == "127.0.0.1"{
             decisionHandler(.allow)
+            return
         }
         else {
             decisionHandler(.cancel)
+            return
         }
         
         return
