@@ -15,7 +15,10 @@ struct MakeItHomeApp : App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-        }        
+                .onAppear(){
+                    Static.Init()
+                }
+        }
     }
     
 }

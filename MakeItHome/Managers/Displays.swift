@@ -1171,17 +1171,18 @@ public class Display : Equatable {
                 self.checkWindowStatus()
             }
             
-            if prevRecorderUpdate >= self.lastRecorderUpdate{
-                return
-            }
-            prevRecorderUpdate = self.lastRecorderUpdate
-            
             if self.recordingPaused {
                 return
             }
                         
             if self.checkForScreenshot(forceShot: true) {
                 self.appSwitched_noScreenshot = false
+            }
+            else {
+                if prevRecorderUpdate >= self.lastRecorderUpdate{
+                    return
+                }
+                prevRecorderUpdate = self.lastRecorderUpdate
             }
         }
     }
