@@ -12,7 +12,7 @@ import AppKit
 let convertToCG_Context = CIContext(options: nil)
 func convertToCGImage(image: CIImage) -> CGImage? {
     //let context = CIContext(options: nil)
-    if let cgImage = convertToCG_Context.createCGImage(image, from: image.extent) {
+    if let cgImage = convertToCG_Context.createCGImage(image, from: image.extent) { // MAYBE REALATED WITH C01
         //convertToCG_Context.reclaimResources()
         return cgImage
     }

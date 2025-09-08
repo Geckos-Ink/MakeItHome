@@ -148,6 +148,7 @@
 		8BD2DD522B48E2C900F74622 /* SimpleHttpServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SimpleHttpServer.swift; sourceTree = "<group>"; };
 		8BE1B25828F0273E0037D132 /* BorderlessWindow.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = BorderlessWindow.swift; sourceTree = "<group>"; };
 		8BE1B25E28F0BB950037D132 /* Displays.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Displays.swift; sourceTree = "<group>"; };
+		8BED85022E6F365000FC34C5 /* ERRORS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = ERRORS.md; sourceTree = "<group>"; };
 		8BF0A583290AB56900E4E372 /* Static.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Static.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -226,6 +227,7 @@
 		8B6D5EBE2BF47DE0009012F8 /* Notes */ = {
 			isa = PBXGroup;
 			children = (
+				8BED85022E6F365000FC34C5 /* ERRORS.md */,
 				8B5787B3290758FA00C626C3 /* Diario.md */,
 				8B5787B429098EEF00C626C3 /* Gold.md */,
 				8B11BBFC2C1310A700E46355 /* gpt_automaticVariableSemaphore.md */,
