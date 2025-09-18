@@ -327,8 +327,8 @@ class ScreenRecorder: ObservableObject {
     public func refreshAvailableContent() async {
         do {
             // Retrieve the available screen content to capture.
-            let availableContent = try await SCShareableContent.excludingDesktopWindows(false,
-                                                                                        onScreenWindowsOnly: true)
+            let availableContent = try await SCShareableContent.excludingDesktopWindows(true,
+                                                                                        onScreenWindowsOnly: false) // INVERTED(?)
             availableDisplays = availableContent.displays
             
             let windows = filterWindows(availableContent.windows)
