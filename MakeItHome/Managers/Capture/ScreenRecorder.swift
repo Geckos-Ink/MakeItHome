@@ -126,7 +126,7 @@ class ScreenRecorder: ObservableObject {
     let lowProfileFPS = 5
     let lowProfileDepth = 5
     
-    @MainActor public var recordingOnDisplay : CGDirectDisplayID = 94
+    @MainActor public var recordingOnDisplay : CGDirectDisplayID = 94 // -1
     
     /// Starts capturing screen content.
     func start(lowProfile: Bool = false, display: SCDisplay? = nil) async {

@@ -4,10 +4,8 @@
 <dict>
 	<key>NSAppSleepDisabled</key>
 	<true/>
-	<key>SCNPreferredRenderingAPI</key>
-	<integer>2</integer>
 	<key>NSSupportsAutomaticGraphicsSwitching</key>
-	<false/>
+	<true/>
 	<key>NSCalendarsFullAccessUsageDescription</key>
 	<string>MakeItHome accesses to your calendar to show your events in the widgets zone.</string>
 	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
