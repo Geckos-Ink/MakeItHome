@@ -798,3 +798,31 @@ ons-list-item label:nth-child(1) {
   border-radius: 10px;
   cursor: pointer;
 }
+
+/* ROCK 'n SCROLL */
+
+ /* Webkit Scrollbar Styles */
+div::-webkit-scrollbar {
+    width: 8px; /* Small width for the rounded point */
+}
+
+div::-webkit-scrollbar-track {
+    background: transparent; /* Invisible track */
+}
+
+div::-webkit-scrollbar-thumb {
+    background: #6366f1;
+    border-radius: 10px; /* Fully rounded */
+    width: 8px;
+    height: 8px;
+    min-height: 40px; /* Minimum height for the thumb */
+}
+
+div::-webkit-scrollbar-thumb:hover {
+    background: #818cf8;
+}
+
+
+/*
+*
+*/
