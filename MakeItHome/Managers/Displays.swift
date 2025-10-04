@@ -950,7 +950,7 @@ public class Display : Equatable {
                     //print("cii size", cii.extent, "scale", rapp)
                     
                     // Convert to CGImage
-                    var finalImg = convertToCGImage(image: cii)
+                    var finalImg = convertToCGImage(image: cii) // MAYBE REALATED WITH C01
                     
                     //everything smooth... https://developer.apple.com/documentation/coreimage/ciroundedrectanglegenerator
                     

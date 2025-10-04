@@ -97,7 +97,7 @@ public class StoreView {
     var barPanel : SwifterPanel<MenuBarView>?
     
     @objc func orderABurrito(sender: Any) {
-        print("Ordering a burrito!")
+        print("Ordering a bonito!")
                 
         if(false){ //TODO: set true just for testing purposes
             let swifterWin = SwifterWindow<TestView>(view: TestView())

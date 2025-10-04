@@ -468,7 +468,7 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
             return
         }
         
-        if url.host == "127.0.0.1"{
+        if url.host == "127.0.0.1" && url.port == 19494{
             decisionHandler(.allow)
             return
         }
