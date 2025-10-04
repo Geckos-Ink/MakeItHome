@@ -910,7 +910,7 @@ public struct CapturePreview: NSViewRepresentable {
                 
                 for win in windows {
                     var w = width
-                    let maxW = parentView.pixelsToScene(pixels: win.win.lastRect!.size.width)/2.5
+                    let maxW = parentView.pixelsToScene(pixels: win.win.lastRect?.size.width ?? 1.0)/2.5
                     
                     if(width > maxW){
                         w = maxW

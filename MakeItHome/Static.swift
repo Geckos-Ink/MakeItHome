@@ -72,8 +72,8 @@ public class Static {
         }
     }
     
-    public static let MouseHertz : Double = 45 // previous 60
-    public static let SceneKitPreferredFPS = 30 // prev 45
+    public static let MouseHertz : Double = 60 // previous 60
+    public static let SceneKitPreferredFPS = 45 // prev 45
     public static let SceneKitSleepPreferredFPS = 10
     
     public static let EnableCloseMainWindowAfterInactivity = false
@@ -92,7 +92,7 @@ public class Static {
     public static let PutAsideInUsingApp = false
     public static let PutAsideInUsingAppBy : CGFloat = 10 // pixels
     
-    public static let EnableLowProfile = false // continues to cycle with "recording start" // ehy wait, but IT ENABLES low profile...
+    public static let EnableLowProfile = true // continues to cycle with "recording start" // ehy wait, but IT ENABLES low profile...
     public static var EnableDockMouseSlowering = true
     public static var EnableRequiredAcceleration = true
     public static var DisableOnDockSide = false
@@ -111,7 +111,7 @@ public class Static {
     public static let BackgroundUpdateSeconds_NewDisplay : Double = 5 // seconds
     
     public static let ScreenRecorderHighPriorityFPS = 30 // FPS
-    public static let CheckIfUpdateWindowScreenshotEvery : Double = 1 // seconds
+    public static let CheckIfUpdateWindowScreenshotEvery : Double = 2 // seconds
     public static let UpdateWindowScreenshotAfter : Double = 3 // seconds
     public static let EnableRecordingHalfInLowPriority = false
         

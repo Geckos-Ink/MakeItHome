@@ -118,8 +118,8 @@ $("#clipboard").on('mousemove', function (e) {
     let translateX = ratioX * 10
     let translateY = ratioY * 10
 
-    let parallaxY = ratioX * 10 * -1
-    let parallaxX = ratioY * 10
+    let parallaxY = ratioX * 10 * 1
+    let parallaxX = ratioY * 10 * -1
 
     $("#clipboard .item").css("-webkit-transform", " rotateX(" + parallaxX +"deg) rotateY("+parallaxY+"deg) translateX(" + translateX + "px) translateY(" + translateY + "px)")
 })
