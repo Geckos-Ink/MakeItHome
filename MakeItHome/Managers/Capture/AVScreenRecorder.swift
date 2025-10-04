@@ -40,7 +40,7 @@ class AVScreenRecorder: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
         // Set up screen input
         guard let screen = NSScreen.main else { return }
         screenInput = AVCaptureScreenInput(displayID: screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as! CGDirectDisplayID)
-        screenInput.minFrameDuration = CMTime(value: 1, timescale: 30) // 30 fps
+        screenInput.minFrameDuration = CMTime(value: 1, timescale: 60) // 30 fps
         screenInput.cropRect = CGRect(x: 0, y: 0, width: screen.frame.width, height: screen.frame.height)
         
         if captureSession.canAddInput(screenInput) {
