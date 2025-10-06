@@ -295,7 +295,7 @@ class ScreenRecorder: ObservableObject {
         //todo: study why Value of type 'SCStreamConfiguration' has no member 'excludesCurrentProcessAudio'
         //streamConfig.capturesAudio = isAudioCaptureEnabled
         //streamConfig.excludesCurrentProcessAudio = isAppAudioExcluded
-        streamConfig.showsCursor = false
+        streamConfig.showsCursor = false        
         
         // Configure the display content width and height.
         if captureType == .display, let display = selectedDisplay {
