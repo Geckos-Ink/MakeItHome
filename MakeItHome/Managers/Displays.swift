@@ -3057,7 +3057,7 @@ public class Display : Equatable {
                             if(dockPos.rawValue == side && self.aboveBy == 0){ //disable lateral slowering
                                 
                                 //print(speedRatio)
-                                if(abs(speedRatio) > slowDownMinSpeedRatio && weight > 0.25 && axisSpeed * (sideSign == 0 ? -1 : 1) > 0 && abs(axisSpeed) >= avgSpeed){
+                                if(abs(speedRatio) > slowDownMinSpeedRatio /*&& weight > 0.25*/ && axisSpeed * (sideSign == 0 ? -1 : 1) > 0 && abs(axisSpeed) >= avgSpeed){
                                     let prevAboveBy = alongLine.aboveBy
                                     
                                     alongLine.alterBy = (mouseSpeed / avgSpeed) * weight
