@@ -56,14 +56,15 @@ struct MenuBarView: View {
                             Static.User.set(workingDisplay.activateSide[3], forKey: "DisplayEnableTop_\(workingDisplay.screen.localizedName)")
                         }
                         .toggleStyle(.switch)
-                        .padding(.trailing, 5)
-                    }.padding(.bottom, 4)
+                    }
+                    .padding(.bottom, 4)
                     
                     HStack(alignment: .center){
                         Toggle("", isOn: $thisDisplayEnableLeft).onChange(of: thisDisplayEnableLeft){ newVal in
                             workingDisplay.activateSide[0] = newVal
                             Static.User.set(workingDisplay.activateSide[0], forKey: "DisplayEnableLeft_\(workingDisplay.screen.localizedName)")
                         }
+                        .padding(.trailing, 5)
                         
                         Text(" \(Image(systemName: "circle.grid.cross")) ")
                         
@@ -71,6 +72,7 @@ struct MenuBarView: View {
                             workingDisplay.activateSide[1] = newVal
                             Static.User.set(workingDisplay.activateSide[1], forKey: "DisplayEnableRight_\(workingDisplay.screen.localizedName)")
                         }
+                        .padding(.leading, 5)
                     }
                     
                     HStack(alignment: .center){
@@ -80,6 +82,7 @@ struct MenuBarView: View {
                             Static.User.set(workingDisplay.activateSide[2], forKey: "DisplayEnableBottom_\(workingDisplay.screen.localizedName)")
                         }
                     }
+                    .padding(.top, 5)
                     
                 }.frame(width: Static.MenuBarPopupWidth-10)
             }

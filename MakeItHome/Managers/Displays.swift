@@ -288,6 +288,7 @@ public class DisplaysManager {
         return inDisplay
     }
     
+    var menuBarView : MenuBarView?
     public func updateMousePosition(cursor: CGPoint = CGPoint.zero, from : Int = 0){
         self.curMouseLoc = cursor
         
@@ -345,10 +346,12 @@ public class DisplaysManager {
                     
                     screenRecorderSelectDisplay()
                     
-                    // Init display settings
-                    delay(ms: 10){
-                        MenuBarView()
-                    }
+                    // Init display settings (no more needed)
+                    /*delay(ms: 100){
+                        if self.menuBarView == nil {
+                            self.menuBarView = MenuBarView()
+                        }
+                    }*/
                 }
             }
             else {
