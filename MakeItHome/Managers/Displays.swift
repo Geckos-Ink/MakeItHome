@@ -3136,6 +3136,10 @@ public class Display : Equatable {
             }
         }
         
+        if activateNewApp {
+            forceAboveBy = 0
+        }
+        
         if(forceAboveBy > 0 && aboveBy < 1 && sideToClose == -1){
             self.sideToClose = curSide
             aboveBy = (prevAboveBy + forceAboveBy) / 2
