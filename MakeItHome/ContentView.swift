@@ -32,16 +32,19 @@ public class StoreView {
             ///# Menu Bar
             ///
             
-            let statusBar = NSStatusBar.system
-            self.statusBarItem = statusBar.statusItem(
-                withLength: NSStatusItem.squareLength)
-            
-            self.statusBarItem.button?.image = NSImage(named: "icon-circle")
-            self.statusBarItem.button?.imageScaling = .scaleProportionallyDown
-            
-            self.statusBarItem.button?.action = #selector(self.orderABurrito(sender:))
-            self.statusBarItem.button?.target = self
-            self.statusBarItem.button?.sendAction(on: [.leftMouseDown])
+            if !Static._alreadyCreatedTopMenuIcon {
+                Static._alreadyCreatedTopMenuIcon = true
+                let statusBar = NSStatusBar.system
+                self.statusBarItem = statusBar.statusItem(
+                    withLength: NSStatusItem.squareLength)
+                
+                self.statusBarItem.button?.image = NSImage(named: "icon-circle")
+                self.statusBarItem.button?.imageScaling = .scaleProportionallyDown
+                
+                self.statusBarItem.button?.action = #selector(self.orderABurrito(sender:))
+                self.statusBarItem.button?.target = self
+                self.statusBarItem.button?.sendAction(on: [.leftMouseDown])
+            }
             
             ///
             ///
@@ -109,7 +112,7 @@ public class StoreView {
         }
         else {
             barPanel?.close()
-                        
+            
             barPanel = SwifterPanel<MenuBarView>(view: MenuBarView())
             
             if(!Static.mainWindowFirstShow){

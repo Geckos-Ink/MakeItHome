@@ -131,6 +131,7 @@
 		8B9E532A2B52F38B00D81833 /* CocoaManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CocoaManager.swift; sourceTree = "<group>"; };
 		8B9E532E2B52F3D100D81833 /* wallpaperDark.jpeg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = wallpaperDark.jpeg; sourceTree = "<group>"; };
 		8B9E53332B545D3900D81833 /* Calendar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Calendar.swift; path = MakeItHome/Managers/Widgets/Calendar.swift; sourceTree = SOURCE_ROOT; };
+		8BA348002E94399E00A8D2BA /* NOTES.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = NOTES.md; sourceTree = "<group>"; };
 		8BA795382B07EBC50018BDAF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		8BAFBF4B2AE08DC4000663AE /* Clipboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = Clipboard.swift; path = "../New Group/Clipboard.swift"; sourceTree = "<group>"; };
 		8BAFBF5D2AE2F40F000663AE /* assets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets; sourceTree = "<group>"; };
@@ -227,6 +228,7 @@
 		8B6D5EBE2BF47DE0009012F8 /* Notes */ = {
 			isa = PBXGroup;
 			children = (
+				8BA348002E94399E00A8D2BA /* NOTES.md */,
 				8BED85022E6F365000FC34C5 /* ERRORS.md */,
 				8B5787B3290758FA00C626C3 /* Diario.md */,
 				8B5787B429098EEF00C626C3 /* Gold.md */,
@@ -660,7 +662,7 @@
 				CODE_SIGN_ENTITLEMENTS = MakeItHome/MakeItHome.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 144;
+				CURRENT_PROJECT_VERSION = 147;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"MakeItHome/Preview Content\"";
 				DEVELOPMENT_TEAM = UYSXKZ8U4Z;
@@ -677,7 +679,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.3;
-				MARKETING_VERSION = 2.0.2;
+				MARKETING_VERSION = 2.0.3;
 				PRODUCT_BUNDLE_IDENTIFIER = ink.geckos.MakeItHome;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = NO;
@@ -697,7 +699,7 @@
 				CODE_SIGN_ENTITLEMENTS = MakeItHome/MakeItHome.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 144;
+				CURRENT_PROJECT_VERSION = 147;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"MakeItHome/Preview Content\"";
 				DEVELOPMENT_TEAM = UYSXKZ8U4Z;
@@ -714,7 +716,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.3;
-				MARKETING_VERSION = 2.0.2;
+				MARKETING_VERSION = 2.0.3;
 				PRODUCT_BUNDLE_IDENTIFIER = ink.geckos.MakeItHome;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = NO;

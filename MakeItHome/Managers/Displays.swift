@@ -288,6 +288,7 @@ public class DisplaysManager {
         return inDisplay
     }
     
+    var menuBarView : MenuBarView?
     public func updateMousePosition(cursor: CGPoint = CGPoint.zero, from : Int = 0){
         self.curMouseLoc = cursor
         
@@ -345,10 +346,12 @@ public class DisplaysManager {
                     
                     screenRecorderSelectDisplay()
                     
-                    // Init display settings
-                    delay(ms: 10){
-                        MenuBarView()
-                    }
+                    // Init display settings (no more needed)
+                    /*delay(ms: 100){
+                        if self.menuBarView == nil {
+                            self.menuBarView = MenuBarView()
+                        }
+                    }*/
                 }
             }
             else {
@@ -3054,7 +3057,7 @@ public class Display : Equatable {
                             if(dockPos.rawValue == side && self.aboveBy == 0){ //disable lateral slowering
                                 
                                 //print(speedRatio)
-                                if(abs(speedRatio) > slowDownMinSpeedRatio && weight > 0.25 && axisSpeed * (sideSign == 0 ? -1 : 1) > 0 && abs(axisSpeed) >= avgSpeed){
+                                if(abs(speedRatio) > slowDownMinSpeedRatio /*&& weight > 0.25*/ && axisSpeed * (sideSign == 0 ? -1 : 1) > 0 && abs(axisSpeed) >= avgSpeed){
                                     let prevAboveBy = alongLine.aboveBy
                                     
                                     alongLine.alterBy = (mouseSpeed / avgSpeed) * weight
@@ -3131,6 +3134,10 @@ public class Display : Equatable {
             else {
                 aboveBy = 0
             }
+        }
+        
+        if activateNewApp {
+            forceAboveBy = 0
         }
         
         if(forceAboveBy > 0 && aboveBy < 1 && sideToClose == -1){

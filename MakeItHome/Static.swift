@@ -353,4 +353,5 @@ public class Static {
     ///# Cache
     ///
     public static var _cacheAsIconPreview : CGImage?
+    public static var _alreadyCreatedTopMenuIcon : Bool = false
 }

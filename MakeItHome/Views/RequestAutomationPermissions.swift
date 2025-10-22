@@ -8,6 +8,7 @@
 
 import SwiftUI
 
+// I guess it's unused (gold)
 struct RequestAutomationPermissions: View {
     
     @Environment(\.presentationMode) var presentationMode
