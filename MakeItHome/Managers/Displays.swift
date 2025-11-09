@@ -1609,7 +1609,7 @@ public class Display : Equatable {
             for aWin in lastAllWins{
                 windows?.insert(aWin, at: 0)
             }
-                       
+            
             cycleWindows(windows: windows)
             
             if spaceIsChanging {
@@ -1678,7 +1678,7 @@ public class Display : Equatable {
                     
                     lastAllWins = newAllWins
                 }
-                                
+                
                 if allWins != nil {
                     for app in self.apps{
                         for win in app.value.windows{
@@ -1708,7 +1708,7 @@ public class Display : Equatable {
                 
                 // Check for fullscreen
                 let isFullSize = winnerRect.size.width >= self.frame.width && winnerRect.size.height >= self.frame.height - self.menuHeight
-                                
+                
                 // "isFullscreen" check
                 let isFinderDragging = appWin.appTitle == "Finder" && appWin.winTitle == ""
                 
@@ -1756,16 +1756,16 @@ public class Display : Equatable {
                         noSpaceholderFor = 0
                     }
                 }
-                                
+                
                 appWin.app?.runningApp = self.curFrontApp! // better update it(?)
-                lastAppWin = appWin               
+                lastAppWin = appWin
                 
                 for app in self.apps {
                     if app.value.id != appWin.app?.id {
                         app.value.clean()
                     }
                 }
-
+                
                 prevFrontWindow = curFrontWindow
                 
                 self.curFrontWindow = appWin
@@ -1786,7 +1786,7 @@ public class Display : Equatable {
                     return false
                 }
                 
-                if(self.isFullscreen){
+                if self.isFullscreen || (self.aboveBy > 0 && self.aboveBy < 1) {
                     appWin.lastShotTime = Date()
                 }
                 else if forceShot || (appWins!.timeSelection > Static.WindowScreenshotAfterAttempts) { // - (forceShot ? 2 : 0)
@@ -1807,72 +1807,75 @@ public class Display : Equatable {
                     let bounds = winner!["kCGWindowBounds"] as! NSDictionary
                     
                     DispatchQueue.main.async {
-                        Task{
-                            if #available(macOS 12.3, *){
+                        
+                        if #available(macOS 12.3, *){
+                            
+                            let screenRecorder = self.manager.contentView!.store.screenRecorder as! ScreenRecorder
+                            let lf = screenRecorder.lastFrame
+                            
+                            if(lf?.displayID == self.screen.displayID){
                                 
-                                let screenRecorder = self.manager.contentView!.store.screenRecorder as! ScreenRecorder
-                                let lf = screenRecorder.lastFrame
-                                
-                                if(lf?.displayID == self.screen.displayID){
-                                    
-                                    if(lf != nil){                                        
-                                        Static.highPriorityQueue.async {
-                                            let context = CIContext()
-                                            var cii = CIImage(cvPixelBuffer: lf!.pixelBuffer!)
+                                if(lf != nil){
+                                    Static.highPriorityQueue.async {
+                                        
+                                        var cii = CIImage(cvPixelBuffer: lf!.pixelBuffer!)
+                                        
+                                        let ps = screenRecorder.priorityScale
+                                        let scale : CGFloat = self.scale * ps
+                                        let imgScale : CGFloat = cii.extent.width / self.frame.width
+                                        self.scaleCapture = imgScale * ps
+                                        
+                                        let cgHeight = CGFloat(truncating: (bounds["Height"] as! Int) as NSNumber)
+                                        var thisHeight = (cgHeight*imgScale)
+                                        let cgY = CGFloat(truncating: (bounds["Y"] as! Int) as NSNumber)
+                                        
+                                        //let context = self.ciContext
+                                        
+                                        var thisY = cgY + cgHeight
+                                        
+                                        //TODO: create a checking window
+                                        //thisY = thisY + self.frame.minY // in case of problems try to invert this
+                                        thisY = self.frame.height - thisY // with this one
+                                        
+                                        //TODO: I absolutely don't know why -- check sometimes you need it
+                                        if(!self.isMain && false){
+                                            thisY += self.manager.mainBarHeight - (NSApplication.shared.menu!.menuBarHeight/self.manager.mainScale) // self.scale
                                             
-                                            let ps = screenRecorder.priorityScale
-                                            let scale : CGFloat = self.scale * ps
-                                            let imgScale : CGFloat = cii.extent.width / self.frame.width
-                                            self.scaleCapture = imgScale * ps
-                                            
-                                            let cgHeight = CGFloat(truncating: (bounds["Height"] as! Int) as NSNumber)
-                                            var thisHeight = (cgHeight*imgScale)
-                                            
-                                            let cgY = CGFloat(truncating: (bounds["Y"] as! Int) as NSNumber)
-                                            
-                                            var thisY = cgY + cgHeight
-                                            
-                                            //TODO: create a checking window
-                                            //thisY = thisY + self.frame.minY // in case of problems try to invert this
-                                            thisY = self.frame.height - thisY // with this one
-                                            
-                                            //TODO: I absolutely don't know why -- check sometimes you need it
-                                            if(!self.isMain && false){
-                                                thisY += self.manager.mainBarHeight - (NSApplication.shared.menu!.menuBarHeight/self.manager.mainScale) // self.scale
-                                                
-                                                /*if(cgY < 0){
-                                                 thisY = cgY * -1
-                                                 }*/
-                                            }
-                                            
-                                            thisY = thisY * imgScale
-                                            
-                                            let cgWidth = CGFloat(truncating: (bounds["Width"] as! Int) as NSNumber)
-                                            var thisWidth = cgWidth*imgScale
-                                            
-                                            appWin.widthHeightRatio = cgWidth / cgHeight
-                                            
-                                            let cgX = CGFloat(truncating: (bounds["X"] as! Int) as NSNumber)
-                                            var thisX = (cgX - self.frame.minX) * scale
-                                            
-                                            var rect = CGRect(
-                                                x: thisX,
-                                                y: thisY,
-                                                width: thisWidth,
-                                                height: thisHeight
-                                            )
-                                            
-                                            var backingRect = CGRect(
-                                                x: cgX,
-                                                y: cgY,
-                                                width: cgWidth,
-                                                height: cgHeight
-                                            )
-                                            
-                                            if(!cii.extent.contains(NSPoint(x: rect.midX, y: rect.midY))){
-                                                print("cii.extent", cii.extent)
-                                                return
-                                            }
+                                            /*if(cgY < 0){
+                                             thisY = cgY * -1
+                                             }*/
+                                        }
+                                        
+                                        thisY = thisY * imgScale
+                                        
+                                        let cgWidth = CGFloat(truncating: (bounds["Width"] as! Int) as NSNumber)
+                                        var thisWidth = cgWidth*imgScale
+                                        
+                                        appWin.widthHeightRatio = cgWidth / cgHeight
+                                        
+                                        let cgX = CGFloat(truncating: (bounds["X"] as! Int) as NSNumber)
+                                        var thisX = (cgX - self.frame.minX) * scale
+                                        
+                                        var rect = CGRect(
+                                            x: thisX,
+                                            y: thisY,
+                                            width: thisWidth,
+                                            height: thisHeight
+                                        )
+                                        
+                                        var backingRect = CGRect(
+                                            x: cgX,
+                                            y: cgY,
+                                            width: cgWidth,
+                                            height: cgHeight
+                                        )
+                                        
+                                        if(!cii.extent.contains(NSPoint(x: rect.midX, y: rect.midY))){
+                                            print("cii.extent", cii.extent)
+                                            return
+                                        }
+                                        
+                                        Task { // is this making a sense?
                                             
                                             //print("capturing rect", rect, appWin.appTitle, appWin.avgTime)
                                             //print(backingRect, self.frame.minY, self.frame.maxY)
@@ -1883,6 +1886,8 @@ public class Display : Equatable {
                                             appWin.lastRect = backingRect
                                             appWin.lastCii = cii
                                             appWin.lastCiiElabored = false
+                                            
+                                            //todo: not sendeable (main actor)
                                             appWin.lastCiiPriorityScale = screenRecorder.priorityScale
                                         }
                                     }
