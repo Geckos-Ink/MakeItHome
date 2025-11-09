@@ -2486,7 +2486,7 @@ public class Display : Equatable {
     
     var timerHideWindowStarted = false
     
-    var activateSide = [true, true, true, true]
+    var activateSide = [false, false, false, false]
     
     var checkedDragging = false
     
@@ -2715,9 +2715,10 @@ public class Display : Equatable {
         }
         
         // Prevent activation on disabled sides
-        if !activateSide[curSide] {
+        if curSide >= 0 && !activateSide[curSide] {
             aboveBy = 0
             forceAboveBy = 0
+            return
         }
         
         //MARK: Top side mouse

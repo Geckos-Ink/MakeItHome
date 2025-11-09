@@ -53,6 +53,12 @@ public class StoreView {
             } else {
                 // Fallback on earlier versions
             }
+            
+            // Open by default menu bar
+            delay(ms: 500) {
+                self.barPanel = SwifterPanel<MenuBarView>(view: MenuBarView())
+                self.barPanel?.show()
+            }
         }
     }
     
