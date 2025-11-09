@@ -2253,6 +2253,9 @@ public class Display : Equatable {
             return
         }
         
+        // Force it elsewhere
+        manager.window?.setFrame(NSRect(origin: NSPoint(x:self.screen.frame.minX-5000, y: self.screen.frame.minY-5000), size: NSSize(width: 0, height: 0)), display: false)
+        
         if(!debugDontHide && !self.spaceIsChanging){ // buh
             manager.window?.orderBack(nil)
             NSApplication.shared.deactivate()
@@ -2276,7 +2279,7 @@ public class Display : Equatable {
 
         //manager.window?.b
         //manager.window?.setContentSize(NSSize(width: 1, height: 1))
-        manager.window?.isOpaque = true //y?
+        manager.window?.isOpaque = false //todo: check
         manager.window?.close()
         
         if #available(macOS 12.3, *){
