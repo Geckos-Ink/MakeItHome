@@ -2536,7 +2536,7 @@ public class Display : Equatable {
             return
         }
         
-        if(!mouseIn || isFullscreen || display.disable){
+        if(!mouseIn || isFullscreen || disable){
             if !windowHidden{
                 aboveBy = 0
                 hideWindow()
