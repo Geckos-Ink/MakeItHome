@@ -2230,6 +2230,7 @@ public class Display : Equatable {
         
         manager.window?.level = .mainMenu + 1
         manager.window?.isOpaque = true
+        manager.window?.alphaValue = 1
         
         frontWinBefore = dontPrioritizeRunningApp ? nil : curFrontWindow
         
@@ -2249,67 +2250,71 @@ public class Display : Equatable {
     }
     
     func hideWindow(){
+        
         if windowHidden{
             return
         }
         
-        // Force it elsewhere
-        manager.window?.setFrame(NSRect(origin: NSPoint(x:self.screen.frame.minX-5000, y: self.screen.frame.minY-5000), size: NSSize(width: 0, height: 0)), display: false)
-        
-        if(!debugDontHide && !self.spaceIsChanging){ // buh
-            manager.window?.orderBack(nil)
-            NSApplication.shared.deactivate()
-        }
-        
-        //TODO: check if spaceChanged is still an useful condition
-        if(!spaceIsChanging && !activateNewApp){
-            if(curFrontWindow != nil /*&& frontWinBefore == curFrontWindow*/ && curFrontWindow?.spaceId == currentSpaceId){
-                curFrontWindow?.activate()
-            }
-            /*else {
-                curFrontApp?.activate(options: NSApplication.ActivationOptions.activateAllWindows)
-            }*/
-        }
-        
-        //curFrontApp = nil
-        //curFrontWindow = nil
-        
-        windowHidden = true
-        Static.mainWindowInUsing = false
-
-        //manager.window?.b
-        //manager.window?.setContentSize(NSSize(width: 1, height: 1))
-        manager.window?.isOpaque = false //todo: check
-        manager.window?.close()
-        
-        if #available(macOS 12.3, *){
-            if(self.side != 3){
-                (manager.capturePreview as? CapturePreview)?.captureView.unset()
-            }
-        }
-        
-        DispatchQueue.main.async{
-            
-            if #available(macOS 12.3, *){
-                (self.manager.contentView?.store.screenRecorder as! ScreenRecorder).windowShowing = false
+        DispatchQueue.main.async {
+            Timer.scheduledTimer(withTimeInterval: 0.1, repeats: false) { timer in
                 
-                /*Task{
-                 await self.manager.contentView!.store.screenRecorder.start(lowProfile: true, display: self.scDisplay)
-                 }*/
+                // Force it elsewhere
+                //manager.window?.setFrame(NSRect(origin: NSPoint(x:self.screen.frame.minX-5000, y: self.screen.frame.minY-5000), size: NSSize(width: 0, height: 0)), display: false)
                 
-                // Forced operation for solving the "screen not updated issue"
-                // it starts automatically screen recording in low profile
-                Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { timer in
-                    if self.aboveByPixels == 0 && self.side == -1 {
-                        if Static.ReloadScreenRecorderDisplay {
-                            self.manager.screenRecorderSelectDisplay()
+                if(!self.debugDontHide && !self.spaceIsChanging){ // buh
+                    self.manager.window?.orderBack(nil)
+                    NSApplication.shared.deactivate()
+                }
+                
+                //TODO: check if spaceChanged is still an useful condition
+                if(!self.spaceIsChanging && !self.activateNewApp){
+                    if(self.curFrontWindow != nil /*&& frontWinBefore == curFrontWindow*/ && self.curFrontWindow?.spaceId == self.currentSpaceId){
+                        self.curFrontWindow?.activate()
+                    }
+                    /*else {
+                     curFrontApp?.activate(options: NSApplication.ActivationOptions.activateAllWindows)
+                     }*/
+                }
+                
+                //curFrontApp = nil
+                //curFrontWindow = nil
+                
+                //manager.window?.b
+                //manager.window?.setContentSize(NSSize(width: 1, height: 1))
+                self.manager.window?.isOpaque = false //todo: check
+                self.manager.window?.alphaValue = 0
+                self.manager.window?.close()
+                
+                Static.mainWindowInUsing = false
+                self.windowHidden = true
+                
+                if #available(macOS 12.3, *){
+                    if(self.side != 3){
+                        (self.manager.capturePreview as? CapturePreview)?.captureView.unset()
+                    }
+                }
+                
+                if #available(macOS 12.3, *){
+                    (self.manager.contentView?.store.screenRecorder as! ScreenRecorder).windowShowing = false
+                    
+                    /*Task{
+                     await self.manager.contentView!.store.screenRecorder.start(lowProfile: true, display: self.scDisplay)
+                     }*/
+                    
+                    // Forced operation for solving the "screen not updated issue"
+                    // it starts automatically screen recording in low profile
+                    Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { timer in
+                        if self.aboveByPixels == 0 && self.side == -1 {
+                            if Static.ReloadScreenRecorderDisplay {
+                                self.manager.screenRecorderSelectDisplay()
+                            }
+                            else {
+                                self.setRecorderProfile(lowProfile: true)
+                            }
+                            
+                            //(self.manager.capturePreview as? CapturePreview)?.captureView.hidden()
+                            (self.manager.capturePreview as! CapturePreview).forgiveAndForget()
                         }
-                        else {
-                            self.setRecorderProfile(lowProfile: true)
-                        }
-                        
-                        //(self.manager.capturePreview as? CapturePreview)?.captureView.hidden()
-                        (self.manager.capturePreview as! CapturePreview).forgiveAndForget()
                     }
                 }
             }
