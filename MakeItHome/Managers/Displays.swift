@@ -2234,7 +2234,7 @@ public class Display : Equatable {
             
             self.frontWinBefore = dontPrioritizeRunningApp ? nil : self.curFrontWindow
             
-            delay(ms: 100){
+            delay(ms: 250){
                 self.setRecorderProfile(lowProfile: false)
             }
             
@@ -2306,7 +2306,7 @@ public class Display : Equatable {
                     
                     // Forced operation for solving the "screen not updated issue"
                     // it starts automatically screen recording in low profile
-                    Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { timer in
+                    delay(ms: 500){
                         if self.aboveByPixels == 0 && self.side == -1 {
                             if Static.ReloadScreenRecorderDisplay {
                                 self.manager.screenRecorderSelectDisplay()
