@@ -92,7 +92,7 @@ public class Static {
     public static let PutAsideInUsingApp = false
     public static let PutAsideInUsingAppBy : CGFloat = 10 // pixels
     
-    public static let EnableLowProfile = true // continues to cycle with "recording start" // ehy wait, but IT ENABLES low profile...
+    public static let EnableLowProfile = false // continues to cycle with "recording start" // ehy wait, but IT ENABLES low profile...
     public static var EnableDockMouseSlowering = true
     public static var EnableRequiredAcceleration = true
     public static var DisableOnDockSide = false

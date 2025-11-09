@@ -2714,6 +2714,12 @@ public class Display : Equatable {
             }
         }
         
+        // Prevent activation on disabled sides
+        if !activateSide[curSide] {
+            aboveBy = 0
+            forceAboveBy = 0
+        }
+        
         //MARK: Top side mouse
         if(curSide == 3 && activateSide[curSide] && self.aboveByPixels == 0) {
             aroundTopSide = true
