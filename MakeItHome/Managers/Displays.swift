@@ -2173,72 +2173,75 @@ public class Display : Equatable {
     //MARK: Window show/hide
     var frontWinBefore : AppWindows.Window?
     func showWindow(){
-        
-        if checkWindowStatus(reclose: false){
-            return
-        }
-        
-        setScreenScaling()
-        
-        manager.window?.setContentSize(frame.size)
-        
-        if #available(macOS 12.3, *){
-            if(self.side != 3){
-                if false { // if enable async setScreensApps
-                    Static.highPriorityQueue.async {
+        DispatchQueue.main.async {
+            if self.checkWindowStatus(reclose: false){
+                return
+            }
+            
+            self.setScreenScaling()
+            
+            self.manager.window?.setContentSize(self.frame.size)
+            
+            if #available(macOS 12.3, *){
+                if(self.side != 3){
+                    if false { // if enable async setScreensApps
+                        Static.highPriorityQueue.async {
+                            (self.manager.capturePreview as? CapturePreview)?.captureView.setScreenApps(display: self)
+                        }
+                    }
+                    else {
                         (self.manager.capturePreview as? CapturePreview)?.captureView.setScreenApps(display: self)
                     }
                 }
-                else {
-                    (self.manager.capturePreview as? CapturePreview)?.captureView.setScreenApps(display: self)
-                }
             }
+            
+            let dontPrioritizeRunningApp = self.spaceIsChanging || self.curFrontWindow?.app?.runningApp != NSRunningApplication.current
+            
+            //change dimension
+            //manager.window?.setFrame(frame, display: true)
+            self.manager.window?.setFrame(NSRect(origin: NSPoint(x:self.screen.frame.minX, y: self.screen.frame.minY), size: self.frame.size), display: true)
+            
+            //TODO: correct this condition in case of space-changing or prioritization issues
+            if !Static.screenWake && (dontPrioritizeRunningApp && self.side != 3) {
+                self.manager.window?.makeFirstResponder(Static.AppExtensionWebView)
+                self.manager.window?.makeKeyAndOrderFront(nil)
+            }
+            else {
+                self.manager.window?.makeFirstResponder(Static.TopBarWebView)
+                self.manager.window?.makeKeyAndOrderFront(nil)
+                Static.screenWake = false
+            }
+            
+            // Delay because it use to slow down performances for some reason
+            delay(ms: 25){
+                NSApplication.shared.activate(ignoringOtherApps: true)
+            }
+            
+            Static.mainWindowFirstShow = true
+            
+            self.windowHidden = false
+            self.toBeRecorded = true
+            Static.mainWindowInUsing = true
+            Static.lastUsing = Date().timeIntervalSince1970
+            
+            DispatchQueue.main.async{
+                self.manager.contentView!.store.setWindowsProperties()
+            }
+            
+            self.manager.window?.level = .mainMenu + 1
+            self.manager.window?.isOpaque = true
+            self.manager.window?.alphaValue = 1
+            
+            self.frontWinBefore = dontPrioritizeRunningApp ? nil : self.curFrontWindow
+            
+            delay(ms: 100){
+                self.setRecorderProfile(lowProfile: false)
+            }
+            
+            //(manager.capturePreview as? CapturePreview)?.captureView.showed()
+            
+            print("show on window no", self.screen.displayID)
         }
-        
-        let dontPrioritizeRunningApp = spaceIsChanging || curFrontWindow?.app?.runningApp != NSRunningApplication.current
-        
-        //change dimension
-        //manager.window?.setFrame(frame, display: true)
-        manager.window?.setFrame(NSRect(origin: NSPoint(x:self.screen.frame.minX, y: self.screen.frame.minY), size: self.frame.size), display: true)
-              
-        //TODO: correct this condition in case of space-changing or prioritization issues
-        if !Static.screenWake && (dontPrioritizeRunningApp && self.side != 3) {
-            self.manager.window?.makeFirstResponder(Static.AppExtensionWebView)
-            manager.window?.makeKeyAndOrderFront(nil)
-        }
-        else {
-            self.manager.window?.makeFirstResponder(Static.TopBarWebView)
-            manager.window?.makeKeyAndOrderFront(nil)
-            Static.screenWake = false
-        }
-        
-        // Delay because it use to slow down performances for some reason
-        delay(ms: 100){
-            NSApplication.shared.activate(ignoringOtherApps: true)
-        }
-        
-        Static.mainWindowFirstShow = true
-        
-        windowHidden = false
-        toBeRecorded = true
-        Static.mainWindowInUsing = true
-        Static.lastUsing = Date().timeIntervalSince1970
-        
-        DispatchQueue.main.async{
-            self.manager.contentView!.store.setWindowsProperties()
-        }
-        
-        manager.window?.level = .mainMenu + 1
-        manager.window?.isOpaque = true
-        manager.window?.alphaValue = 1
-        
-        frontWinBefore = dontPrioritizeRunningApp ? nil : curFrontWindow
-        
-        setRecorderProfile(lowProfile: false)
-        
-        //(manager.capturePreview as? CapturePreview)?.captureView.showed()
-        
-        print("show on window no", self.screen.displayID)
     }
     
     func setRefresh(){
