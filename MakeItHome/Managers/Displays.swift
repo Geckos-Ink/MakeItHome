@@ -1077,6 +1077,8 @@ public class Display : Equatable {
         }
     }
     
+    var aboveByTriggeredSince : TimeInterval = 0
+    
     //MARK: Display init
     init(manager: DisplaysManager, screen: NSScreen){
         self.screen = screen
@@ -1113,6 +1115,11 @@ public class Display : Equatable {
             }
             
             if self.disable || self.screen != NSScreen.main {
+                return
+            }
+            
+            // don't capture screenshot immediately after the triggering of above by
+            if (Date.now.timeIntervalSince1970 - self.aboveByTriggeredSince) < 0.5 {
                 return
             }
             
@@ -3216,6 +3223,10 @@ public class Display : Equatable {
             if(!windowHidden && !checkedDragging){
                 hideWindow()
             }
+        }
+        
+        if(aboveByPixels > 0 && prevAboveBy <= 0){
+            self.aboveByTriggeredSince = Date.now.timeIntervalSince1970
         }
         
         let aboveByPixelsDiff = aboveByPixels - prevAboveByPixels
