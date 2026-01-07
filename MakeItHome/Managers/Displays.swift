@@ -1413,8 +1413,6 @@ public class Display : Equatable {
                                 changeDisplay?.removeWindows(id: winId)
                             }
                             
-                            //print(winnerRect)
-                            
                             var biggerThanPreviousWinner = winner == nil || rectContainsWinnerRect(rect: rect)
                             
                             // Check if winner is contained by this window
@@ -1713,6 +1711,8 @@ public class Display : Equatable {
                 
                 let appWin = appWins!.getWindow(winDict: winner!)!
                 
+                print("Current window rect: ", winnerRect)
+                
                 // Check for fullscreen
                 let isFullSize = winnerRect.size.width >= self.frame.width && winnerRect.size.height >= self.frame.height - self.menuHeight
                 
@@ -1828,7 +1828,7 @@ public class Display : Equatable {
                                         var cii = CIImage(cvPixelBuffer: lf!.pixelBuffer!)
                                         
                                         let ps = screenRecorder.priorityScale
-                                        let scale : CGFloat = self.scale * ps
+                                        let scale : CGFloat = self.scale * ps // cause of window size change
                                         let imgScale : CGFloat = cii.extent.width / self.frame.width
                                         self.scaleCapture = imgScale * ps
                                         
