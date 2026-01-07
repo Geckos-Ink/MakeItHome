@@ -277,10 +277,10 @@ public struct CapturePreview: NSViewRepresentable {
             
             self.registerForDraggedTypes([.fileURL])
             
-            rendersContinuously = false
+            self.rendersContinuously = false
             
             //antialiasingMode = .multisampling2X
-            antialiasingMode = .none
+            self.antialiasingMode = .none
             
             self.drawableResizesAsynchronously = true
             self.isJitteringEnabled = false

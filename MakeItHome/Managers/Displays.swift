@@ -1077,6 +1077,8 @@ public class Display : Equatable {
         }
     }
     
+    var aboveByTriggeredSince : TimeInterval = 0
+    
     //MARK: Display init
     init(manager: DisplaysManager, screen: NSScreen){
         self.screen = screen
@@ -1113,6 +1115,11 @@ public class Display : Equatable {
             }
             
             if self.disable || self.screen != NSScreen.main {
+                return
+            }
+            
+            // don't capture screenshot immediately after the triggering of above by
+            if (Date.now.timeIntervalSince1970 - self.aboveByTriggeredSince) < Static.WaitScreenshotAfterAboveBy {
                 return
             }
             
@@ -1609,7 +1616,7 @@ public class Display : Equatable {
             for aWin in lastAllWins{
                 windows?.insert(aWin, at: 0)
             }
-                       
+            
             cycleWindows(windows: windows)
             
             if spaceIsChanging {
@@ -1678,7 +1685,7 @@ public class Display : Equatable {
                     
                     lastAllWins = newAllWins
                 }
-                                
+                
                 if allWins != nil {
                     for app in self.apps{
                         for win in app.value.windows{
@@ -1708,7 +1715,7 @@ public class Display : Equatable {
                 
                 // Check for fullscreen
                 let isFullSize = winnerRect.size.width >= self.frame.width && winnerRect.size.height >= self.frame.height - self.menuHeight
-                                
+                
                 // "isFullscreen" check
                 let isFinderDragging = appWin.appTitle == "Finder" && appWin.winTitle == ""
                 
@@ -1756,16 +1763,16 @@ public class Display : Equatable {
                         noSpaceholderFor = 0
                     }
                 }
-                                
+                
                 appWin.app?.runningApp = self.curFrontApp! // better update it(?)
-                lastAppWin = appWin               
+                lastAppWin = appWin
                 
                 for app in self.apps {
                     if app.value.id != appWin.app?.id {
                         app.value.clean()
                     }
                 }
-
+                
                 prevFrontWindow = curFrontWindow
                 
                 self.curFrontWindow = appWin
@@ -1786,7 +1793,7 @@ public class Display : Equatable {
                     return false
                 }
                 
-                if(self.isFullscreen){
+                if self.isFullscreen || (self.aboveBy > 0 && self.aboveBy < 1) {
                     appWin.lastShotTime = Date()
                 }
                 else if forceShot || (appWins!.timeSelection > Static.WindowScreenshotAfterAttempts) { // - (forceShot ? 2 : 0)
@@ -1807,72 +1814,75 @@ public class Display : Equatable {
                     let bounds = winner!["kCGWindowBounds"] as! NSDictionary
                     
                     DispatchQueue.main.async {
-                        Task{
-                            if #available(macOS 12.3, *){
+                        
+                        if #available(macOS 12.3, *){
+                            
+                            let screenRecorder = self.manager.contentView!.store.screenRecorder as! ScreenRecorder
+                            let lf = screenRecorder.lastFrame
+                            
+                            if(lf?.displayID == self.screen.displayID){
                                 
-                                let screenRecorder = self.manager.contentView!.store.screenRecorder as! ScreenRecorder
-                                let lf = screenRecorder.lastFrame
-                                
-                                if(lf?.displayID == self.screen.displayID){
-                                    
-                                    if(lf != nil){                                        
-                                        Static.highPriorityQueue.async {
-                                            let context = CIContext()
-                                            var cii = CIImage(cvPixelBuffer: lf!.pixelBuffer!)
+                                if(lf != nil){
+                                    Static.highPriorityQueue.async {
+                                        
+                                        var cii = CIImage(cvPixelBuffer: lf!.pixelBuffer!)
+                                        
+                                        let ps = screenRecorder.priorityScale
+                                        let scale : CGFloat = self.scale * ps
+                                        let imgScale : CGFloat = cii.extent.width / self.frame.width
+                                        self.scaleCapture = imgScale * ps
+                                        
+                                        let cgHeight = CGFloat(truncating: (bounds["Height"] as! Int) as NSNumber)
+                                        var thisHeight = (cgHeight*imgScale)
+                                        let cgY = CGFloat(truncating: (bounds["Y"] as! Int) as NSNumber)
+                                        
+                                        //let context = self.ciContext
+                                        
+                                        var thisY = cgY + cgHeight
+                                        
+                                        //TODO: create a checking window
+                                        //thisY = thisY + self.frame.minY // in case of problems try to invert this
+                                        thisY = self.frame.height - thisY // with this one
+                                        
+                                        //TODO: I absolutely don't know why -- check sometimes you need it
+                                        if(!self.isMain && false){
+                                            thisY += self.manager.mainBarHeight - (NSApplication.shared.menu!.menuBarHeight/self.manager.mainScale) // self.scale
                                             
-                                            let ps = screenRecorder.priorityScale
-                                            let scale : CGFloat = self.scale * ps
-                                            let imgScale : CGFloat = cii.extent.width / self.frame.width
-                                            self.scaleCapture = imgScale * ps
-                                            
-                                            let cgHeight = CGFloat(truncating: (bounds["Height"] as! Int) as NSNumber)
-                                            var thisHeight = (cgHeight*imgScale)
-                                            
-                                            let cgY = CGFloat(truncating: (bounds["Y"] as! Int) as NSNumber)
-                                            
-                                            var thisY = cgY + cgHeight
-                                            
-                                            //TODO: create a checking window
-                                            //thisY = thisY + self.frame.minY // in case of problems try to invert this
-                                            thisY = self.frame.height - thisY // with this one
-                                            
-                                            //TODO: I absolutely don't know why -- check sometimes you need it
-                                            if(!self.isMain && false){
-                                                thisY += self.manager.mainBarHeight - (NSApplication.shared.menu!.menuBarHeight/self.manager.mainScale) // self.scale
-                                                
-                                                /*if(cgY < 0){
-                                                 thisY = cgY * -1
-                                                 }*/
-                                            }
-                                            
-                                            thisY = thisY * imgScale
-                                            
-                                            let cgWidth = CGFloat(truncating: (bounds["Width"] as! Int) as NSNumber)
-                                            var thisWidth = cgWidth*imgScale
-                                            
-                                            appWin.widthHeightRatio = cgWidth / cgHeight
-                                            
-                                            let cgX = CGFloat(truncating: (bounds["X"] as! Int) as NSNumber)
-                                            var thisX = (cgX - self.frame.minX) * scale
-                                            
-                                            var rect = CGRect(
-                                                x: thisX,
-                                                y: thisY,
-                                                width: thisWidth,
-                                                height: thisHeight
-                                            )
-                                            
-                                            var backingRect = CGRect(
-                                                x: cgX,
-                                                y: cgY,
-                                                width: cgWidth,
-                                                height: cgHeight
-                                            )
-                                            
-                                            if(!cii.extent.contains(NSPoint(x: rect.midX, y: rect.midY))){
-                                                print("cii.extent", cii.extent)
-                                                return
-                                            }
+                                            /*if(cgY < 0){
+                                             thisY = cgY * -1
+                                             }*/
+                                        }
+                                        
+                                        thisY = thisY * imgScale
+                                        
+                                        let cgWidth = CGFloat(truncating: (bounds["Width"] as! Int) as NSNumber)
+                                        var thisWidth = cgWidth*imgScale
+                                        
+                                        appWin.widthHeightRatio = cgWidth / cgHeight
+                                        
+                                        let cgX = CGFloat(truncating: (bounds["X"] as! Int) as NSNumber)
+                                        var thisX = (cgX - self.frame.minX) * scale
+                                        
+                                        var rect = CGRect(
+                                            x: thisX,
+                                            y: thisY,
+                                            width: thisWidth,
+                                            height: thisHeight
+                                        )
+                                        
+                                        var backingRect = CGRect(
+                                            x: cgX,
+                                            y: cgY,
+                                            width: cgWidth,
+                                            height: cgHeight
+                                        )
+                                        
+                                        if(!cii.extent.contains(NSPoint(x: rect.midX, y: rect.midY))){
+                                            print("cii.extent", cii.extent)
+                                            return
+                                        }
+                                        
+                                        Task { // is this making a sense?
                                             
                                             //print("capturing rect", rect, appWin.appTitle, appWin.avgTime)
                                             //print(backingRect, self.frame.minY, self.frame.maxY)
@@ -1883,6 +1893,8 @@ public class Display : Equatable {
                                             appWin.lastRect = backingRect
                                             appWin.lastCii = cii
                                             appWin.lastCiiElabored = false
+                                            
+                                            //todo: not sendeable (main actor)
                                             appWin.lastCiiPriorityScale = screenRecorder.priorityScale
                                         }
                                     }
@@ -2173,71 +2185,75 @@ public class Display : Equatable {
     //MARK: Window show/hide
     var frontWinBefore : AppWindows.Window?
     func showWindow(){
-        
-        if checkWindowStatus(reclose: false){
-            return
-        }
-        
-        setScreenScaling()
-        
-        manager.window?.setContentSize(frame.size)
-        
-        if #available(macOS 12.3, *){
-            if(self.side != 3){
-                if false { // if enable async setScreensApps
-                    Static.highPriorityQueue.async {
+        DispatchQueue.main.async {
+            if self.checkWindowStatus(reclose: false){
+                return
+            }
+            
+            self.setScreenScaling()
+            
+            self.manager.window?.setContentSize(self.frame.size)
+            
+            if #available(macOS 12.3, *){
+                if(self.side != 3){
+                    if false { // if enable async setScreensApps
+                        Static.highPriorityQueue.async {
+                            (self.manager.capturePreview as? CapturePreview)?.captureView.setScreenApps(display: self)
+                        }
+                    }
+                    else {
                         (self.manager.capturePreview as? CapturePreview)?.captureView.setScreenApps(display: self)
                     }
                 }
-                else {
-                    (self.manager.capturePreview as? CapturePreview)?.captureView.setScreenApps(display: self)
-                }
             }
+            
+            let dontPrioritizeRunningApp = self.spaceIsChanging || self.curFrontWindow?.app?.runningApp != NSRunningApplication.current
+            
+            //change dimension
+            //manager.window?.setFrame(frame, display: true)
+            self.manager.window?.setFrame(NSRect(origin: NSPoint(x:self.screen.frame.minX, y: self.screen.frame.minY), size: self.frame.size), display: true)
+            
+            //TODO: correct this condition in case of space-changing or prioritization issues
+            if !Static.screenWake && (dontPrioritizeRunningApp && self.side != 3) {
+                self.manager.window?.makeFirstResponder(Static.AppExtensionWebView)
+                self.manager.window?.makeKeyAndOrderFront(nil)
+            }
+            else {
+                self.manager.window?.makeFirstResponder(Static.TopBarWebView)
+                self.manager.window?.makeKeyAndOrderFront(nil)
+                Static.screenWake = false
+            }
+            
+            // Delay because it use to slow down performances for some reason
+            delay(ms: 25){
+                NSApplication.shared.activate(ignoringOtherApps: true)
+            }
+            
+            Static.mainWindowFirstShow = true
+            
+            self.windowHidden = false
+            self.toBeRecorded = true
+            Static.mainWindowInUsing = true
+            Static.lastUsing = Date().timeIntervalSince1970
+            
+            DispatchQueue.main.async{
+                self.manager.contentView!.store.setWindowsProperties()
+            }
+            
+            self.manager.window?.level = .mainMenu + 1
+            self.manager.window?.isOpaque = true
+            self.manager.window?.alphaValue = 1
+            
+            self.frontWinBefore = dontPrioritizeRunningApp ? nil : self.curFrontWindow
+            
+            delay(ms: 250){
+                self.setRecorderProfile(lowProfile: false)
+            }
+            
+            //(manager.capturePreview as? CapturePreview)?.captureView.showed()
+            
+            print("show on window no", self.screen.displayID)
         }
-        
-        let dontPrioritizeRunningApp = spaceIsChanging || curFrontWindow?.app?.runningApp != NSRunningApplication.current
-        
-        //change dimension
-        //manager.window?.setFrame(frame, display: true)
-        manager.window?.setFrame(NSRect(origin: NSPoint(x:self.screen.frame.minX, y: self.screen.frame.minY), size: self.frame.size), display: true)
-              
-        //TODO: correct this condition in case of space-changing or prioritization issues
-        if !Static.screenWake && (dontPrioritizeRunningApp && self.side != 3) {
-            self.manager.window?.makeFirstResponder(Static.AppExtensionWebView)
-            manager.window?.makeKeyAndOrderFront(nil)
-        }
-        else {
-            self.manager.window?.makeFirstResponder(Static.TopBarWebView)
-            manager.window?.makeKeyAndOrderFront(nil)
-            Static.screenWake = false
-        }
-        
-        // Delay because it use to slow down performances for some reason
-        delay(ms: 100){
-            NSApplication.shared.activate(ignoringOtherApps: true)
-        }
-        
-        Static.mainWindowFirstShow = true
-        
-        windowHidden = false
-        toBeRecorded = true
-        Static.mainWindowInUsing = true
-        Static.lastUsing = Date().timeIntervalSince1970
-        
-        DispatchQueue.main.async{
-            self.manager.contentView!.store.setWindowsProperties()
-        }
-        
-        manager.window?.level = .mainMenu + 1
-        manager.window?.isOpaque = true
-        
-        frontWinBefore = dontPrioritizeRunningApp ? nil : curFrontWindow
-        
-        setRecorderProfile(lowProfile: false)
-        
-        //(manager.capturePreview as? CapturePreview)?.captureView.showed()
-        
-        print("show on window no", self.screen.displayID)
     }
     
     func setRefresh(){
@@ -2249,64 +2265,71 @@ public class Display : Equatable {
     }
     
     func hideWindow(){
+        
         if windowHidden{
             return
         }
         
-        if(!debugDontHide && !self.spaceIsChanging){ // buh
-            manager.window?.orderBack(nil)
-            NSApplication.shared.deactivate()
-        }
-        
-        //TODO: check if spaceChanged is still an useful condition
-        if(!spaceIsChanging && !activateNewApp){
-            if(curFrontWindow != nil /*&& frontWinBefore == curFrontWindow*/ && curFrontWindow?.spaceId == currentSpaceId){
-                curFrontWindow?.activate()
-            }
-            /*else {
-                curFrontApp?.activate(options: NSApplication.ActivationOptions.activateAllWindows)
-            }*/
-        }
-        
-        //curFrontApp = nil
-        //curFrontWindow = nil
-        
-        windowHidden = true
-        Static.mainWindowInUsing = false
-
-        //manager.window?.b
-        //manager.window?.setContentSize(NSSize(width: 1, height: 1))
-        manager.window?.isOpaque = true //y?
-        manager.window?.close()
-        
-        if #available(macOS 12.3, *){
-            if(self.side != 3){
-                (manager.capturePreview as? CapturePreview)?.captureView.unset()
-            }
-        }
-        
-        DispatchQueue.main.async{
-            
-            if #available(macOS 12.3, *){
-                (self.manager.contentView?.store.screenRecorder as! ScreenRecorder).windowShowing = false
+        DispatchQueue.main.async {
+            Timer.scheduledTimer(withTimeInterval: 0.1, repeats: false) { timer in
                 
-                /*Task{
-                 await self.manager.contentView!.store.screenRecorder.start(lowProfile: true, display: self.scDisplay)
-                 }*/
+                // Force it elsewhere
+                //manager.window?.setFrame(NSRect(origin: NSPoint(x:self.screen.frame.minX-5000, y: self.screen.frame.minY-5000), size: NSSize(width: 0, height: 0)), display: false)
                 
-                // Forced operation for solving the "screen not updated issue"
-                // it starts automatically screen recording in low profile
-                Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { timer in
-                    if self.aboveByPixels == 0 && self.side == -1 {
-                        if Static.ReloadScreenRecorderDisplay {
-                            self.manager.screenRecorderSelectDisplay()
+                if(!self.debugDontHide && !self.spaceIsChanging){ // buh
+                    self.manager.window?.orderBack(nil)
+                    NSApplication.shared.deactivate()
+                }
+                
+                //TODO: check if spaceChanged is still an useful condition
+                if(!self.spaceIsChanging && !self.activateNewApp){
+                    if(self.curFrontWindow != nil /*&& frontWinBefore == curFrontWindow*/ && self.curFrontWindow?.spaceId == self.currentSpaceId){
+                        self.curFrontWindow?.activate()
+                    }
+                    /*else {
+                     curFrontApp?.activate(options: NSApplication.ActivationOptions.activateAllWindows)
+                     }*/
+                }
+                
+                //curFrontApp = nil
+                //curFrontWindow = nil
+                
+                //manager.window?.b
+                //manager.window?.setContentSize(NSSize(width: 1, height: 1))
+                self.manager.window?.isOpaque = false //todo: check
+                self.manager.window?.alphaValue = 0
+                self.manager.window?.close()
+                
+                Static.mainWindowInUsing = false
+                self.windowHidden = true
+                
+                if #available(macOS 12.3, *){
+                    if(self.side != 3){
+                        (self.manager.capturePreview as? CapturePreview)?.captureView.unset()
+                    }
+                }
+                
+                if #available(macOS 12.3, *){
+                    (self.manager.contentView?.store.screenRecorder as! ScreenRecorder).windowShowing = false
+                    
+                    /*Task{
+                     await self.manager.contentView!.store.screenRecorder.start(lowProfile: true, display: self.scDisplay)
+                     }*/
+                    
+                    // Forced operation for solving the "screen not updated issue"
+                    // it starts automatically screen recording in low profile
+                    delay(ms: 500){
+                        if self.aboveByPixels == 0 && self.side == -1 {
+                            if Static.ReloadScreenRecorderDisplay {
+                                self.manager.screenRecorderSelectDisplay()
+                            }
+                            else {
+                                self.setRecorderProfile(lowProfile: true)
+                            }
+                            
+                            //(self.manager.capturePreview as? CapturePreview)?.captureView.hidden()
+                            (self.manager.capturePreview as! CapturePreview).forgiveAndForget()
                         }
-                        else {
-                            self.setRecorderProfile(lowProfile: true)
-                        }
-                        
-                        //(self.manager.capturePreview as? CapturePreview)?.captureView.hidden()
-                        (self.manager.capturePreview as! CapturePreview).forgiveAndForget()
                     }
                 }
             }
@@ -2470,7 +2493,7 @@ public class Display : Equatable {
     
     var timerHideWindowStarted = false
     
-    var activateSide = [true, true, true, true]
+    var activateSide = [false, false, false, false]
     
     var checkedDragging = false
     
@@ -2533,7 +2556,7 @@ public class Display : Equatable {
             return
         }
         
-        if(!mouseIn || isFullscreen){
+        if(!mouseIn || isFullscreen || disable){
             if !windowHidden{
                 aboveBy = 0
                 hideWindow()
@@ -2696,6 +2719,13 @@ public class Display : Equatable {
             else {
                 Static.TopBarWebView?.stopRendering()
             }
+        }
+        
+        // Prevent activation on disabled sides
+        if curSide >= 0 && !activateSide[curSide] {
+            aboveBy = 0
+            forceAboveBy = 0
+            return
         }
         
         //MARK: Top side mouse
@@ -3193,6 +3223,10 @@ public class Display : Equatable {
             if(!windowHidden && !checkedDragging){
                 hideWindow()
             }
+        }
+        
+        if(aboveByPixels > 0 && prevAboveBy <= 0){
+            self.aboveByTriggeredSince = Date.now.timeIntervalSince1970
         }
         
         let aboveByPixelsDiff = aboveByPixels - prevAboveByPixels
