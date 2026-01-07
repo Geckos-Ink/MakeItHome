@@ -111,8 +111,8 @@ public class Static {
     public static let BackgroundUpdateSeconds_NewDisplay : Double = 5 // seconds
     
     public static let ScreenRecorderHighPriorityFPS = 30 // FPS
-    public static let CheckIfUpdateWindowScreenshotEvery : Double = 2 // seconds
-    public static let UpdateWindowScreenshotAfter : Double = 3 // seconds
+    public static let CheckIfUpdateWindowScreenshotEvery : Double = 0.5 // seconds
+    public static let UpdateWindowScreenshotAfter : Double = 2.0 // seconds
     public static let EnableRecordingHalfInLowPriority = true
         
     public static let ClickMaximumDifference : Double = 0.5
