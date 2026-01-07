@@ -1119,7 +1119,7 @@ public class Display : Equatable {
             }
             
             // don't capture screenshot immediately after the triggering of above by
-            if (Date.now.timeIntervalSince1970 - self.aboveByTriggeredSince) < 0.5 {
+            if (Date.now.timeIntervalSince1970 - self.aboveByTriggeredSince) < Static.WaitScreenshotAfterAboveBy {
                 return
             }
             

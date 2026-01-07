@@ -114,6 +114,7 @@ public class Static {
     public static let CheckIfUpdateWindowScreenshotEvery : Double = 0.5 // seconds
     public static let UpdateWindowScreenshotAfter : Double = 2.0 // seconds
     public static let EnableRecordingHalfInLowPriority = true
+    public static let WaitScreenshotAfterAboveBy = 0.3 // milliseconds
         
     public static let ClickMaximumDifference : Double = 0.5
     
