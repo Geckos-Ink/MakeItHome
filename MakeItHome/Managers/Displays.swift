@@ -1711,7 +1711,7 @@ public class Display : Equatable {
                 
                 let appWin = appWins!.getWindow(winDict: winner!)!
                 
-                print("Current window rect: ", winnerRect)
+                //print("Current window rect: ", winnerRect)
                 
                 // Check for fullscreen
                 let isFullSize = winnerRect.size.width >= self.frame.width && winnerRect.size.height >= self.frame.height - self.menuHeight
