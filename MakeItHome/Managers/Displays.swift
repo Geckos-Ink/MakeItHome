@@ -2991,7 +2991,7 @@ public class Display : Equatable {
                     isRightDirection = true
                 }
             }
-            
+                       
             
             ///
             /// More aboveBy
@@ -3288,6 +3288,51 @@ public class Display : Equatable {
             alterMouse = 0
         }
 
+        ///
+        /// Accelerate OverScreen axis pointer
+        ///
+        
+        let accelerateOverscreenEnabled = false // disabled because not working
+        if accelerateOverscreenEnabled && aboveBy == 1 && !onMoreAboveBy && curSide != 3 {
+            let axisCoord = curSide % 2 == 0 ? relMouse.y : relMouse.x
+            let counterAxisCoord = curSide % 2 == 0 ? relMouse.x : relMouse.y
+            
+            let prevAxisCoord = curSide % 2 == 0 ? prevRelMouse.y : prevRelMouse.x
+            let prevCounterAxisCoord = curSide % 2 == 1 ? prevRelMouse.y : prevRelMouse.x
+            
+            let diffAxis = axisCoord - prevAxisCoord
+            let diffCounterAxis = counterAxisCoord - prevCounterAxisCoord
+            
+            print("diffAxis > diffCounterAxis = ", diffAxis, " > ", diffCounterAxis)
+            if abs(diffAxis) > abs(diffCounterAxis) {
+                
+                let accelerateBy : Double = 1.5
+                let diff = diffAxis * accelerateBy
+                
+                var moveTo = relMouse
+                
+                if curSide % 2 == 1 {
+                    moveTo.y += diff
+                }
+                else {
+                    moveTo.x += diff
+                }
+                
+                let relativeSetCursor = true
+                if relativeSetCursor {
+                    CGDisplayMoveCursorToPoint(self.screen.displayID, moveTo)
+                }
+                else {
+                    moveTo.y = frame.height - moveTo.y
+                    moveTo.y += frame.minY
+                    
+                    moveMouse(to: moveTo)
+                }
+                
+                prevRelMouse = moveTo
+            }
+        }
+        
         //MARK: alterMouse
         let minMovement : CGFloat = 1.1/scale
         
