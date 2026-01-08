@@ -3292,6 +3292,7 @@ public class Display : Equatable {
         /// Accelerate OverScreen axis pointer
         ///
         
+        //TODO: implement it effectively in future
         let accelerateOverscreenEnabled = false // disabled because not working
         if accelerateOverscreenEnabled && aboveBy == 1 && !onMoreAboveBy && curSide != 3 {
             let axisCoord = curSide % 2 == 0 ? relMouse.y : relMouse.x
