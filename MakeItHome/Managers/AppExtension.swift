@@ -37,7 +37,7 @@ class AppExtensionManager {
         }
         
         let bundleId = query!["bundleId"]!
-        print("AppExtension request from bundleId", bundleId)
+        //print("AppExtension request from bundleId", bundleId) // DEBUG
         
         var app = apps[bundleId]
         

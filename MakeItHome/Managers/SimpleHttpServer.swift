@@ -487,7 +487,7 @@ public class SimpleHTTPServer {
         var dataReq : String?
         
         if reqType != "GET"{
-            print("handle data post type")
+            //print("handle data post type")
             let dataParts = request.components(separatedBy: "\r\n\r\n")
             
             if(dataParts.count > 1){
