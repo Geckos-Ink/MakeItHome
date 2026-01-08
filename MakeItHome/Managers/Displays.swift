@@ -942,6 +942,13 @@ public class Display : Equatable {
                     
                     var cii = _cii!
                     
+                    let hold_cii = RetainedOpaquePointer(cii)
+                    let objPtr_cii: UnsafeRawPointer = hold_cii.pointer
+                    
+                    if !isAddressRangeAccessible(objPtr_cii, byteCount: 1, access: .read){
+                        return
+                    }
+                    
                     // Resize
                     //let divideBy : CGFloat = 4
                     let curScale = (cii.extent.width + cii.extent.height)/2.5 //more is more definition
