@@ -267,8 +267,9 @@ public class SimpleHTTPServer {
                 if isComplete {
                     runOnComplete()
                 } else if let error = error {
-                    print("Connection error: \(error)")
-                    connection.cancel()
+                    // Ignore log for avoid infinite messages
+                    //print("Connection error: \(error)")
+                    //connection.cancel()
                 } else {
                     receiveNextChunk()
                 }
