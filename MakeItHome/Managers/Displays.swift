@@ -2147,8 +2147,12 @@ public class Display : Equatable {
                 let screenRecorder = (self.manager.contentView?.store.screenRecorder as! ScreenRecorder)
                 screenRecorder.windowShowing = !lowProfile
                 
-                Task{
-                    await screenRecorder.start(lowProfile: lowProfile, display: self.scDisplay as? SCDisplay)
+                let waitForIt : Int = Int((lowProfile ? 0 : Static.WaitScreenshotAfterAboveBy) * 1000)
+                
+                delay(ms: waitForIt){
+                    Task{
+                        await screenRecorder.start(lowProfile: lowProfile, display: self.scDisplay as? SCDisplay)
+                    }
                 }
             }
             
