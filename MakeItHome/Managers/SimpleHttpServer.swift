@@ -246,7 +246,7 @@ public class SimpleHTTPServer {
                     receivedData.append(data)
                 }
                 
-                if receivedData.count > maxRequestBodyBytes {
+                if receivedData.count > self.maxRequestBodyBytes {
                     sendAndClose(self.buildResponse(statusCode: 413, reason: "Payload Too Large"))
                     return
                 }
