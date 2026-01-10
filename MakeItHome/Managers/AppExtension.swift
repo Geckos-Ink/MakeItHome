@@ -286,7 +286,7 @@ class AppExtension {
         updateWebViewIdentityIfNeeded()
         
         guard !syncInFlight else { return }
-        guard let webView = Static.AppExtensionWebView, !webView.isLoading else { return }
+        guard Static.AppExtensionWebView != nil else { return }
         
         let now = Date.now.timeIntervalSince1970
         if !force && (now - lastSyncAttemptAt) < syncThrottle {
@@ -343,7 +343,7 @@ class AppExtension {
     func scheduleHealthCheckIfNeeded(force: Bool = false) {
         guard self.imShowing() else { return }
         guard !healthCheckInFlight else { return }
-        guard let webView = Static.AppExtensionWebView, !webView.isLoading else { return }
+        guard Static.AppExtensionWebView != nil else { return }
         
         let now = Date.now.timeIntervalSince1970
         if !force && (now - lastHealthCheckAt) < healthCheckInterval {
