@@ -134,39 +134,31 @@ class ScreenRecorder: ObservableObject {
             selectedDisplay = display
         }
         
+        let previousLowPriority = isLowPriority
+        let previousPriorityScale = priorityScale
+        
         self.isLowPriority = lowProfile
         
         priorityScale = Static.EnableRecordingHalfInLowPriority && lowProfile ? 2 : 1
         
         let p = lowProfile ? lowProfileFPS : Static.ScreenRecorderHighPriorityFPS
         
-        var force = false
-        if lastFrame != nil && NSDate().timeIntervalSince1970 - lastFrame!.captureTime > 1 || p != priorityFrameRate {
-            force = true
+        let frameRateChanged = p != priorityFrameRate
+        let profileChanged = previousLowPriority != isLowPriority || previousPriorityScale != priorityScale
+        let staleFrame = lastFrame.map { Date().timeIntervalSince1970 - $0.captureTime > 1 } ?? false
+        
+        if recordingOnDisplay == selectedDisplay?.displayID, isRunning, !staleFrame {
+            if frameRateChanged || profileChanged, let filter = contentFilter {
+                self.priorityFrameRate = p
+                await captureEngine.update(configuration: streamConfiguration, filter: filter)
+            }
+            return
         }
         
-        //TODO: clean this code (when it will be stable)
-        if(!force && recordingOnDisplay == selectedDisplay?.displayID && isRunning){ // update or restart?
-            if(p != priorityFrameRate){
-                self.priorityFrameRate = p
-                
-                if(isRunning){
-                    //await stop()
-                    await captureEngine.update(configuration: streamConfiguration, filter: contentFilter!)
-                    return
-                }            
-            }
-            else {
-                // Exit early if already running.
-                guard !isRunning else { return }
-            }
-        }
-        else {            
-            self.priorityFrameRate = p
-            
-            if(isRunning || force){
-                await stop()
-            }
+        self.priorityFrameRate = p
+        
+        if isRunning {
+            await stop()
         }
         
         if !isSetup {

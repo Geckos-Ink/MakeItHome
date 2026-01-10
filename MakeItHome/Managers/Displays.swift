@@ -10,6 +10,7 @@ import AppKit
 import ScreenCaptureKit
 import CoreImage
 import AVFoundation
+import CoreVideo
 
 import OrderedCollections
 import SceneKit
@@ -846,6 +847,8 @@ public class Display : Equatable {
             public var lastCii : CIImage?
             public var lastCiiElabored = false
             public var lastCiiPriorityScale : CGFloat = 1
+            private var ciiRevision: UInt = 0
+            private var isProcessingCii = false
             
             public var lastShotTime : Date = Date(timeIntervalSince1970: 0)
             public var lastPreview : CGImage? = nil
@@ -897,6 +900,15 @@ public class Display : Equatable {
                     appTitle = app.title
                 }
             }
+
+            func updateCii(_ cii: CIImage, rect: NSRect, priorityScale: CGFloat, display: Display) {
+                self.display = display
+                self.lastRect = rect
+                self.lastCii = cii
+                self.lastCiiElabored = false
+                self.lastCiiPriorityScale = priorityScale
+                ciiRevision &+= 1
+            }
             
             public func clean(){
                 if previewsList.count > 0 {
@@ -930,81 +942,100 @@ public class Display : Equatable {
             }
             
             public func checkForCii(){
-                Static.highPriorityQueue.async { // this may cause problems
-                    if(self.lastCiiElabored || self.lastCii == nil || self.display == nil || self.display?.recordingPaused ?? false){
-                        return
-                    }
-                    
-                    let _cii = self.lastCii // guard laziness
-                    if _cii == nil { // double check
-                        return
-                    }
-                    
-                    var cii = _cii!
-                    
-                    let hold_cii = RetainedOpaquePointer(cii)
-                    let objPtr_cii: UnsafeRawPointer = hold_cii.pointer
-                    
-                    if !isAddressRangeAccessible(objPtr_cii, byteCount: 1, access: .read){
-                        return
-                    }
-                    
-                    // Resize
-                    //let divideBy : CGFloat = 4
-                    let curScale = (cii.extent.width + cii.extent.height)/2.5 //more is more definition
-                    var rapp : CGFloat = Static.OverscreenSizeDefault / curScale
-                    rapp *= self.lastCiiPriorityScale
-                    
-                    cii = resizeCI(image: cii, scale: rapp)
-                    
-                    //print("cii size", cii.extent, "scale", rapp)
-                    
-                    // Convert to CGImage
-                    var finalImg = convertToCGImage(image: cii) // MAYBE REALATED WITH C01
-                    
-                    //everything smooth... https://developer.apple.com/documentation/coreimage/ciroundedrectanglegenerator
-                    
-                    if(finalImg != nil){
+                if lastCiiElabored || isProcessingCii || lastCii == nil || display == nil || display?.recordingPaused ?? false {
+                    return
+                }
+                
+                guard let display = display, let cii = lastCii else {
+                    return
+                }
+                
+                let revision = ciiRevision
+                let priorityScale = lastCiiPriorityScale
+                isProcessingCii = true
+                
+                display.imageProcessingQueue.async { [weak self, weak display] in
+                    autoreleasepool {
+                        guard let self = self, let display = display else { return }
                         
-                        if finalImg!.width  < 16384 {
-                            //TODO: release previous image? (check for memory leak)
-                            self.lastPreview = finalImg
-                            self.lastShotTime = Date()
+                        let holdCii = RetainedOpaquePointer(cii)
+                        let objPtrCii: UnsafeRawPointer = holdCii.pointer
+                        if !isAddressRangeAccessible(objPtrCii, byteCount: 1, access: .read) {
+                            DispatchQueue.main.async {
+                                self.isProcessingCii = false
+                                if revision == self.ciiRevision {
+                                    self.lastCiiElabored = true
+                                    self.lastCii = nil
+                                }
+                            }
+                            return
+                        }
+                        
+                        var working = cii
+                        
+                        let curScale = (working.extent.width + working.extent.height) / 2.5 // more is more definition
+                        var rapp : CGFloat = Static.OverscreenSizeDefault / curScale
+                        rapp *= priorityScale
+                        
+                        working = resizeCI(image: working, scale: rapp)
+                        
+                        guard let finalImg = convertToCGImage(image: working), finalImg.width < 16384 else {
+                            DispatchQueue.main.async {
+                                self.isProcessingCii = false
+                                if revision == self.ciiRevision {
+                                    self.lastCiiElabored = true
+                                    self.lastCii = nil
+                                }
+                            }
+                            return
+                        }
+                        
+                        let extent = working.extent
+                        let inputExtent = CIVector(x: extent.origin.x, y: extent.origin.y, z: extent.size.width, w: extent.size.height)
+                        let filter = CIFilter(name: "CIAreaAverage", parameters: [kCIInputImageKey: working, kCIInputExtentKey: inputExtent])!
+                        let outputImage = filter.outputImage!
+                        
+                        var bitmap = [UInt8](repeating: 0, count: 4)
+                        display.contextAvgColor.render(outputImage, toBitmap: &bitmap, rowBytes: 4, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBA8, colorSpace: nil)
+                        
+                        let avgPixel = NSColor(red: CGFloat(bitmap[0]) / 255,
+                                               green: CGFloat(bitmap[1]) / 255,
+                                               blue: CGFloat(bitmap[2]) / 255,
+                                               alpha: CGFloat(bitmap[3]) / 255)
+                        
+                        display.contextAvgColor.reclaimResources()
+                        let shotTime = Date()
+                        let sec = Int(shotTime.timeIntervalSince1970)
+                        
+                        DispatchQueue.main.async {
+                            //guard let self = self else { return }
+                            self.isProcessingCii = false
                             
-                            let sec = Int(self.lastShotTime.timeIntervalSince1970)
+                            guard revision == self.ciiRevision else {
+                                return
+                            }
+                            
+                            self.lastPreview = finalImg
+                            self.lastShotTime = shotTime
+                            
                             if self.previewsList.index(forKey: sec) == nil {
                                 self.previewsList[sec] = finalImg
                                 
-                                if self.previewsList.count > 2{
+                                if self.previewsList.count > 2 {
                                     let sortPreviews = self.previewsList.sorted(by: { $0.key < $1.key })
                                     self.previewsList.removeValue(forKey: sortPreviews.first!.key)
                                 }
                             }
                             
-                            ///
-                            ///# Calculate average pixel
-                            /// TODO: move to a function
-                            let extent = cii.extent
-                            let inputExtent = CIVector(x: extent.origin.x, y: extent.origin.y, z: extent.size.width, w: extent.size.height)
-                            let filter = CIFilter(name: "CIAreaAverage", parameters: [kCIInputImageKey: cii, kCIInputExtentKey: inputExtent])!
-                            let outputImage = filter.outputImage!
+                            self.avgPixel = avgPixel
                             
-                            var bitmap = [UInt8](repeating: 0, count: 4)
-                            self.display?.contextAvgColor.render(outputImage, toBitmap: &bitmap, rowBytes: 4, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBA8, colorSpace: nil)
-                            
-                            self.avgPixel = NSColor(red: CGFloat(bitmap[0]) / 255, green: CGFloat(bitmap[1]) / 255, blue: CGFloat(bitmap[2]) / 255, alpha: CGFloat(bitmap[3]) / 255)
-                            
-                            self.display?.contextAvgColor.reclaimResources()
-                            
-                            self.display?.previewUpdated = true
-                            
+                            display.previewUpdated = true
                             self.winPlane?.setMaterial()
                             
-                        } // scala reale
+                            self.lastCiiElabored = true
+                            self.lastCii = nil
+                        }
                     }
-                    
-                    self.lastCiiElabored = true
-                    self.lastCii = nil
                 }
             }
         }
@@ -1219,6 +1250,7 @@ public class Display : Equatable {
     let excludedApps : [String]
     
     let contextAvgColor : CIContext
+    private let imageProcessingQueue = DispatchQueue(label: "ink.makeithome.display.imageProcessing", qos: .userInitiated)
     var lastAppWin : AppWindows.Window? = nil
     var winnerRect : NSRect = NSRect.zero
     var prevWinnerRect : NSRect = NSRect.zero
@@ -1247,7 +1279,7 @@ public class Display : Equatable {
         return placeholder
     }
  
-    public func checkForScreenshot(forceShot: Bool = false) -> Bool{
+    @MainActor public func checkForScreenshot(forceShot: Bool = false) -> Bool{
         if !mouseIn{ // if mouse is not in display
             return false
         }
@@ -1819,91 +1851,69 @@ public class Display : Equatable {
                     }
                     
                     let bounds = winner!["kCGWindowBounds"] as! NSDictionary
-                    
-                    DispatchQueue.main.async {
-                        
-                        if #available(macOS 12.3, *){
+                                        
+                    if #available(macOS 12.3, *){
+                        let screenRecorder = self.manager.contentView!.store.screenRecorder as! ScreenRecorder
+                        if let lf = screenRecorder.lastFrame,
+                           lf.displayID == self.screen.displayID,
+                           let pixelBuffer = lf.pixelBuffer {
                             
-                            let screenRecorder = self.manager.contentView!.store.screenRecorder as! ScreenRecorder
-                            let lf = screenRecorder.lastFrame
+                            let ps = screenRecorder.priorityScale
+                            let scale : CGFloat = self.scale * ps // cause of window size change
+                            let bufferWidth = CGFloat(CVPixelBufferGetWidth(pixelBuffer))
+                            let imgScale : CGFloat = bufferWidth / self.frame.width
+                            self.scaleCapture = imgScale * ps
                             
-                            if(lf?.displayID == self.screen.displayID){
-                                
-                                if(lf != nil){
-                                    Static.highPriorityQueue.async {
-                                        
-                                        var cii = CIImage(cvPixelBuffer: lf!.pixelBuffer!)
-                                        
-                                        let ps = screenRecorder.priorityScale
-                                        let scale : CGFloat = self.scale * ps // cause of window size change
-                                        let imgScale : CGFloat = cii.extent.width / self.frame.width
-                                        self.scaleCapture = imgScale * ps
-                                        
-                                        let cgHeight = CGFloat(truncating: (bounds["Height"] as! Int) as NSNumber)
-                                        var thisHeight = (cgHeight*imgScale)
-                                        let cgY = CGFloat(truncating: (bounds["Y"] as! Int) as NSNumber)
-                                        
-                                        //let context = self.ciContext
-                                        
-                                        var thisY = cgY + cgHeight
-                                        
-                                        //TODO: create a checking window
-                                        //thisY = thisY + self.frame.minY // in case of problems try to invert this
-                                        thisY = self.frame.height - thisY // with this one
-                                        
-                                        //TODO: I absolutely don't know why -- check sometimes you need it
-                                        if(!self.isMain && false){
-                                            thisY += self.manager.mainBarHeight - (NSApplication.shared.menu!.menuBarHeight/self.manager.mainScale) // self.scale
-                                            
-                                            /*if(cgY < 0){
-                                             thisY = cgY * -1
-                                             }*/
-                                        }
-                                        
-                                        thisY = thisY * imgScale
-                                        
-                                        let cgWidth = CGFloat(truncating: (bounds["Width"] as! Int) as NSNumber)
-                                        var thisWidth = cgWidth*imgScale
-                                        
-                                        appWin.widthHeightRatio = cgWidth / cgHeight
-                                        
-                                        let cgX = CGFloat(truncating: (bounds["X"] as! Int) as NSNumber)
-                                        var thisX = (cgX - self.frame.minX) * scale
-                                        
-                                        var rect = CGRect(
-                                            x: thisX,
-                                            y: thisY,
-                                            width: thisWidth,
-                                            height: thisHeight
-                                        )
-                                        
-                                        var backingRect = CGRect(
-                                            x: cgX,
-                                            y: cgY,
-                                            width: cgWidth,
-                                            height: cgHeight
-                                        )
-                                        
-                                        if(!cii.extent.contains(NSPoint(x: rect.midX, y: rect.midY))){
-                                            print("cii.extent", cii.extent)
-                                            return
-                                        }
-                                        
-                                        Task { // is this making a sense?
-                                            
-                                            //print("capturing rect", rect, appWin.appTitle, appWin.avgTime)
-                                            //print(backingRect, self.frame.minY, self.frame.maxY)
-                                            
-                                            cii = cii.cropped(to: rect)
-                                            
-                                            appWin.display = self
-                                            appWin.lastRect = backingRect
-                                            appWin.lastCii = cii
-                                            appWin.lastCiiElabored = false
-                                            
-                                            //todo: not sendeable (main actor)
-                                            appWin.lastCiiPriorityScale = screenRecorder.priorityScale
-                                        }
+                            let cgHeight = CGFloat(truncating: (bounds["Height"] as! Int) as NSNumber)
+                            let thisHeight = (cgHeight * imgScale)
+                            let cgY = CGFloat(truncating: (bounds["Y"] as! Int) as NSNumber)
+                            
+                            var thisY = cgY + cgHeight
+                            thisY = self.frame.height - thisY // with this one
+                            
+                            if(!self.isMain && false){
+                                thisY += self.manager.mainBarHeight - (NSApplication.shared.menu!.menuBarHeight/self.manager.mainScale) // self.scale
+                            }
+                            
+                            thisY = thisY * imgScale
+                            
+                            let cgWidth = CGFloat(truncating: (bounds["Width"] as! Int) as NSNumber)
+                            let thisWidth = cgWidth * imgScale
+                            
+                            appWin.widthHeightRatio = cgWidth / cgHeight
+                            
+                            let cgX = CGFloat(truncating: (bounds["X"] as! Int) as NSNumber)
+                            let thisX = (cgX - self.frame.minX) * scale
+                            
+                            let rect = CGRect(
+                                x: thisX,
+                                y: thisY,
+                                width: thisWidth,
+                                height: thisHeight
+                            )
+                            
+                            let backingRect = CGRect(
+                                x: cgX,
+                                y: cgY,
+                                width: cgWidth,
+                                height: cgHeight
+                            )
+                            
+                            imageProcessingQueue.async { [weak self, weak appWin] in
+                                autoreleasepool {
+                                    guard let self = self, let appWin = appWin else { return }
+                                    
+                                    let cii = CIImage(cvPixelBuffer: pixelBuffer)
+                                    if !cii.extent.contains(NSPoint(x: rect.midX, y: rect.midY)) {
+                                        print("cii.extent", cii.extent)
+                                        return
+                                    }
+                                    
+                                    let cropped = cii.cropped(to: rect)
+                                    
+                                    DispatchQueue.main.async { [weak self, weak appWin] in
+                                        guard let self = self, let appWin = appWin else { return }
+                                        appWin.updateCii(cropped, rect: backingRect, priorityScale: ps, display: self)
                                     }
                                 }
                             }
@@ -2124,10 +2134,14 @@ public class Display : Equatable {
     }
     
     func setCurDesktopImage(){
-        if(manager.curDekstop != nil){
+        guard let desktop = manager.curDekstop else {
+            return
+        }
+        
+        DispatchQueue.main.async {
             if #available(macOS 12.3, *){
-                let background = (manager.capturePreview as? CapturePreview)?.captureView.scene!.background
-                background?.contents = convertToCGImage(image: manager.curDekstop!)
+                let background = (self.manager.capturePreview as? CapturePreview)?.captureView.scene?.background
+                background?.contents = convertToCGImage(image: desktop)
                 background?.contentsTransform = SCNMatrix4MakeScale(0.5,0.5,0.5)
             }
         }
@@ -2147,10 +2161,18 @@ public class Display : Equatable {
                 let screenRecorder = (self.manager.contentView?.store.screenRecorder as! ScreenRecorder)
                 screenRecorder.windowShowing = !lowProfile
                 
-                let waitForIt : Int = Int((lowProfile ? 0 : Static.WaitScreenshotAfterAboveBy) * 1000)
+                if let displayId = (self.scDisplay as? SCDisplay)?.displayID,
+                   screenRecorder.isRunning,
+                   screenRecorder.isLowPriority == lowProfile,
+                   screenRecorder.recordingOnDisplay == displayId {
+                    self.setRefresh()
+                    return
+                }
                 
+                let waitForIt : Int = 0
                 delay(ms: waitForIt){
-                    Task{
+                    let priority: TaskPriority = lowProfile ? .utility : .userInitiated
+                    Task(priority: priority){
                         await screenRecorder.start(lowProfile: lowProfile, display: self.scDisplay as? SCDisplay)
                     }
                 }
@@ -2890,7 +2912,7 @@ public class Display : Equatable {
                         sideToClose = -1
                         
                         if #available(macOS 12.3, *){
-                            Static.highPriorityQueue.async {
+                            DispatchQueue.main.async {
                                 (self.manager.capturePreview as! CapturePreview).setCurrentAbove(side: s, aboveBy: 0, display: self)
                             }
                         }
@@ -3221,6 +3243,17 @@ public class Display : Equatable {
         if(prevAboveByPixels == 0 && aboveByPixels > 0){
             DispatchQueue.main.async {
                 self.manager.contentView?.store.setWindowsProperties()
+            }
+            
+            if #available(macOS 12.3, *){
+                (self.manager.capturePreview as? CapturePreview)?.captureView.restartRendering()
+                self.setRecorderProfile(lowProfile: false)
+            }
+        }
+        
+        if(prevAboveByPixels > 0 && aboveByPixels == 0){
+            if #available(macOS 12.3, *){
+                self.setRecorderProfile(lowProfile: true)
             }
         }
         
