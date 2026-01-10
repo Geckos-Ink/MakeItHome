@@ -18,12 +18,32 @@ import SceneKit
 import IOKit
 import IOKit.hid
 
+struct StrictMotionSample {
+    let mouse: CGPoint
+    let mouseDelta: CGPoint
+    let mouseSpeed: CGFloat
+    let mouseSpeed10s: CGFloat
+    let avgSpeed: Double
+    let avgAcceleration: Double
+}
+
 public class DisplaysManager {
+    private struct StrictMotionState {
+        var prevMouse: CGPoint = .zero
+        var mouseSpeed10s: CGFloat = 0
+        var avgSpeed: Double = 1
+        var avgAcceleration: Double = 0
+    }
+    
+    private let strictAvgWeight: CGFloat = 60 * 60
     private var mouseTimer: DispatchSourceTimer?
     private let mouseTimerQueue = DispatchQueue(label: "ink.makeithome.mouseTimer", qos: Static.ActiveMouseTimerQoS)
     private let mouseTimerStateQueue = DispatchQueue(label: "ink.makeithome.mouseTimerState")
     private var mouseTickInFlight = false
     private var pendingMouseLoc: CGPoint = .zero
+    private var pendingStrictSample: StrictMotionSample?
+    private let strictMotionQueue = DispatchQueue(label: "ink.makeithome.strictMotion", qos: Static.ActiveMouseTimerQoS)
+    private var strictMotionState = StrictMotionState()
     var curMouseLoc : NSPoint = NSPoint(x:0,y:0);
     var curDisplay : Display?
     
@@ -289,7 +309,7 @@ public class DisplaysManager {
     }
     
     var menuBarView : MenuBarView?
-    public func updateMousePosition(cursor: CGPoint = CGPoint.zero, from : Int = 0){
+    public func updateMousePosition(cursor: CGPoint = CGPoint.zero, from : Int = 0, strictSample: StrictMotionSample? = nil){
         self.curMouseLoc = cursor
         
         if(cursor == CGPoint.zero){
@@ -357,11 +377,11 @@ public class DisplaysManager {
             else {
                 if !(self.curDisplay?.disable ?? true){
                     if Thread.isMainThread {
-                        self.curDisplay?.active(mouse: self.curMouseLoc)
+                        self.curDisplay?.active(mouse: self.curMouseLoc, strictSample: strictSample)
                     }
                     else {
                         DispatchQueue.main.async {
-                            self.curDisplay?.active(mouse: self.curMouseLoc)
+                            self.curDisplay?.active(mouse: self.curMouseLoc, strictSample: strictSample)
                         }
                     }
                 }
@@ -385,6 +405,30 @@ public class DisplaysManager {
             guard let self = self else { return }
             
             let loc = CGEvent(source: nil)?.location ?? self.curMouseLoc
+            if Static.ActiveStrictModeEnabled {
+                self.strictMotionQueue.async {
+                    let sample = self.computeStrictSample(mouse: loc)
+                    self.mouseTimerStateQueue.async {
+                        self.pendingMouseLoc = loc
+                        self.pendingStrictSample = sample
+                        if self.mouseTickInFlight {
+                            return
+                        }
+                        
+                        self.mouseTickInFlight = true
+                        Task(priority: .userInteractive) { @MainActor in
+                            let strictSample = self.mouseTimerStateQueue.sync { self.pendingStrictSample }
+                            let currentLoc = strictSample?.mouse ?? self.mouseTimerStateQueue.sync { self.pendingMouseLoc }
+                            self.updateMousePosition(cursor: currentLoc, from: 2, strictSample: strictSample)
+                            self.mouseTimerStateQueue.async {
+                                self.mouseTickInFlight = false
+                            }
+                        }
+                    }
+                }
+                return
+            }
+            
             self.mouseTimerStateQueue.async {
                 self.pendingMouseLoc = loc
                 if self.mouseTickInFlight {
@@ -408,6 +452,33 @@ public class DisplaysManager {
     private func stopMouseTimer() {
         mouseTimer?.cancel()
         mouseTimer = nil
+    }
+
+    private func computeStrictSample(mouse: CGPoint) -> StrictMotionSample {
+        var state = strictMotionState
+        let prevMouse = state.prevMouse == .zero ? mouse : state.prevMouse
+        let mouseDelta = CGPoint(x: mouse.x - prevMouse.x, y: mouse.y - prevMouse.y)
+        let mouseSpeed = sqrt((pow(mouseDelta.x, 2) + pow(mouseDelta.y, 2)))
+        
+        let speedWindow = CGFloat(updateHertz * 10)
+        let mouseSpeed10s = ((state.mouseSpeed10s * speedWindow) + mouseSpeed) / (speedWindow + 1)
+        let avgSpeed = ((state.avgSpeed * Double(strictAvgWeight)) + Double(mouseSpeed)) / (Double(strictAvgWeight) + 1)
+        
+        let acceleration = sqrt((pow(mouseDelta.x, 2) + pow(mouseDelta.y, 2)))
+        let avgAcceleration = ((state.avgAcceleration * Double(strictAvgWeight)) + Double(acceleration)) / (Double(strictAvgWeight) + 1)
+        
+        state.prevMouse = mouse
+        state.mouseSpeed10s = mouseSpeed10s
+        state.avgSpeed = avgSpeed
+        state.avgAcceleration = avgAcceleration
+        strictMotionState = state
+        
+        return StrictMotionSample(mouse: mouse,
+                                  mouseDelta: mouseDelta,
+                                  mouseSpeed: mouseSpeed,
+                                  mouseSpeed10s: mouseSpeed10s,
+                                  avgSpeed: avgSpeed,
+                                  avgAcceleration: avgAcceleration)
     }
     
     //TODO: Bring this in Display class
@@ -2755,7 +2826,7 @@ public class Display : Equatable {
     var ignoreMousePositionForAboveBy = 0
     
     //MARK: Active area
-    @MainActor func active(mouse: NSPoint){ // was @MainActor
+    @MainActor func active(mouse: NSPoint, strictSample: StrictMotionSample? = nil){ // was @MainActor
         
         if(Static.ScreenRecordingUnauthorized && !Static.debugForceWorking){
             return
@@ -2787,14 +2858,24 @@ public class Display : Equatable {
         
         ///#! Pointer calculations
         
-        let mouseDelta = CGPoint(x: mouse.x - prevMouse.x, y: mouse.y - prevMouse.y)
-        
-        mouseSpeed = sqrt((pow(mouseDelta.x,2)+pow(mouseDelta.y,2)))
-        mouseSpeed_10s = ((mouseSpeed_10s*(Static.MouseHertz * 10))+mouseSpeed)/((Static.MouseHertz * 10)+1)
-        avgSpeed = ((avgSpeed*avgWeight)+mouseSpeed)/(avgWeight+1)
-        
-        let acceleration = sqrt(pow((mouse.x - prevMouse.x),2)+pow((mouse.y - prevMouse.y),2))
-        avgAcceleration = ((avgAcceleration*avgWeight)+acceleration)/(avgWeight+1)
+        let mouseDelta: CGPoint
+        if let sample = strictSample {
+            mouseDelta = sample.mouseDelta
+            mouseSpeed = sample.mouseSpeed
+            mouseSpeed_10s = sample.mouseSpeed10s
+            avgSpeed = sample.avgSpeed
+            avgAcceleration = sample.avgAcceleration
+        }
+        else {
+            mouseDelta = CGPoint(x: mouse.x - prevMouse.x, y: mouse.y - prevMouse.y)
+            
+            mouseSpeed = sqrt((pow(mouseDelta.x,2)+pow(mouseDelta.y,2)))
+            mouseSpeed_10s = ((mouseSpeed_10s*(Static.MouseHertz * 10))+mouseSpeed)/((Static.MouseHertz * 10)+1)
+            avgSpeed = ((avgSpeed*avgWeight)+mouseSpeed)/(avgWeight+1)
+            
+            let acceleration = sqrt(pow((mouse.x - prevMouse.x),2)+pow((mouse.y - prevMouse.y),2))
+            avgAcceleration = ((avgAcceleration*avgWeight)+acceleration)/(avgWeight+1)
+        }
         
         let s = abs((mouseDelta.x+mouseDelta.y)/2)
         if(s > maxAccumulate){
@@ -3183,8 +3264,8 @@ public class Display : Equatable {
             }
             
             var isRightDirection = aboveBy > 0
-            let mdX = abs(prevMouse.x - mouse.x)
-            let mdY = abs(prevMouse.y - mouse.y)
+            let mdX = abs(mouseDelta.x)
+            let mdY = abs(mouseDelta.y)
             if(sideVertical){
                 if(mdX > mdY){
                     isRightDirection = true
