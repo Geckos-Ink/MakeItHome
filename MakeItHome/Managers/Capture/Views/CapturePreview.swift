@@ -1158,7 +1158,7 @@ public struct CapturePreview: NSViewRepresentable {
             
             func setTitle() {
                 _textNode?.removeFromParentNode()
-                let val = win.isFakeWin ? "\(win.appTitle) " : win.appTitle + ": " + win.winTitle
+                let val = win.isFakeWin ? "\(win.appTitle) " : win.appTitle + ": " + truncate(win.winTitle, maxCharacters: 64)
                 
                 if(val.count == 0){
                     return
