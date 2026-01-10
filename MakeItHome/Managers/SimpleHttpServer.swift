@@ -130,21 +130,19 @@ func jsonStringToDictionary(jsonString: String) -> [String: Any?]? {
 }
 
 class MimeManager {
-    private var savedMimes: [String: Any] = [:] // Replace `Any` with the actual type of `res`
-    private let queue = DispatchQueue(label: "com.example.mimeManagerQueue")
+    private var savedMimes: [String: String] = [:]
+    private let queue = DispatchQueue(label: "ink.geckos.MakeItHome.mimeManagerQueue")
     
-    func setMime(for fileExtension: String, value: Any) { // Replace `Any` with the actual type of `res`
+    func setMime(for fileExtension: String, value: String) {
         queue.async {
             self.savedMimes[fileExtension] = value
         }
     }
     
-    func getMime(for fileExtension: String) -> Any? { // Replace `Any?` with the actual type
-        var result: Any? // Replace `Any?` with the actual type
+    func getMime(for fileExtension: String) -> String? {
         queue.sync {
-            result = self.savedMimes[fileExtension]
+            savedMimes[fileExtension]
         }
-        return result
     }
 }
 
@@ -155,6 +153,21 @@ public class SimpleHTTPServer {
     private let directoryPath: String
     private var listener: NWListener?
     public var assetsAvailable = false
+    private let requestQueue = DispatchQueue(label: "ink.geckos.MakeItHome.simpleHttpServer", qos: .userInitiated)
+    private let maxRequestBodyBytes = 15 * 1024 * 1024
+    
+    private struct HTTPRequest {
+        let method: String
+        let path: String
+        let headers: [String: String]
+        let body: Data
+    }
+    
+    private enum RequestParseResult {
+        case pending
+        case complete(HTTPRequest)
+        case error(Data)
+    }
     
     // I know, this is chaotic, but for the moment has sense: AppExtension works using this HTTP server
     // for communication, so this location remains a stable reference point
@@ -197,14 +210,14 @@ public class SimpleHTTPServer {
     }
 
     func start() async throws -> Bool { // is it important to make it async(?)
-        if !assetsAvailable {
-            return false
+        if listener != nil {
+            return true
         }
         
         listener = try NWListener(using: .tcp, on: port)
         listener?.newConnectionHandler = handleNewConnection
         listener?.parameters.acceptLocalOnly = true
-        listener?.start(queue: .main)
+        listener?.start(queue: requestQueue)
         print("Server started on port \(port)")
         return true
     }
@@ -217,97 +230,141 @@ public class SimpleHTTPServer {
 
     private func handleNewConnection(connection: NWConnection) {
         var receivedData = Data()
-        
         var completed = false
-        func runOnComplete(){
-            if completed {
-                return
-            }
-            
+        
+        func sendAndClose(_ data: Data) {
+            guard !completed else { return }
             completed = true
-            
-            guard let r = String(data: receivedData, encoding: .utf8) else {
-                let respData = "HTTP/1.1 400 Bad Request\r\n\r\n".data(using: .utf8)!
-                connection.send(content: respData, completion: .contentProcessed({ _ in
-                    connection.cancel()
-                }))
-                return
-            }
-                   
-            //DispatchQueue.global(qos: .background).async {
-            DispatchQueue.main.async {
-                let response = self.handleRequest(request: r)
+            connection.send(content: data, completion: .contentProcessed({ _ in
+                connection.cancel()
+            }))
+        }
+        
+        func receiveNextChunk() {
+            connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { data, _, isComplete, error in
+                if let data = data, !data.isEmpty {
+                    receivedData.append(data)
+                }
                 
-                
-                if response == nil {
+                if receivedData.count > maxRequestBodyBytes {
+                    sendAndClose(self.buildResponse(statusCode: 413, reason: "Payload Too Large"))
                     return
                 }
                 
-                connection.send(content: response, completion: .contentProcessed({ _ in
-                    connection.cancel()
-                }))
-            }
-        }
-        
-        var lastMsg : Double = 0
-        func receiveNextChunk() {
-            connection.receive(minimumIncompleteLength: 1, maximumLength: .max) { data, _, isComplete, error in
-                if let data = data, !data.isEmpty {
-                    receivedData.append(data)
-                    
-                    let waitForIt = 50
-                    lastMsg = Date.now.timeIntervalSince1970
-                    delay(ms: waitForIt){
-                        var now = Date.now.timeIntervalSince1970
-                        if (now - lastMsg) >= (Double(waitForIt) / (1000)) {
-                            runOnComplete()
-                        }
+                switch self.parseRequest(from: receivedData) {
+                case .complete(let request):
+                    if let response = self.handleRequest(request: request) {
+                        sendAndClose(response)
+                    } else {
+                        sendAndClose(self.buildResponse(statusCode: 400, reason: "Bad Request"))
+                    }
+                case .error(let response):
+                    sendAndClose(response)
+                case .pending:
+                    if isComplete || error != nil {
+                        sendAndClose(self.buildResponse(statusCode: 400, reason: "Bad Request"))
+                    } else {
+                        receiveNextChunk()
                     }
                 }
-                if isComplete {
-                    runOnComplete()
-                } else if let error = error {
-                    // Ignore log for avoid infinite messages
-                    //print("Connection error: \(error)")
-                    //connection.cancel()
-                } else {
-                    receiveNextChunk()
-                }
             }
         }
         
+        connection.start(queue: requestQueue)
         receiveNextChunk()
-        
-        delay(ms: 250){
-            runOnComplete()
+    }
+    
+    private func parseRequest(from data: Data) -> RequestParseResult {
+        let delimiter = Data("\r\n\r\n".utf8)
+        guard let headerRange = data.range(of: delimiter) else {
+            return .pending
         }
         
-        //connection.start(queue: DispatchQueue.global(qos: .background))
-        connection.start(queue: .main)
+        let headerData = data.subdata(in: 0..<headerRange.lowerBound)
+        guard let headerString = String(data: headerData, encoding: .utf8) else {
+            return .error(buildResponse(statusCode: 400, reason: "Bad Request"))
+        }
+        
+        let lines = headerString.components(separatedBy: "\r\n")
+        guard let requestLine = lines.first else {
+            return .error(buildResponse(statusCode: 400, reason: "Bad Request"))
+        }
+        
+        let firstLineParts = requestLine.split(separator: " ")
+        guard firstLineParts.count >= 2 else {
+            return .error(buildResponse(statusCode: 400, reason: "Bad Request"))
+        }
+        
+        let method = String(firstLineParts[0])
+        let path = String(firstLineParts[1])
+        
+        var headers: [String: String] = [:]
+        for line in lines.dropFirst() {
+            guard !line.isEmpty else { continue }
+            let parts = line.split(separator: ":", maxSplits: 1)
+            guard parts.count == 2 else { continue }
+            let key = parts[0].trimmingCharacters(in: .whitespaces).lowercased()
+            let value = parts[1].trimmingCharacters(in: .whitespaces)
+            headers[key] = value
+        }
+        
+        let lengthString = headers["content-length"] ?? headers["body-length"] ?? "0"
+        let contentLength = Int(lengthString) ?? 0
+        if contentLength < 0 || contentLength > maxRequestBodyBytes {
+            return .error(buildResponse(statusCode: 413, reason: "Payload Too Large"))
+        }
+        
+        let bodyStart = headerRange.upperBound
+        let bodyEnd = bodyStart + contentLength
+        if data.count < bodyEnd {
+            return .pending
+        }
+        
+        let body = data.subdata(in: bodyStart..<bodyEnd)
+        let request = HTTPRequest(method: method, path: path, headers: headers, body: body)
+        return .complete(request)
+    }
+    
+    private func buildResponse(statusCode: Int,
+                               reason: String,
+                               body: Data = Data(),
+                               contentType: String = "text/plain; charset=utf-8",
+                               extraHeaders: [String: String] = [:]) -> Data {
+        var httpHeaders = "HTTP/1.1 \(statusCode) \(reason)\r\n"
+        httpHeaders += "Server: MakeItHome-SimpleHTTPServer\r\n"
+        httpHeaders += "Content-Length: \(body.count)\r\n"
+        httpHeaders += "Connection: close\r\n"
+        httpHeaders += "Content-Type: \(contentType)\r\n"
+        for (key, value) in extraHeaders {
+            httpHeaders += "\(key): \(value)\r\n"
+        }
+        httpHeaders += "\r\n"
+        
+        return httpHeaders.data(using: .ascii)! + body
     }
     
     //private var savedMimes : [String:String] = [:]
     let mimeManager = MimeManager()
     
-    func mimeType(for filePath: String, data : Data) -> String {
+    func mimeType(for filePath: String, data _: Data) -> String {
         let url = URL(fileURLWithPath: filePath)
         let fileExtension = url.pathExtension.lowercased()
         
-        var res = self.mimeManager.getMime(for: fileExtension) as? String // savedMimes[fileExtension]
-        
-        if res != nil {
-            return res!
+        if let res = self.mimeManager.getMime(for: fileExtension) {
+            return res
         }
         
+        let charset = "; charset=utf-8"
+        let res: String
         switch fileExtension {
         case "html", "htm":
-            res = "text/html"+detectEncoding(for: data)
+            res = "text/html" + charset
         case "js":
-            res = "application/javascript"+detectEncoding(for: data)
+            res = "application/javascript" + charset
         case "css":
-            res = "text/css"+detectEncoding(for: data)
+            res = "text/css" + charset
         case "json":
-            res = "application/json"+detectEncoding(for: data)
+            res = "application/json" + charset
         case "png":
             res = "image/png"
         case "jpg", "jpeg":
@@ -315,72 +372,23 @@ public class SimpleHTTPServer {
         case "gif":
             res = "image/gif"
         case "svg":
-            res = "image/svg+xml"+detectEncoding(for: data)
+            res = "image/svg+xml" + charset
         case "pdf":
-            res = "application/pdf"+detectEncoding(for: data)
+            res = "application/pdf"
         case "txt":
-            res = "text/plain"+detectEncoding(for: data)
+            res = "text/plain" + charset
         case "xml":
-            res = "application/xml"+detectEncoding(for: data)
+            res = "application/xml" + charset
         case "woff2":
-            res = "font-woff2"
+            res = "font/woff2"
         // Add more cases for other file types as needed
         default:
-            res = "application/octet-stream"+detectEncoding(for: data) // generic binary data
+            res = "application/octet-stream" // generic binary data
         }
         
-        //self.savedMimes[fileExtension] = res
         self.mimeManager.setMime(for: fileExtension, value: res)
         
-        return res!
-    }
-    
-    func detectEncoding(for data: Data) -> String {
-        let encodings: [String.Encoding] = [
-            .utf8, .utf16, .utf16BigEndian, .utf16LittleEndian, .utf32, .utf32BigEndian, .utf32LittleEndian, .isoLatin1, .isoLatin2, .windowsCP1251, .windowsCP1252, .windowsCP1253, .windowsCP1254, .windowsCP1250
-            // Add more encodings as needed
-        ]
-
-        for encoding in encodings {
-            if let string = String(data: data, encoding: encoding) {
-                print("Decoded with \(encoding)")
-                
-                switch encoding {
-                    case .utf8:
-                        return ";charset=UTF-8"
-                    case .utf16, .unicode:
-                        return ";charset=UTF-16"
-                    case .utf16BigEndian:
-                        return ";charset=UTF-16BE"
-                    case .utf16LittleEndian:
-                        return ";charset=UTF-16LE"
-                    case .utf32:
-                        return ";charset=UTF-32"
-                    case .utf32BigEndian:
-                        return ";charset=UTF-32BE"
-                    case .utf32LittleEndian:
-                        return ";charset=UTF-32LE"
-                    case .isoLatin1:
-                        return ";charset=ISO-8859-1"
-                    case .isoLatin2:
-                        return ";charset=ISO-8859-2"
-                    case .windowsCP1251:
-                        return ";charset=windows-1251"
-                    case .windowsCP1252:
-                        return ";charset=windows-1252"
-                    case .windowsCP1253:
-                        return ";charset=windows-1253"
-                    case .windowsCP1254:
-                        return ";charset=windows-1254"
-                    case .windowsCP1250:
-                        return ";charset=windows-1250"
-                    default:
-                        return ";charset=unknown"
-                    }
-            }
-        }
-
-        return ""
+        return res
     }
     
     enum FileOperationError: Error {
@@ -409,42 +417,21 @@ public class SimpleHTTPServer {
             throw FileOperationError.invalidDirectory
         }
 
-        if dataToSave != nil && dataToSave!.count != 0 {
-            
-            while true {
-                
-                // Saving data to the Application Support Directory
-                do {
-                    if !fileManager.fileExists(atPath: fileURL.deletingLastPathComponent().path){
-                        try fileManager.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: nil)
-                    }
-                    
-                    try dataToSave!.data(using:.utf8)?.write(to: fileURL, options: [.completeFileProtection, .atomic])
-                    //return dataToSave
-                } catch {
-                    throw FileOperationError.writingError
+        if let dataToSave = dataToSave, !dataToSave.isEmpty {
+            do {
+                if !fileManager.fileExists(atPath: fileURL.deletingLastPathComponent().path){
+                    try fileManager.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: nil)
                 }
                 
-                Thread.sleep(forTimeInterval: 0.01)
-                
-                // Loading data from the file
-                do {
-                    print("Checking json: \(fileURL.path)")
-                    let data = try Data(contentsOf: fileURL)
-                    let string = String(data:data, encoding: .utf8)
-                    
-                    if string == dataToSave {
-                        return string
-                    }
-                } catch {
-                    throw FileOperationError.fileNotFound
-                }
+                try dataToSave.data(using:.utf8)?.write(to: fileURL, options: [.completeFileProtection, .atomic])
+                return dataToSave
+            } catch {
+                throw FileOperationError.writingError
             }
         }
         
         // Loading data from the file
         do {
-            print("Reading json: \(fileURL.path)")
             let data = try Data(contentsOf: fileURL)
             return String(data:data, encoding: .utf8)
         } catch {
@@ -454,138 +441,75 @@ public class SimpleHTTPServer {
         return nil
     }
     
-    private func getHeader(lines : [String], property: String) -> String?{
-        for line in lines {
-            if line.isEmpty {
-                break
-            }
-            
-            if line.starts(with: property){
-                let parts = line.components(separatedBy: ": ")
-                return parts.last
-            }
+    private func handleRequest(request: HTTPRequest) -> Data? {
+        let method = request.method
+        var url = request.path
+        let dataReq = request.body.isEmpty ? nil : String(data: request.body, encoding: .utf8)
+        
+        if method != "GET" && method != "POST" {
+            return buildResponse(statusCode: 405, reason: "Method Not Allowed")
         }
-        
-        return nil
-    }
-    
-    private func handleRequest(request: String) -> Data? {
-        let lines = request.split(whereSeparator: \.isNewline)
-        
-        guard let firstLine = lines.first else {
-            return "HTTP/1.1 400 Bad Request\r\n\r\n".data(using: .utf8)!
-        }
-        
-        let firstLineParts = firstLine.split(separator: " ")
-                
-        if firstLineParts.count < 2 {
-            return "HTTP/1.1 400 Bad Request\r\n\r\n".data(using: .utf8)!
-        }
-        
-        let reqType = firstLineParts[0]
-        var url = firstLineParts[1]
-        
-        var dataReq : String?
-        
-        if reqType != "GET"{
-            //print("handle data post type")
-            let dataParts = request.components(separatedBy: "\r\n\r\n")
-            
-            if(dataParts.count > 1){
-                dataReq = dataParts[1]
-                
-                let dataReqCount = dataReq?.count ?? 0
-     
-                if false {
-                    let strLength = getHeader(lines: lines.map { String($0) }, property: "Body-Length") ?? "0"
-                    let len = Int(strLength) ?? 0
-                    
-                    if dataReqCount ?? 0 < len {
-                        //print("given POST data", dataReq)
-                        return nil
-                    }
-                }
-            }
-            else {
-                print("empty post...")
-                return nil
-            }
-        }
-        
-        var jsonRes : String? = nil
         
         ///
         /// Handle AppExtension
         ///
         
-        if url.hasPrefix("/appExtension/"){
-            let reply = appExtensionManager.httpRequest(url:String(url), dataReq: dataReq)
-            let data = try? JSONEncoder().encode(reply)
-            
-            if data != nil{
-                jsonRes = String(data: data!, encoding: .utf8)
+        if url.hasPrefix("/appExtension/") {
+            let reply: AppExtensionMsg = DispatchQueue.main.sync {
+                appExtensionManager.httpRequest(url: url, dataReq: dataReq)
             }
-            else {
-                jsonRes = "{}"
-            }
+            let data = (try? JSONEncoder().encode(reply)) ?? Data()
+            return buildResponse(statusCode: 200,
+                                 reason: "OK",
+                                 body: data,
+                                 contentType: "application/json; charset=utf-8",
+                                 extraHeaders: ["Cache-Control": "no-store"])
         }
         
         ///
-        ///
+        /// Fix for .js.map requests mapped as .js.m
         ///
         
-        if url.hasSuffix(".js.m"){
+        if url.hasSuffix(".js.m") {
             url += "ap"
         }
         
-        let queries = url.split(separator: "?")
-        url = queries[0]
-        //todo: if queries.count > 1 ...
-        
-        var fileData : Data = Data()
+        let pathOnly = url.split(separator: "?").first.map(String.init) ?? url
+        var jsonRes : String? = nil
         
         ///
         /// Handle API call
         ///
-        if url.hasPrefix("/fuse/api/"){
-            let jsonName = url.replacingOccurrences(of: "/", with: "-") + ".json"
-            
-            print("Request JSON: \(jsonName)")
-            
-            jsonRes = try? loadOrSaveJson(at: "boardJson/"+jsonName, dataToSave: dataReq)
+        if pathOnly.hasPrefix("/fuse/api/") {
+            let jsonName = pathOnly.replacingOccurrences(of: "/", with: "-") + ".json"
+            jsonRes = try? loadOrSaveJson(at: "boardJson/" + jsonName, dataToSave: dataReq)
             
             if jsonRes == nil {
                 jsonRes = getDefaultJson(at: jsonName)
             }
         }
         
+        if let jsonRes = jsonRes {
+            let fileData = jsonRes.data(using: .utf8) ?? Data()
+            return buildResponse(statusCode: 200,
+                                 reason: "OK",
+                                 body: fileData,
+                                 contentType: "application/json; charset=utf-8")
+        }
+        
         ///
         /// Normal file serving
         ///
-        var mime : String = ""
-        
-        if jsonRes != nil {
-            fileData = jsonRes?.data(using: .utf8) ?? fileData
-            mime = mimeType(for: "dummy.json", data: fileData)
-        }
-        else {
-            let filePath = directoryPath + url
-            guard let fd = FileManager.default.contents(atPath: String(filePath)) else {
-                return "HTTP/1.1 404 Not Found\r\n\r\n".data(using: .utf8)!
-            }
-            fileData = fd
-            
-            mime = mimeType(for: String(url), data: fileData)
+        guard !directoryPath.isEmpty else {
+            return buildResponse(statusCode: 404, reason: "Not Found")
         }
         
-        var httpHeaders = "HTTP/1.1 200 OK\r\n"
-        httpHeaders += "Server: MakeItHome-SimpleHTTPServer\r\n"
-        httpHeaders += "Content-Length: " + String(fileData.count) + "\r\n"
-        httpHeaders += "Accept-Ranges: bytes\r\n"
-        httpHeaders += "Connection: Keep-Alive\r\n"
-        httpHeaders += "Content-Type: " + mime
-        httpHeaders += "\r\n\r\n"
+        let filePath = directoryPath + pathOnly
+        guard let fileData = FileManager.default.contents(atPath: filePath) else {
+            return buildResponse(statusCode: 404, reason: "Not Found")
+        }
         
-        return httpHeaders.data(using: .ascii)! + fileData
+        let mime = mimeType(for: String(pathOnly), data: fileData)
+        return buildResponse(statusCode: 200, reason: "OK", body: fileData, contentType: mime)
     }
 }
