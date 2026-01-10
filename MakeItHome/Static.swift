@@ -124,7 +124,7 @@ public class Static {
     public static let EnableLatencyCriticalActivity = true
     public static let LatencyCriticalActivityReason = "Overscreen interaction"
     public static let LatencyCriticalActivityOptions: ProcessInfo.ActivityOptions = [.userInitiated, .latencyCritical]
-    public static let CaptureVideoQueueQoS: DispatchQoS.QoSClass = .userInteractive
+    public static let CaptureVideoQueueQoS: DispatchQoS = .userInteractive
         
     public static let ClickMaximumDifference : Double = 0.5
     
