@@ -19,7 +19,11 @@ import IOKit
 import IOKit.hid
 
 public class DisplaysManager {
-    var timerMouse : Timer? = nil;
+    private var mouseTimer: DispatchSourceTimer?
+    private let mouseTimerQueue = DispatchQueue(label: "ink.makeithome.mouseTimer", qos: Static.ActiveMouseTimerQoS)
+    private let mouseTimerStateQueue = DispatchQueue(label: "ink.makeithome.mouseTimerState")
+    private var mouseTickInFlight = false
+    private var pendingMouseLoc: CGPoint = .zero
     var curMouseLoc : NSPoint = NSPoint(x:0,y:0);
     var curDisplay : Display?
     
@@ -104,12 +108,7 @@ public class DisplaysManager {
         }
         
         //MARK: Timer: Update mouse position
-        let interval : Double = 1/self.updateHertz; // 1/x hertz
-        self.timerMouse = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { timer in
-            DispatchQueue.main.async {
-                self.updateMousePosition(from: 2)
-            }
-        }
+        startMouseTimer()
         
         ///# Set mouse position (DEPRECATED?)
         /*let intervalMouseSet : Double = 1/(self.updateHertz/3); // 1/(x/3) hertz
@@ -357,14 +356,58 @@ public class DisplaysManager {
             }
             else {
                 if !(self.curDisplay?.disable ?? true){
-                    DispatchQueue.main.async {
+                    if Thread.isMainThread {
                         self.curDisplay?.active(mouse: self.curMouseLoc)
+                    }
+                    else {
+                        DispatchQueue.main.async {
+                            self.curDisplay?.active(mouse: self.curMouseLoc)
+                        }
                     }
                 }
             }
             
             Static.mouseInDisplay = display
         }
+    }
+
+    private func startMouseTimer() {
+        guard mouseTimer == nil else {
+            return
+        }
+        
+        let intervalNs = Int((1 / updateHertz) * 1_000_000_000)
+        let timer = DispatchSource.makeTimerSource(queue: mouseTimerQueue)
+        timer.schedule(deadline: .now(),
+                       repeating: .nanoseconds(intervalNs),
+                       leeway: .milliseconds(Static.ActiveMouseTimerLeewayMs))
+        timer.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            
+            let loc = CGEvent(source: nil)?.location ?? self.curMouseLoc
+            self.mouseTimerStateQueue.async {
+                self.pendingMouseLoc = loc
+                if self.mouseTickInFlight {
+                    return
+                }
+                
+                self.mouseTickInFlight = true
+                Task(priority: .userInteractive) { @MainActor in
+                    let currentLoc = self.mouseTimerStateQueue.sync { self.pendingMouseLoc }
+                    self.updateMousePosition(cursor: currentLoc, from: 2)
+                    self.mouseTimerStateQueue.async {
+                        self.mouseTickInFlight = false
+                    }
+                }
+            }
+        }
+        mouseTimer = timer
+        timer.resume()
+    }
+    
+    private func stopMouseTimer() {
+        mouseTimer?.cancel()
+        mouseTimer = nil
     }
     
     //TODO: Bring this in Display class
@@ -440,6 +483,7 @@ public class DisplaysManager {
     
     deinit {
         stopMouseEvent()
+        stopMouseTimer()
     }
 
     public func startMouseEvent() {
