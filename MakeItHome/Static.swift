@@ -74,7 +74,7 @@ public class Static {
     
     public static let MouseHertz : Double = 60 // previous 60
     public static let ActiveStrictModeEnabled = false
-    public static let ActiveMouseTimerQoS: DispatchQoS.QoSClass = .userInteractive
+    public static let ActiveMouseTimerQoS: DispatchQoS = .userInteractive
     public static let ActiveMouseTimerLeewayMs: Int = 1
     public static let SceneKitPreferredFPS = 45 // prev 45
     public static let SceneKitSleepPreferredFPS = 20

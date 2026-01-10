@@ -18,7 +18,7 @@ import SceneKit
 import IOKit
 import IOKit.hid
 
-struct StrictMotionSample {
+public struct StrictMotionSample {
     let mouse: CGPoint
     let mouseDelta: CGPoint
     let mouseSpeed: CGFloat
@@ -29,6 +29,7 @@ struct StrictMotionSample {
 
 public class DisplaysManager {
     private struct StrictMotionState {
+        var acceleration: Double = 0
         var prevMouse: CGPoint = .zero
         var mouseSpeed10s: CGFloat = 0
         var avgSpeed: Double = 1
@@ -309,7 +310,7 @@ public class DisplaysManager {
     }
     
     var menuBarView : MenuBarView?
-    public func updateMousePosition(cursor: CGPoint = CGPoint.zero, from : Int = 0, strictSample: StrictMotionSample? = nil){
+    @MainActor public func updateMousePosition(cursor: CGPoint = CGPoint.zero, from : Int = 0, strictSample: StrictMotionSample? = nil){
         self.curMouseLoc = cursor
         
         if(cursor == CGPoint.zero){
@@ -471,6 +472,7 @@ public class DisplaysManager {
         state.mouseSpeed10s = mouseSpeed10s
         state.avgSpeed = avgSpeed
         state.avgAcceleration = avgAcceleration
+        state.acceleration = acceleration
         strictMotionState = state
         
         return StrictMotionSample(mouse: mouse,
@@ -2859,12 +2861,14 @@ public class Display : Equatable {
         ///#! Pointer calculations
         
         let mouseDelta: CGPoint
+        let acceleration: Double
         if let sample = strictSample {
             mouseDelta = sample.mouseDelta
             mouseSpeed = sample.mouseSpeed
             mouseSpeed_10s = sample.mouseSpeed10s
             avgSpeed = sample.avgSpeed
             avgAcceleration = sample.avgAcceleration
+            acceleration = Double(sample.mouseSpeed)
         }
         else {
             mouseDelta = CGPoint(x: mouse.x - prevMouse.x, y: mouse.y - prevMouse.y)
@@ -2873,7 +2877,7 @@ public class Display : Equatable {
             mouseSpeed_10s = ((mouseSpeed_10s*(Static.MouseHertz * 10))+mouseSpeed)/((Static.MouseHertz * 10)+1)
             avgSpeed = ((avgSpeed*avgWeight)+mouseSpeed)/(avgWeight+1)
             
-            let acceleration = sqrt(pow((mouse.x - prevMouse.x),2)+pow((mouse.y - prevMouse.y),2))
+            acceleration = sqrt(pow((mouse.x - prevMouse.x),2)+pow((mouse.y - prevMouse.y),2))
             avgAcceleration = ((avgAcceleration*avgWeight)+acceleration)/(avgWeight+1)
         }
         
