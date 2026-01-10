@@ -2226,7 +2226,7 @@ public class Display : Equatable {
         }
     }
     
-    private func prewarmRecorderIfNeeded(side: Int, mouseDelta: CGPoint) {
+    @MainActor private func prewarmRecorderIfNeeded(side: Int, mouseDelta: CGPoint) {
         guard #available(macOS 12.3, *) else {
             return
         }
@@ -2264,7 +2264,7 @@ public class Display : Equatable {
         DispatchQueue.main.asyncAfter(deadline: .now() + recorderPrewarmDuration, execute: workItem)
     }
     
-    private func stopRecorderPrewarmIfNeeded() {
+    @MainActor private func stopRecorderPrewarmIfNeeded() {
         guard recorderPrewarmActive else {
             return
         }
@@ -2684,7 +2684,7 @@ public class Display : Equatable {
     var ignoreMousePositionForAboveBy = 0
     
     //MARK: Active area
-    func active(mouse: NSPoint){ // was @MainActor
+    @MainActor func active(mouse: NSPoint){ // was @MainActor
         
         if(Static.ScreenRecordingUnauthorized && !Static.debugForceWorking){
             return
