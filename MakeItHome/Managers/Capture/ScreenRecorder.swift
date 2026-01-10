@@ -123,8 +123,8 @@ class ScreenRecorder: ObservableObject {
     public var lastFrame : CapturedFrame? = nil
     public var lastFrameTime : Double = 0
     
-    let lowProfileFPS = 5
-    let lowProfileDepth = 5
+    let lowProfileFPS = 10
+    let lowProfileDepth = 4
     
     @MainActor public var recordingOnDisplay : CGDirectDisplayID = 94 // -1
     
@@ -310,7 +310,7 @@ class ScreenRecorder: ObservableObject {
         
         // Increase the depth of the frame queue to ensure high fps at the expense of increasing
         // the memory footprint of WindowServer.
-        streamConfig.queueDepth = self.isLowPriority ? lowProfileDepth : 8
+        streamConfig.queueDepth = self.isLowPriority ? lowProfileDepth : 7 // was 8
         
         return streamConfig
     }

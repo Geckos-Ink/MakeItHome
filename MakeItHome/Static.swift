@@ -73,10 +73,10 @@ public class Static {
     }
     
     public static let MouseHertz : Double = 60 // previous 60
-    public static let ActiveStrictModeEnabled = false
+    public static let ActiveStrictModeEnabled = true
     public static let ActiveMouseTimerQoS: DispatchQoS = .userInteractive
     public static let ActiveMouseTimerLeewayMs: Int = 1
-    public static let SceneKitPreferredFPS = 45 // prev 45
+    public static let SceneKitPreferredFPS = 40 // prev 45
     public static let SceneKitSleepPreferredFPS = 20
     public static let SceneKitContinuousRenderingWhenActive = true
     
@@ -114,7 +114,7 @@ public class Static {
     
     public static let BackgroundUpdateSeconds_NewDisplay : Double = 5 // seconds
     
-    public static let ScreenRecorderHighPriorityFPS = 30 // FPS
+    public static let ScreenRecorderHighPriorityFPS = 25 // FPS
     public static let CheckIfUpdateWindowScreenshotEvery : Double = 0.5 // seconds
     public static let UpdateWindowScreenshotAfter : Double = 2.0 // seconds
     public static let EnableRecordingHalfInLowPriority = false // don't enable it: it breaks window previews rects
