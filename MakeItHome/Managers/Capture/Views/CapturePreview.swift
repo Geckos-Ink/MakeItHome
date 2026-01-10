@@ -373,12 +373,14 @@ public struct CapturePreview: NSViewRepresentable {
             self.isPlaying = true
             self.isShowing = true
             self.preferredFramesPerSecond = Static.SceneKitPreferredFPS
+            self.rendersContinuously = Static.SceneKitContinuousRenderingWhenActive
         }
         
         public func hidden(){
             self.isPlaying = false
             self.isShowing = false
             self.preferredFramesPerSecond = Static.SceneKitSleepPreferredFPS
+            self.rendersContinuously = false
         }
         
         public func forget(){

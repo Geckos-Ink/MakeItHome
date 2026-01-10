@@ -31,7 +31,8 @@ struct CapturedFrame {
     private let logger = Logger()
     
     private var stream: SCStream?
-    private let videoSampleBufferQueue = DispatchQueue(label: "ink.geckos.MakeItHome.VideoSampleBufferQueue")
+    private let videoSampleBufferQueue = DispatchQueue(label: "ink.geckos.MakeItHome.VideoSampleBufferQueue",
+                                                       qos: Static.CaptureVideoQueueQoS)
     //private let audioSampleBufferQueue = DispatchQueue(label: "ink.geckos.MakeItHome.AudioSampleBufferQueue")
     
     // Performs average and peak power calculations on the audio samples.

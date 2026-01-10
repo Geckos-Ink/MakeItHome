@@ -1071,11 +1071,9 @@ public class Display : Equatable {
     
     var recordingPaused = false
     var lastRecorderUpdate : Double = 0
-    private let recorderPrewarmDuration: TimeInterval = 2
-    private let recorderPrewarmMinSpeed: CGFloat = 1
-    private let recorderPrewarmSpeedRatio: CGFloat = 0.25
     private var recorderPrewarmWorkItem: DispatchWorkItem?
     private var recorderPrewarmActive = false
+    private var performanceActivity: NSObjectProtocol?
     
     func windowStillExists(winId : Int, windows: [CFDictionary]) -> Bool {
         for win in windows{
@@ -2176,7 +2174,7 @@ public class Display : Equatable {
                 
                 let waitForIt : Int = 0
                 delay(ms: waitForIt){
-                    let priority: TaskPriority = lowProfile ? .utility : .userInitiated
+                    let priority: TaskPriority = lowProfile ? .utility : .userInteractive
                     Task(priority: priority){
                         await screenRecorder.start(lowProfile: lowProfile, display: self.scDisplay as? SCDisplay)
                     }
@@ -2207,7 +2205,7 @@ public class Display : Equatable {
             return false
         }
         
-        let speedThreshold = max(recorderPrewarmMinSpeed, maxSpeed * recorderPrewarmSpeedRatio)
+        let speedThreshold = max(Static.RecorderPrewarmMinSpeed, maxSpeed * Static.RecorderPrewarmSpeedRatio)
         if mouseSpeed < speedThreshold {
             return false
         }
@@ -2251,9 +2249,11 @@ public class Display : Equatable {
                 (self.manager.capturePreview as? CapturePreview)?.captureView.restartRendering()
             }
             
-            Task(priority: .userInitiated) {
+            Task(priority: .userInteractive) {
                 await screenRecorder.start(lowProfile: false, display: self.scDisplay as? SCDisplay)
             }
+            
+            updatePerformanceActivity()
         }
         
         recorderPrewarmWorkItem?.cancel()
@@ -2261,7 +2261,7 @@ public class Display : Equatable {
             self?.stopRecorderPrewarmIfNeeded()
         }
         recorderPrewarmWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + recorderPrewarmDuration, execute: workItem)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Static.RecorderPrewarmDuration, execute: workItem)
     }
     
     @MainActor private func stopRecorderPrewarmIfNeeded() {
@@ -2291,12 +2291,37 @@ public class Display : Equatable {
         DispatchQueue.main.async {
             (self.manager.capturePreview as? CapturePreview)?.captureView.stopRendering()
         }
+        
+        updatePerformanceActivity()
     }
     
     private func cancelRecorderPrewarm() {
         recorderPrewarmWorkItem?.cancel()
         recorderPrewarmWorkItem = nil
         recorderPrewarmActive = false
+        updatePerformanceActivity()
+    }
+
+    private func updatePerformanceActivity() {
+        guard Static.EnableLatencyCriticalActivity else {
+            if let activity = performanceActivity {
+                ProcessInfo.processInfo.endActivity(activity)
+                performanceActivity = nil
+            }
+            return
+        }
+        
+        let shouldBeActive = recorderPrewarmActive || aboveByPixels > 0 || !windowHidden
+        if shouldBeActive {
+            if performanceActivity == nil {
+                performanceActivity = ProcessInfo.processInfo.beginActivity(options: Static.LatencyCriticalActivityOptions,
+                                                                            reason: Static.LatencyCriticalActivityReason)
+            }
+        }
+        else if let activity = performanceActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            performanceActivity = nil
+        }
     }
     
     func checkWindowStatus(reclose: Bool = true) -> Bool{
@@ -2374,6 +2399,7 @@ public class Display : Equatable {
             self.toBeRecorded = true
             Static.mainWindowInUsing = true
             Static.lastUsing = Date().timeIntervalSince1970
+            self.updatePerformanceActivity()
             
             DispatchQueue.main.async{
                 self.manager.contentView!.store.setWindowsProperties()
@@ -2441,6 +2467,7 @@ public class Display : Equatable {
                 
                 Static.mainWindowInUsing = false
                 self.windowHidden = true
+                self.updatePerformanceActivity()
                 
                 if #available(macOS 12.3, *){
                     if(self.side != 3){
@@ -3356,12 +3383,14 @@ public class Display : Equatable {
                 cancelRecorderPrewarm()
                 (self.manager.capturePreview as? CapturePreview)?.captureView.restartRendering()
                 self.setRecorderProfile(lowProfile: false)
+                updatePerformanceActivity()
             }
         }
         
         if(prevAboveByPixels > 0 && aboveByPixels == 0){
             if #available(macOS 12.3, *){
                 self.setRecorderProfile(lowProfile: true)
+                updatePerformanceActivity()
             }
         }
         

@@ -75,6 +75,7 @@ public class Static {
     public static let MouseHertz : Double = 60 // previous 60
     public static let SceneKitPreferredFPS = 45 // prev 45
     public static let SceneKitSleepPreferredFPS = 20
+    public static let SceneKitContinuousRenderingWhenActive = true
     
     public static let EnableCloseMainWindowAfterInactivity = false
     
@@ -115,6 +116,15 @@ public class Static {
     public static let UpdateWindowScreenshotAfter : Double = 2.0 // seconds
     public static let EnableRecordingHalfInLowPriority = false // don't enable it: it breaks window previews rects
     public static let WaitScreenshotAfterAboveBy = 0.3 // milliseconds
+    
+    public static let RecorderPrewarmDuration: TimeInterval = 2
+    public static let RecorderPrewarmMinSpeed: CGFloat = 1
+    public static let RecorderPrewarmSpeedRatio: CGFloat = 0.25
+    
+    public static let EnableLatencyCriticalActivity = true
+    public static let LatencyCriticalActivityReason = "Overscreen interaction"
+    public static let LatencyCriticalActivityOptions: ProcessInfo.ActivityOptions = [.userInitiated, .latencyCritical]
+    public static let CaptureVideoQueueQoS: DispatchQoS.QoSClass = .userInteractive
         
     public static let ClickMaximumDifference : Double = 0.5
     
