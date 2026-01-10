@@ -45,6 +45,7 @@ public class DisplaysManager {
     private var pendingStrictSample: StrictMotionSample?
     private let strictMotionQueue = DispatchQueue(label: "ink.makeithome.strictMotion", qos: Static.ActiveMouseTimerQoS)
     private var strictMotionState = StrictMotionState()
+    private var mainScreenHeight: CGFloat = 0
     var curMouseLoc : NSPoint = NSPoint(x:0,y:0);
     var curDisplay : Display?
     
@@ -187,6 +188,7 @@ public class DisplaysManager {
     public func initCurrentDisplays(load: Bool = false){
         
         screens = NSScreen.screens
+        mainScreenHeight = NSScreen.main?.frame.height ?? screens.first?.frame.height ?? 0
         
         var foundSomething = false
         
@@ -405,7 +407,13 @@ public class DisplaysManager {
         timer.setEventHandler { [weak self] in
             guard let self = self else { return }
             
-            let loc = CGEvent(source: nil)?.location ?? self.curMouseLoc
+            let loc: CGPoint
+            if let quartzLoc = CGEvent(source: nil)?.location, self.mainScreenHeight > 0 {
+                loc = CGPoint(x: quartzLoc.x, y: self.mainScreenHeight - quartzLoc.y)
+            }
+            else {
+                loc = NSEvent.mouseLocation
+            }
             if Static.ActiveStrictModeEnabled {
                 self.strictMotionQueue.async {
                     let sample = self.computeStrictSample(mouse: loc)
