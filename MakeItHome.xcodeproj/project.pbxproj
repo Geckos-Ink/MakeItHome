@@ -153,6 +153,7 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		8B6B3A422F0F9B4D00D7D99C /* Helpers */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Helpers; sourceTree = "<group>"; };
 		8BF733042EC0D2CB003100D8 /* Extensions */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = Extensions; sourceTree = "<group>"; };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
@@ -262,6 +263,7 @@
 		8B74405E28E6A89800E7AD36 /* MakeItHome */ = {
 			isa = PBXGroup;
 			children = (
+				8B6B3A422F0F9B4D00D7D99C /* Helpers */,
 				8BF733042EC0D2CB003100D8 /* Extensions */,
 				8B6D5EBE2BF47DE0009012F8 /* Notes */,
 				8BC56F922AD08BE8008B3788 /* Resources */,
@@ -399,6 +401,7 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
+				8B6B3A422F0F9B4D00D7D99C /* Helpers */,
 				8BF733042EC0D2CB003100D8 /* Extensions */,
 			);
 			name = MakeItHome;
@@ -668,7 +671,7 @@
 				CODE_SIGN_ENTITLEMENTS = MakeItHome/MakeItHome.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 150;
+				CURRENT_PROJECT_VERSION = 152;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"MakeItHome/Preview Content\"";
 				DEVELOPMENT_TEAM = UYSXKZ8U4Z;
@@ -685,7 +688,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.3;
-				MARKETING_VERSION = 2.0.4;
+				MARKETING_VERSION = 2.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = ink.geckos.MakeItHome;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = NO;
@@ -705,7 +708,7 @@
 				CODE_SIGN_ENTITLEMENTS = MakeItHome/MakeItHome.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 150;
+				CURRENT_PROJECT_VERSION = 152;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"MakeItHome/Preview Content\"";
 				DEVELOPMENT_TEAM = UYSXKZ8U4Z;
@@ -722,7 +725,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.3;
-				MARKETING_VERSION = 2.0.4;
+				MARKETING_VERSION = 2.0.5;
 				PRODUCT_BUNDLE_IDENTIFIER = ink.geckos.MakeItHome;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = NO;

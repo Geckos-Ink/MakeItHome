@@ -73,8 +73,12 @@ public class Static {
     }
     
     public static let MouseHertz : Double = 60 // previous 60
-    public static let SceneKitPreferredFPS = 45 // prev 45
+    public static let ActiveStrictModeEnabled = true
+    public static let ActiveMouseTimerQoS: DispatchQoS = .userInteractive
+    public static let ActiveMouseTimerLeewayMs: Int = 1
+    public static let SceneKitPreferredFPS = 40 // prev 45
     public static let SceneKitSleepPreferredFPS = 20
+    public static let SceneKitContinuousRenderingWhenActive = true
     
     public static let EnableCloseMainWindowAfterInactivity = false
     
@@ -87,7 +91,7 @@ public class Static {
     
     public static let OverscreenAboveLimit : CGFloat = 5
     public static let CompensateAboveByCursor : Double = 0.99
-    public static let DivideMaxSpeedBy : Double = 2
+    public static let DivideMaxSpeedBy : Double = 2.5
     
     public static let PutAsideInUsingApp = false
     public static let PutAsideInUsingAppBy : CGFloat = 10 // pixels
@@ -110,11 +114,20 @@ public class Static {
     
     public static let BackgroundUpdateSeconds_NewDisplay : Double = 5 // seconds
     
-    public static let ScreenRecorderHighPriorityFPS = 30 // FPS
+    public static let ScreenRecorderHighPriorityFPS = 25 // FPS
     public static let CheckIfUpdateWindowScreenshotEvery : Double = 0.5 // seconds
     public static let UpdateWindowScreenshotAfter : Double = 2.0 // seconds
-    public static let EnableRecordingHalfInLowPriority = true
+    public static let EnableRecordingHalfInLowPriority = false // don't enable it: it breaks window previews rects
     public static let WaitScreenshotAfterAboveBy = 0.3 // milliseconds
+    
+    public static let RecorderPrewarmDuration: TimeInterval = 2
+    public static let RecorderPrewarmMinSpeed: CGFloat = 1
+    public static let RecorderPrewarmSpeedRatio: CGFloat = 0.25
+    
+    public static let EnableLatencyCriticalActivity = true
+    public static let LatencyCriticalActivityReason = "Overscreen interaction"
+    public static let LatencyCriticalActivityOptions: ProcessInfo.ActivityOptions = [.userInitiated, .latencyCritical]
+    public static let CaptureVideoQueueQoS: DispatchQoS = .userInteractive
         
     public static let ClickMaximumDifference : Double = 0.5
     

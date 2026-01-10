@@ -10,6 +10,7 @@ import AppKit
 import ScreenCaptureKit
 import CoreImage
 import AVFoundation
+import CoreVideo
 
 import OrderedCollections
 import SceneKit
@@ -17,8 +18,34 @@ import SceneKit
 import IOKit
 import IOKit.hid
 
+public struct StrictMotionSample {
+    let mouse: CGPoint
+    let mouseDelta: CGPoint
+    let mouseSpeed: CGFloat
+    let mouseSpeed10s: CGFloat
+    let avgSpeed: Double
+    let avgAcceleration: Double
+}
+
 public class DisplaysManager {
-    var timerMouse : Timer? = nil;
+    private struct StrictMotionState {
+        var acceleration: Double = 0
+        var prevMouse: CGPoint = .zero
+        var mouseSpeed10s: CGFloat = 0
+        var avgSpeed: Double = 1
+        var avgAcceleration: Double = 0
+    }
+    
+    private let strictAvgWeight: CGFloat = 60 * 60
+    private var mouseTimer: DispatchSourceTimer?
+    private let mouseTimerQueue = DispatchQueue(label: "ink.makeithome.mouseTimer", qos: Static.ActiveMouseTimerQoS)
+    private let mouseTimerStateQueue = DispatchQueue(label: "ink.makeithome.mouseTimerState")
+    private var mouseTickInFlight = false
+    private var pendingMouseLoc: CGPoint = .zero
+    private var pendingStrictSample: StrictMotionSample?
+    private let strictMotionQueue = DispatchQueue(label: "ink.makeithome.strictMotion", qos: Static.ActiveMouseTimerQoS)
+    private var strictMotionState = StrictMotionState()
+    private var mainScreenHeight: CGFloat = 0
     var curMouseLoc : NSPoint = NSPoint(x:0,y:0);
     var curDisplay : Display?
     
@@ -103,12 +130,7 @@ public class DisplaysManager {
         }
         
         //MARK: Timer: Update mouse position
-        let interval : Double = 1/self.updateHertz; // 1/x hertz
-        self.timerMouse = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { timer in
-            DispatchQueue.main.async {
-                self.updateMousePosition(from: 2)
-            }
-        }
+        startMouseTimer()
         
         ///# Set mouse position (DEPRECATED?)
         /*let intervalMouseSet : Double = 1/(self.updateHertz/3); // 1/(x/3) hertz
@@ -166,6 +188,7 @@ public class DisplaysManager {
     public func initCurrentDisplays(load: Bool = false){
         
         screens = NSScreen.screens
+        mainScreenHeight = NSScreen.main?.frame.height ?? screens.first?.frame.height ?? 0
         
         var foundSomething = false
         
@@ -289,7 +312,7 @@ public class DisplaysManager {
     }
     
     var menuBarView : MenuBarView?
-    public func updateMousePosition(cursor: CGPoint = CGPoint.zero, from : Int = 0){
+    @MainActor public func updateMousePosition(cursor: CGPoint = CGPoint.zero, from : Int = 0, strictSample: StrictMotionSample? = nil){
         self.curMouseLoc = cursor
         
         if(cursor == CGPoint.zero){
@@ -356,14 +379,116 @@ public class DisplaysManager {
             }
             else {
                 if !(self.curDisplay?.disable ?? true){
-                    DispatchQueue.main.async {
-                        self.curDisplay?.active(mouse: self.curMouseLoc)
+                    if Thread.isMainThread {
+                        self.curDisplay?.active(mouse: self.curMouseLoc, strictSample: strictSample)
+                    }
+                    else {
+                        DispatchQueue.main.async {
+                            self.curDisplay?.active(mouse: self.curMouseLoc, strictSample: strictSample)
+                        }
                     }
                 }
             }
             
             Static.mouseInDisplay = display
         }
+    }
+
+    private func startMouseTimer() {
+        guard mouseTimer == nil else {
+            return
+        }
+        
+        let intervalNs = Int((1 / updateHertz) * 1_000_000_000)
+        let timer = DispatchSource.makeTimerSource(queue: mouseTimerQueue)
+        timer.schedule(deadline: .now(),
+                       repeating: .nanoseconds(intervalNs),
+                       leeway: .milliseconds(Static.ActiveMouseTimerLeewayMs))
+        timer.setEventHandler { [weak self] in
+            guard let self = self else { return }
+            
+            let loc: CGPoint
+            if let quartzLoc = CGEvent(source: nil)?.location, self.mainScreenHeight > 0 {
+                loc = CGPoint(x: quartzLoc.x, y: self.mainScreenHeight - quartzLoc.y)
+            }
+            else {
+                loc = NSEvent.mouseLocation
+            }
+            if Static.ActiveStrictModeEnabled {
+                self.strictMotionQueue.async {
+                    let sample = self.computeStrictSample(mouse: loc)
+                    self.mouseTimerStateQueue.async {
+                        self.pendingMouseLoc = loc
+                        self.pendingStrictSample = sample
+                        if self.mouseTickInFlight {
+                            return
+                        }
+                        
+                        self.mouseTickInFlight = true
+                        Task(priority: .userInteractive) { @MainActor in
+                            let strictSample = self.mouseTimerStateQueue.sync { self.pendingStrictSample }
+                            let currentLoc = strictSample?.mouse ?? self.mouseTimerStateQueue.sync { self.pendingMouseLoc }
+                            self.updateMousePosition(cursor: currentLoc, from: 2, strictSample: strictSample)
+                            self.mouseTimerStateQueue.async {
+                                self.mouseTickInFlight = false
+                            }
+                        }
+                    }
+                }
+                return
+            }
+            
+            self.mouseTimerStateQueue.async {
+                self.pendingMouseLoc = loc
+                if self.mouseTickInFlight {
+                    return
+                }
+                
+                self.mouseTickInFlight = true
+                Task(priority: .userInteractive) { @MainActor in
+                    let currentLoc = self.mouseTimerStateQueue.sync { self.pendingMouseLoc }
+                    self.updateMousePosition(cursor: currentLoc, from: 2)
+                    self.mouseTimerStateQueue.async {
+                        self.mouseTickInFlight = false
+                    }
+                }
+            }
+        }
+        mouseTimer = timer
+        timer.resume()
+    }
+    
+    private func stopMouseTimer() {
+        mouseTimer?.cancel()
+        mouseTimer = nil
+    }
+
+    private func computeStrictSample(mouse: CGPoint) -> StrictMotionSample {
+        var state = strictMotionState
+        let prevMouse = state.prevMouse == .zero ? mouse : state.prevMouse
+        let mouseDelta = CGPoint(x: mouse.x - prevMouse.x, y: mouse.y - prevMouse.y)
+        let mouseSpeed = sqrt((pow(mouseDelta.x, 2) + pow(mouseDelta.y, 2)))
+        
+        let speedWindow = CGFloat(updateHertz * 10)
+        let mouseSpeed10s = ((state.mouseSpeed10s * speedWindow) + mouseSpeed) / (speedWindow + 1)
+        let avgSpeed = ((state.avgSpeed * Double(strictAvgWeight)) + Double(mouseSpeed)) / (Double(strictAvgWeight) + 1)
+        
+        let acceleration = sqrt((pow(mouseDelta.x, 2) + pow(mouseDelta.y, 2)))
+        let avgAcceleration = ((state.avgAcceleration * Double(strictAvgWeight)) + Double(acceleration)) / (Double(strictAvgWeight) + 1)
+        
+        state.prevMouse = mouse
+        state.mouseSpeed10s = mouseSpeed10s
+        state.avgSpeed = avgSpeed
+        state.avgAcceleration = avgAcceleration
+        state.acceleration = acceleration
+        strictMotionState = state
+        
+        return StrictMotionSample(mouse: mouse,
+                                  mouseDelta: mouseDelta,
+                                  mouseSpeed: mouseSpeed,
+                                  mouseSpeed10s: mouseSpeed10s,
+                                  avgSpeed: avgSpeed,
+                                  avgAcceleration: avgAcceleration)
     }
     
     //TODO: Bring this in Display class
@@ -439,6 +564,7 @@ public class DisplaysManager {
     
     deinit {
         stopMouseEvent()
+        stopMouseTimer()
     }
 
     public func startMouseEvent() {
@@ -846,6 +972,8 @@ public class Display : Equatable {
             public var lastCii : CIImage?
             public var lastCiiElabored = false
             public var lastCiiPriorityScale : CGFloat = 1
+            private var ciiRevision: UInt = 0
+            private var isProcessingCii = false
             
             public var lastShotTime : Date = Date(timeIntervalSince1970: 0)
             public var lastPreview : CGImage? = nil
@@ -897,6 +1025,15 @@ public class Display : Equatable {
                     appTitle = app.title
                 }
             }
+
+            func updateCii(_ cii: CIImage, rect: NSRect, priorityScale: CGFloat, display: Display) {
+                self.display = display
+                self.lastRect = rect
+                self.lastCii = cii
+                self.lastCiiElabored = false
+                self.lastCiiPriorityScale = priorityScale
+                ciiRevision &+= 1
+            }
             
             public func clean(){
                 if previewsList.count > 0 {
@@ -930,74 +1067,100 @@ public class Display : Equatable {
             }
             
             public func checkForCii(){
-                Static.highPriorityQueue.async { // this may cause problems
-                    if(self.lastCiiElabored || self.lastCii == nil || self.display == nil || self.display?.recordingPaused ?? false){
-                        return
-                    }
-                    
-                    let _cii = self.lastCii // guard laziness
-                    if _cii == nil { // double check
-                        return
-                    }
-                    
-                    var cii = _cii!
-                    
-                    // Resize
-                    //let divideBy : CGFloat = 4
-                    let curScale = (cii.extent.width + cii.extent.height)/2.5 //more is more definition
-                    var rapp : CGFloat = Static.OverscreenSizeDefault / curScale
-                    rapp *= self.lastCiiPriorityScale
-                    
-                    cii = resizeCI(image: cii, scale: rapp)
-                    
-                    //print("cii size", cii.extent, "scale", rapp)
-                    
-                    // Convert to CGImage
-                    var finalImg = convertToCGImage(image: cii) // MAYBE REALATED WITH C01
-                    
-                    //everything smooth... https://developer.apple.com/documentation/coreimage/ciroundedrectanglegenerator
-                    
-                    if(finalImg != nil){
+                if lastCiiElabored || isProcessingCii || lastCii == nil || display == nil || display?.recordingPaused ?? false {
+                    return
+                }
+                
+                guard let display = display, let cii = lastCii else {
+                    return
+                }
+                
+                let revision = ciiRevision
+                let priorityScale = lastCiiPriorityScale
+                isProcessingCii = true
+                
+                display.imageProcessingQueue.async { [weak self, weak display] in
+                    autoreleasepool {
+                        guard let self = self, let display = display else { return }
                         
-                        if finalImg!.width  < 16384 {
-                            //TODO: release previous image? (check for memory leak)
-                            self.lastPreview = finalImg
-                            self.lastShotTime = Date()
+                        let holdCii = RetainedOpaquePointer(cii)
+                        let objPtrCii: UnsafeRawPointer = holdCii.pointer
+                        if !isAddressRangeAccessible(objPtrCii, byteCount: 1, access: .read) {
+                            DispatchQueue.main.async {
+                                self.isProcessingCii = false
+                                if revision == self.ciiRevision {
+                                    self.lastCiiElabored = true
+                                    self.lastCii = nil
+                                }
+                            }
+                            return
+                        }
+                        
+                        var working = cii
+                        
+                        let curScale = (working.extent.width + working.extent.height) / 2.5 // more is more definition
+                        var rapp : CGFloat = Static.OverscreenSizeDefault / curScale
+                        rapp *= priorityScale
+                        
+                        working = resizeCI(image: working, scale: rapp)
+                        
+                        guard let finalImg = convertToCGImage(image: working), finalImg.width < 16384 else {
+                            DispatchQueue.main.async {
+                                self.isProcessingCii = false
+                                if revision == self.ciiRevision {
+                                    self.lastCiiElabored = true
+                                    self.lastCii = nil
+                                }
+                            }
+                            return
+                        }
+                        
+                        let extent = working.extent
+                        let inputExtent = CIVector(x: extent.origin.x, y: extent.origin.y, z: extent.size.width, w: extent.size.height)
+                        let filter = CIFilter(name: "CIAreaAverage", parameters: [kCIInputImageKey: working, kCIInputExtentKey: inputExtent])!
+                        let outputImage = filter.outputImage!
+                        
+                        var bitmap = [UInt8](repeating: 0, count: 4)
+                        display.contextAvgColor.render(outputImage, toBitmap: &bitmap, rowBytes: 4, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBA8, colorSpace: nil)
+                        
+                        let avgPixel = NSColor(red: CGFloat(bitmap[0]) / 255,
+                                               green: CGFloat(bitmap[1]) / 255,
+                                               blue: CGFloat(bitmap[2]) / 255,
+                                               alpha: CGFloat(bitmap[3]) / 255)
+                        
+                        display.contextAvgColor.reclaimResources()
+                        let shotTime = Date()
+                        let sec = Int(shotTime.timeIntervalSince1970)
+                        
+                        DispatchQueue.main.async {
+                            //guard let self = self else { return }
+                            self.isProcessingCii = false
                             
-                            let sec = Int(self.lastShotTime.timeIntervalSince1970)
+                            guard revision == self.ciiRevision else {
+                                return
+                            }
+                            
+                            self.lastPreview = finalImg
+                            self.lastShotTime = shotTime
+                            
                             if self.previewsList.index(forKey: sec) == nil {
                                 self.previewsList[sec] = finalImg
                                 
-                                if self.previewsList.count > 2{
+                                if self.previewsList.count > 2 {
                                     let sortPreviews = self.previewsList.sorted(by: { $0.key < $1.key })
                                     self.previewsList.removeValue(forKey: sortPreviews.first!.key)
                                 }
                             }
                             
-                            ///
-                            ///# Calculate average pixel
-                            /// TODO: move to a function
-                            let extent = cii.extent
-                            let inputExtent = CIVector(x: extent.origin.x, y: extent.origin.y, z: extent.size.width, w: extent.size.height)
-                            let filter = CIFilter(name: "CIAreaAverage", parameters: [kCIInputImageKey: cii, kCIInputExtentKey: inputExtent])!
-                            let outputImage = filter.outputImage!
+                            self.avgPixel = avgPixel
                             
-                            var bitmap = [UInt8](repeating: 0, count: 4)
-                            self.display?.contextAvgColor.render(outputImage, toBitmap: &bitmap, rowBytes: 4, bounds: CGRect(x: 0, y: 0, width: 1, height: 1), format: .RGBA8, colorSpace: nil)
-                            
-                            self.avgPixel = NSColor(red: CGFloat(bitmap[0]) / 255, green: CGFloat(bitmap[1]) / 255, blue: CGFloat(bitmap[2]) / 255, alpha: CGFloat(bitmap[3]) / 255)
-                            
-                            self.display?.contextAvgColor.reclaimResources()
-                            
-                            self.display?.previewUpdated = true
-                            
+                            display.previewUpdated = true
                             self.winPlane?.setMaterial()
                             
-                        } // scala reale
+                            self.lastCiiElabored = true
+                            self.lastCii = nil
+                        }
                     }
-                    
-                    self.lastCiiElabored = true
-                    self.lastCii = nil
                 }
             }
         }
@@ -1033,6 +1196,9 @@ public class Display : Equatable {
     
     var recordingPaused = false
     var lastRecorderUpdate : Double = 0
+    private var recorderPrewarmWorkItem: DispatchWorkItem?
+    private var recorderPrewarmActive = false
+    private var performanceActivity: NSObjectProtocol?
     
     func windowStillExists(winId : Int, windows: [CFDictionary]) -> Bool {
         for win in windows{
@@ -1212,6 +1378,7 @@ public class Display : Equatable {
     let excludedApps : [String]
     
     let contextAvgColor : CIContext
+    private let imageProcessingQueue = DispatchQueue(label: "ink.makeithome.display.imageProcessing", qos: .userInitiated)
     var lastAppWin : AppWindows.Window? = nil
     var winnerRect : NSRect = NSRect.zero
     var prevWinnerRect : NSRect = NSRect.zero
@@ -1240,7 +1407,7 @@ public class Display : Equatable {
         return placeholder
     }
  
-    public func checkForScreenshot(forceShot: Bool = false) -> Bool{
+    @MainActor public func checkForScreenshot(forceShot: Bool = false) -> Bool{
         if !mouseIn{ // if mouse is not in display
             return false
         }
@@ -1412,8 +1579,6 @@ public class Display : Equatable {
                             if(changeDisplay != nil){
                                 changeDisplay?.removeWindows(id: winId)
                             }
-                            
-                            //print(winnerRect)
                             
                             var biggerThanPreviousWinner = winner == nil || rectContainsWinnerRect(rect: rect)
                             
@@ -1713,6 +1878,8 @@ public class Display : Equatable {
                 
                 let appWin = appWins!.getWindow(winDict: winner!)!
                 
+                //print("Current window rect: ", winnerRect)
+                
                 // Check for fullscreen
                 let isFullSize = winnerRect.size.width >= self.frame.width && winnerRect.size.height >= self.frame.height - self.menuHeight
                 
@@ -1812,91 +1979,69 @@ public class Display : Equatable {
                     }
                     
                     let bounds = winner!["kCGWindowBounds"] as! NSDictionary
-                    
-                    DispatchQueue.main.async {
-                        
-                        if #available(macOS 12.3, *){
+                                        
+                    if #available(macOS 12.3, *){
+                        let screenRecorder = self.manager.contentView!.store.screenRecorder as! ScreenRecorder
+                        if let lf = screenRecorder.lastFrame,
+                           lf.displayID == self.screen.displayID,
+                           let pixelBuffer = lf.pixelBuffer {
                             
-                            let screenRecorder = self.manager.contentView!.store.screenRecorder as! ScreenRecorder
-                            let lf = screenRecorder.lastFrame
+                            let ps = screenRecorder.priorityScale
+                            let scale : CGFloat = self.scale * ps // cause of window size change
+                            let bufferWidth = CGFloat(CVPixelBufferGetWidth(pixelBuffer))
+                            let imgScale : CGFloat = bufferWidth / self.frame.width
+                            self.scaleCapture = imgScale * ps
                             
-                            if(lf?.displayID == self.screen.displayID){
-                                
-                                if(lf != nil){
-                                    Static.highPriorityQueue.async {
-                                        
-                                        var cii = CIImage(cvPixelBuffer: lf!.pixelBuffer!)
-                                        
-                                        let ps = screenRecorder.priorityScale
-                                        let scale : CGFloat = self.scale * ps
-                                        let imgScale : CGFloat = cii.extent.width / self.frame.width
-                                        self.scaleCapture = imgScale * ps
-                                        
-                                        let cgHeight = CGFloat(truncating: (bounds["Height"] as! Int) as NSNumber)
-                                        var thisHeight = (cgHeight*imgScale)
-                                        let cgY = CGFloat(truncating: (bounds["Y"] as! Int) as NSNumber)
-                                        
-                                        //let context = self.ciContext
-                                        
-                                        var thisY = cgY + cgHeight
-                                        
-                                        //TODO: create a checking window
-                                        //thisY = thisY + self.frame.minY // in case of problems try to invert this
-                                        thisY = self.frame.height - thisY // with this one
-                                        
-                                        //TODO: I absolutely don't know why -- check sometimes you need it
-                                        if(!self.isMain && false){
-                                            thisY += self.manager.mainBarHeight - (NSApplication.shared.menu!.menuBarHeight/self.manager.mainScale) // self.scale
-                                            
-                                            /*if(cgY < 0){
-                                             thisY = cgY * -1
-                                             }*/
-                                        }
-                                        
-                                        thisY = thisY * imgScale
-                                        
-                                        let cgWidth = CGFloat(truncating: (bounds["Width"] as! Int) as NSNumber)
-                                        var thisWidth = cgWidth*imgScale
-                                        
-                                        appWin.widthHeightRatio = cgWidth / cgHeight
-                                        
-                                        let cgX = CGFloat(truncating: (bounds["X"] as! Int) as NSNumber)
-                                        var thisX = (cgX - self.frame.minX) * scale
-                                        
-                                        var rect = CGRect(
-                                            x: thisX,
-                                            y: thisY,
-                                            width: thisWidth,
-                                            height: thisHeight
-                                        )
-                                        
-                                        var backingRect = CGRect(
-                                            x: cgX,
-                                            y: cgY,
-                                            width: cgWidth,
-                                            height: cgHeight
-                                        )
-                                        
-                                        if(!cii.extent.contains(NSPoint(x: rect.midX, y: rect.midY))){
-                                            print("cii.extent", cii.extent)
-                                            return
-                                        }
-                                        
-                                        Task { // is this making a sense?
-                                            
-                                            //print("capturing rect", rect, appWin.appTitle, appWin.avgTime)
-                                            //print(backingRect, self.frame.minY, self.frame.maxY)
-                                            
-                                            cii = cii.cropped(to: rect)
-                                            
-                                            appWin.display = self
-                                            appWin.lastRect = backingRect
-                                            appWin.lastCii = cii
-                                            appWin.lastCiiElabored = false
-                                            
-                                            //todo: not sendeable (main actor)
-                                            appWin.lastCiiPriorityScale = screenRecorder.priorityScale
-                                        }
+                            let cgHeight = CGFloat(truncating: (bounds["Height"] as! Int) as NSNumber)
+                            let thisHeight = (cgHeight * imgScale)
+                            let cgY = CGFloat(truncating: (bounds["Y"] as! Int) as NSNumber)
+                            
+                            var thisY = cgY + cgHeight
+                            thisY = self.frame.height - thisY // with this one
+                            
+                            if(!self.isMain && false){
+                                thisY += self.manager.mainBarHeight - (NSApplication.shared.menu!.menuBarHeight/self.manager.mainScale) // self.scale
+                            }
+                            
+                            thisY = thisY * imgScale
+                            
+                            let cgWidth = CGFloat(truncating: (bounds["Width"] as! Int) as NSNumber)
+                            let thisWidth = cgWidth * imgScale
+                            
+                            appWin.widthHeightRatio = cgWidth / cgHeight
+                            
+                            let cgX = CGFloat(truncating: (bounds["X"] as! Int) as NSNumber)
+                            let thisX = (cgX - self.frame.minX) * scale
+                            
+                            let rect = CGRect(
+                                x: thisX,
+                                y: thisY,
+                                width: thisWidth,
+                                height: thisHeight
+                            )
+                            
+                            let backingRect = CGRect(
+                                x: cgX,
+                                y: cgY,
+                                width: cgWidth,
+                                height: cgHeight
+                            )
+                            
+                            imageProcessingQueue.async { [weak self, weak appWin] in
+                                autoreleasepool {
+                                    guard let self = self, let appWin = appWin else { return }
+                                    
+                                    let cii = CIImage(cvPixelBuffer: pixelBuffer)
+                                    if !cii.extent.contains(NSPoint(x: rect.midX, y: rect.midY)) {
+                                        print("cii.extent", cii.extent)
+                                        return
+                                    }
+                                    
+                                    let cropped = cii.cropped(to: rect)
+                                    
+                                    DispatchQueue.main.async { [weak self, weak appWin] in
+                                        guard let self = self, let appWin = appWin else { return }
+                                        appWin.updateCii(cropped, rect: backingRect, priorityScale: ps, display: self)
                                     }
                                 }
                             }
@@ -2117,10 +2262,14 @@ public class Display : Equatable {
     }
     
     func setCurDesktopImage(){
-        if(manager.curDekstop != nil){
+        guard let desktop = manager.curDekstop else {
+            return
+        }
+        
+        DispatchQueue.main.async {
             if #available(macOS 12.3, *){
-                let background = (manager.capturePreview as? CapturePreview)?.captureView.scene!.background
-                background?.contents = convertToCGImage(image: manager.curDekstop!)
+                let background = (self.manager.capturePreview as? CapturePreview)?.captureView.scene?.background
+                background?.contents = convertToCGImage(image: desktop)
                 background?.contentsTransform = SCNMatrix4MakeScale(0.5,0.5,0.5)
             }
         }
@@ -2140,8 +2289,20 @@ public class Display : Equatable {
                 let screenRecorder = (self.manager.contentView?.store.screenRecorder as! ScreenRecorder)
                 screenRecorder.windowShowing = !lowProfile
                 
-                Task{
-                    await screenRecorder.start(lowProfile: lowProfile, display: self.scDisplay as? SCDisplay)
+                if let displayId = (self.scDisplay as? SCDisplay)?.displayID,
+                   screenRecorder.isRunning,
+                   screenRecorder.isLowPriority == lowProfile,
+                   screenRecorder.recordingOnDisplay == displayId {
+                    self.setRefresh()
+                    return
+                }
+                
+                let waitForIt : Int = 0
+                delay(ms: waitForIt){
+                    let priority: TaskPriority = lowProfile ? .utility : .userInteractive
+                    Task(priority: priority){
+                        await screenRecorder.start(lowProfile: lowProfile, display: self.scDisplay as? SCDisplay)
+                    }
                 }
             }
             
@@ -2157,6 +2318,134 @@ public class Display : Equatable {
                     await screenRecorder.stop()
                 }
             }
+        }
+    }
+
+    private func shouldPrewarmRecorder(side: Int, mouseDelta: CGPoint) -> Bool {
+        if side < 0 || side >= activateSide.count {
+            return false
+        }
+        
+        if !activateSide[side] || disable {
+            return false
+        }
+        
+        let speedThreshold = max(Static.RecorderPrewarmMinSpeed, maxSpeed * Static.RecorderPrewarmSpeedRatio)
+        if mouseSpeed < speedThreshold {
+            return false
+        }
+        
+        switch side {
+        case 0: // left
+            return mouseDelta.x < 0
+        case 1: // right
+            return mouseDelta.x > 0
+        case 2: // bottom
+            return mouseDelta.y < 0
+        case 3: // top
+            return mouseDelta.y > 0
+        default:
+            return false
+        }
+    }
+    
+    @MainActor private func prewarmRecorderIfNeeded(side: Int, mouseDelta: CGPoint) {
+        guard #available(macOS 12.3, *) else {
+            return
+        }
+        
+        if aboveByPixels > 0 || !windowHidden {
+            cancelRecorderPrewarm()
+            return
+        }
+        
+        guard shouldPrewarmRecorder(side: side, mouseDelta: mouseDelta) else {
+            return
+        }
+        
+        guard let screenRecorder = self.manager.contentView?.store.screenRecorder as? ScreenRecorder else {
+            return
+        }
+        
+        if !recorderPrewarmActive {
+            recorderPrewarmActive = true
+            
+            DispatchQueue.main.async {
+                (self.manager.capturePreview as? CapturePreview)?.captureView.restartRendering()
+            }
+            
+            Task(priority: .userInteractive) {
+                await screenRecorder.start(lowProfile: false, display: self.scDisplay as? SCDisplay)
+            }
+            
+            updatePerformanceActivity()
+        }
+        
+        recorderPrewarmWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.stopRecorderPrewarmIfNeeded()
+        }
+        recorderPrewarmWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + Static.RecorderPrewarmDuration, execute: workItem)
+    }
+    
+    @MainActor private func stopRecorderPrewarmIfNeeded() {
+        guard recorderPrewarmActive else {
+            return
+        }
+        
+        recorderPrewarmActive = false
+        recorderPrewarmWorkItem = nil
+        
+        if aboveByPixels > 0 || !windowHidden {
+            return
+        }
+        
+        guard #available(macOS 12.3, *) else {
+            return
+        }
+        
+        guard let screenRecorder = self.manager.contentView?.store.screenRecorder as? ScreenRecorder else {
+            return
+        }
+        
+        Task(priority: .utility) {
+            await screenRecorder.start(lowProfile: true, display: self.scDisplay as? SCDisplay)
+        }
+        
+        DispatchQueue.main.async {
+            (self.manager.capturePreview as? CapturePreview)?.captureView.stopRendering()
+        }
+        
+        updatePerformanceActivity()
+    }
+    
+    private func cancelRecorderPrewarm() {
+        recorderPrewarmWorkItem?.cancel()
+        recorderPrewarmWorkItem = nil
+        recorderPrewarmActive = false
+        updatePerformanceActivity()
+    }
+
+    private func updatePerformanceActivity() {
+        guard Static.EnableLatencyCriticalActivity else {
+            if let activity = performanceActivity {
+                ProcessInfo.processInfo.endActivity(activity)
+                performanceActivity = nil
+            }
+            return
+        }
+        
+        let shouldBeActive = recorderPrewarmActive || aboveByPixels > 0 || !windowHidden
+        if shouldBeActive {
+            if performanceActivity == nil {
+                performanceActivity = ProcessInfo.processInfo.beginActivity(options: Static.LatencyCriticalActivityOptions,
+                                                                            reason: Static.LatencyCriticalActivityReason)
+            }
+        }
+        else if let activity = performanceActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            performanceActivity = nil
         }
     }
     
@@ -2235,6 +2524,7 @@ public class Display : Equatable {
             self.toBeRecorded = true
             Static.mainWindowInUsing = true
             Static.lastUsing = Date().timeIntervalSince1970
+            self.updatePerformanceActivity()
             
             DispatchQueue.main.async{
                 self.manager.contentView!.store.setWindowsProperties()
@@ -2302,6 +2592,7 @@ public class Display : Equatable {
                 
                 Static.mainWindowInUsing = false
                 self.windowHidden = true
+                self.updatePerformanceActivity()
                 
                 if #available(macOS 12.3, *){
                     if(self.side != 3){
@@ -2545,7 +2836,7 @@ public class Display : Equatable {
     var ignoreMousePositionForAboveBy = 0
     
     //MARK: Active area
-    func active(mouse: NSPoint){ // was @MainActor
+    @MainActor func active(mouse: NSPoint, strictSample: StrictMotionSample? = nil){ // was @MainActor
         
         if(Static.ScreenRecordingUnauthorized && !Static.debugForceWorking){
             return
@@ -2577,14 +2868,26 @@ public class Display : Equatable {
         
         ///#! Pointer calculations
         
-        let mouseDelta = CGPoint(x: mouse.x - prevMouse.x, y: mouse.y - prevMouse.y)
-        
-        mouseSpeed = sqrt((pow(mouseDelta.x,2)+pow(mouseDelta.y,2)))
-        mouseSpeed_10s = ((mouseSpeed_10s*(Static.MouseHertz * 10))+mouseSpeed)/((Static.MouseHertz * 10)+1)
-        avgSpeed = ((avgSpeed*avgWeight)+mouseSpeed)/(avgWeight+1)
-        
-        let acceleration = sqrt(pow((mouse.x - prevMouse.x),2)+pow((mouse.y - prevMouse.y),2))
-        avgAcceleration = ((avgAcceleration*avgWeight)+acceleration)/(avgWeight+1)
+        let mouseDelta: CGPoint
+        let acceleration: Double
+        if let sample = strictSample {
+            mouseDelta = sample.mouseDelta
+            mouseSpeed = sample.mouseSpeed
+            mouseSpeed_10s = sample.mouseSpeed10s
+            avgSpeed = sample.avgSpeed
+            avgAcceleration = sample.avgAcceleration
+            acceleration = Double(sample.mouseSpeed)
+        }
+        else {
+            mouseDelta = CGPoint(x: mouse.x - prevMouse.x, y: mouse.y - prevMouse.y)
+            
+            mouseSpeed = sqrt((pow(mouseDelta.x,2)+pow(mouseDelta.y,2)))
+            mouseSpeed_10s = ((mouseSpeed_10s*(Static.MouseHertz * 10))+mouseSpeed)/((Static.MouseHertz * 10)+1)
+            avgSpeed = ((avgSpeed*avgWeight)+mouseSpeed)/(avgWeight+1)
+            
+            acceleration = sqrt(pow((mouse.x - prevMouse.x),2)+pow((mouse.y - prevMouse.y),2))
+            avgAcceleration = ((avgAcceleration*avgWeight)+acceleration)/(avgWeight+1)
+        }
         
         let s = abs((mouseDelta.x+mouseDelta.y)/2)
         if(s > maxAccumulate){
@@ -2641,11 +2944,7 @@ public class Display : Equatable {
         if mouseScarf == NSPoint.zero{
             mouseScarf = accMouse;
         }
-        
-        if recordingPaused {
-            return
-        }
-        
+
         // Disable mouse checking if in fullOverscreenc
         if fullOverscreenMode {
             return
@@ -2656,6 +2955,11 @@ public class Display : Equatable {
         ///
         
         var curSide = checkSide(point: relMouse)
+        prewarmRecorderIfNeeded(side: curSide, mouseDelta: mouseDelta)
+        
+        if recordingPaused && curSide == -1 {
+            return
+        }
         
         // Prevent the closing of the side in case of going near to side
         if curSide >= 0 && curSide != self.side && self.aboveByPixels > 0 {
@@ -2879,7 +3183,7 @@ public class Display : Equatable {
                         sideToClose = -1
                         
                         if #available(macOS 12.3, *){
-                            Static.highPriorityQueue.async {
+                            DispatchQueue.main.async {
                                 (self.manager.capturePreview as! CapturePreview).setCurrentAbove(side: s, aboveBy: 0, display: self)
                             }
                         }
@@ -2972,8 +3276,8 @@ public class Display : Equatable {
             }
             
             var isRightDirection = aboveBy > 0
-            let mdX = abs(prevMouse.x - mouse.x)
-            let mdY = abs(prevMouse.y - mouse.y)
+            let mdX = abs(mouseDelta.x)
+            let mdY = abs(mouseDelta.y)
             if(sideVertical){
                 if(mdX > mdY){
                     isRightDirection = true
@@ -2984,7 +3288,7 @@ public class Display : Equatable {
                     isRightDirection = true
                 }
             }
-            
+                       
             
             ///
             /// More aboveBy
@@ -3211,6 +3515,20 @@ public class Display : Equatable {
             DispatchQueue.main.async {
                 self.manager.contentView?.store.setWindowsProperties()
             }
+            
+            if #available(macOS 12.3, *){
+                cancelRecorderPrewarm()
+                (self.manager.capturePreview as? CapturePreview)?.captureView.restartRendering()
+                self.setRecorderProfile(lowProfile: false)
+                updatePerformanceActivity()
+            }
+        }
+        
+        if(prevAboveByPixels > 0 && aboveByPixels == 0){
+            if #available(macOS 12.3, *){
+                self.setRecorderProfile(lowProfile: true)
+                updatePerformanceActivity()
+            }
         }
         
         //MARK: Show/hide capture window
@@ -3281,6 +3599,52 @@ public class Display : Equatable {
             alterMouse = 0
         }
 
+        ///
+        /// Accelerate OverScreen axis pointer
+        ///
+        
+        //TODO: implement it effectively in future
+        let accelerateOverscreenEnabled = false // disabled because not working
+        if accelerateOverscreenEnabled && aboveBy == 1 && !onMoreAboveBy && curSide != 3 {
+            let axisCoord = curSide % 2 == 0 ? relMouse.y : relMouse.x
+            let counterAxisCoord = curSide % 2 == 0 ? relMouse.x : relMouse.y
+            
+            let prevAxisCoord = curSide % 2 == 0 ? prevRelMouse.y : prevRelMouse.x
+            let prevCounterAxisCoord = curSide % 2 == 1 ? prevRelMouse.y : prevRelMouse.x
+            
+            let diffAxis = axisCoord - prevAxisCoord
+            let diffCounterAxis = counterAxisCoord - prevCounterAxisCoord
+            
+            print("diffAxis > diffCounterAxis = ", diffAxis, " > ", diffCounterAxis)
+            if abs(diffAxis) > abs(diffCounterAxis) {
+                
+                let accelerateBy : Double = 1.5
+                let diff = diffAxis * accelerateBy
+                
+                var moveTo = relMouse
+                
+                if curSide % 2 == 1 {
+                    moveTo.y += diff
+                }
+                else {
+                    moveTo.x += diff
+                }
+                
+                let relativeSetCursor = true
+                if relativeSetCursor {
+                    CGDisplayMoveCursorToPoint(self.screen.displayID, moveTo)
+                }
+                else {
+                    moveTo.y = frame.height - moveTo.y
+                    moveTo.y += frame.minY
+                    
+                    moveMouse(to: moveTo)
+                }
+                
+                prevRelMouse = moveTo
+            }
+        }
+        
         //MARK: alterMouse
         let minMovement : CGFloat = 1.1/scale
         

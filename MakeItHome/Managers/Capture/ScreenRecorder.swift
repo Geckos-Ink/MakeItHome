@@ -123,8 +123,8 @@ class ScreenRecorder: ObservableObject {
     public var lastFrame : CapturedFrame? = nil
     public var lastFrameTime : Double = 0
     
-    let lowProfileFPS = 5
-    let lowProfileDepth = 5
+    let lowProfileFPS = 10
+    let lowProfileDepth = 4
     
     @MainActor public var recordingOnDisplay : CGDirectDisplayID = 94 // -1
     
@@ -134,39 +134,31 @@ class ScreenRecorder: ObservableObject {
             selectedDisplay = display
         }
         
+        let previousLowPriority = isLowPriority
+        let previousPriorityScale = priorityScale
+        
         self.isLowPriority = lowProfile
         
         priorityScale = Static.EnableRecordingHalfInLowPriority && lowProfile ? 2 : 1
         
         let p = lowProfile ? lowProfileFPS : Static.ScreenRecorderHighPriorityFPS
         
-        var force = false
-        if lastFrame != nil && NSDate().timeIntervalSince1970 - lastFrame!.captureTime > 1 || p != priorityFrameRate {
-            force = true
+        let frameRateChanged = p != priorityFrameRate
+        let profileChanged = previousLowPriority != isLowPriority || previousPriorityScale != priorityScale
+        let staleFrame = lastFrame.map { Date().timeIntervalSince1970 - $0.captureTime > 1 } ?? false
+        
+        if recordingOnDisplay == selectedDisplay?.displayID, isRunning, !staleFrame {
+            if frameRateChanged || profileChanged, let filter = contentFilter {
+                self.priorityFrameRate = p
+                await captureEngine.update(configuration: streamConfiguration, filter: filter)
+            }
+            return
         }
         
-        //TODO: clean this code (when it will be stable)
-        if(!force && recordingOnDisplay == selectedDisplay?.displayID && isRunning){ // update or restart?
-            if(p != priorityFrameRate){
-                self.priorityFrameRate = p
-                
-                if(isRunning){
-                    //await stop()
-                    await captureEngine.update(configuration: streamConfiguration, filter: contentFilter!)
-                    return
-                }            
-            }
-            else {
-                // Exit early if already running.
-                guard !isRunning else { return }
-            }
-        }
-        else {            
-            self.priorityFrameRate = p
-            
-            if(isRunning || force){
-                await stop()
-            }
+        self.priorityFrameRate = p
+        
+        if isRunning {
+            await stop()
         }
         
         if !isSetup {
@@ -318,7 +310,7 @@ class ScreenRecorder: ObservableObject {
         
         // Increase the depth of the frame queue to ensure high fps at the expense of increasing
         // the memory footprint of WindowServer.
-        streamConfig.queueDepth = self.isLowPriority ? lowProfileDepth : 8
+        streamConfig.queueDepth = self.isLowPriority ? lowProfileDepth : 7 // was 8
         
         return streamConfig
     }
