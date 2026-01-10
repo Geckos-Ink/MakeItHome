@@ -1071,6 +1071,11 @@ public class Display : Equatable {
     
     var recordingPaused = false
     var lastRecorderUpdate : Double = 0
+    private let recorderPrewarmDuration: TimeInterval = 2
+    private let recorderPrewarmMinSpeed: CGFloat = 1
+    private let recorderPrewarmSpeedRatio: CGFloat = 0.25
+    private var recorderPrewarmWorkItem: DispatchWorkItem?
+    private var recorderPrewarmActive = false
     
     func windowStillExists(winId : Int, windows: [CFDictionary]) -> Bool {
         for win in windows{
@@ -2192,6 +2197,107 @@ public class Display : Equatable {
             }
         }
     }
+
+    private func shouldPrewarmRecorder(side: Int, mouseDelta: CGPoint) -> Bool {
+        if side < 0 || side >= activateSide.count {
+            return false
+        }
+        
+        if !activateSide[side] || disable {
+            return false
+        }
+        
+        let speedThreshold = max(recorderPrewarmMinSpeed, maxSpeed * recorderPrewarmSpeedRatio)
+        if mouseSpeed < speedThreshold {
+            return false
+        }
+        
+        switch side {
+        case 0: // left
+            return mouseDelta.x < 0
+        case 1: // right
+            return mouseDelta.x > 0
+        case 2: // bottom
+            return mouseDelta.y < 0
+        case 3: // top
+            return mouseDelta.y > 0
+        default:
+            return false
+        }
+    }
+    
+    private func prewarmRecorderIfNeeded(side: Int, mouseDelta: CGPoint) {
+        guard #available(macOS 12.3, *) else {
+            return
+        }
+        
+        if aboveByPixels > 0 || !windowHidden {
+            cancelRecorderPrewarm()
+            return
+        }
+        
+        guard shouldPrewarmRecorder(side: side, mouseDelta: mouseDelta) else {
+            return
+        }
+        
+        guard let screenRecorder = self.manager.contentView?.store.screenRecorder as? ScreenRecorder else {
+            return
+        }
+        
+        if !recorderPrewarmActive {
+            recorderPrewarmActive = true
+            
+            DispatchQueue.main.async {
+                (self.manager.capturePreview as? CapturePreview)?.captureView.restartRendering()
+            }
+            
+            Task(priority: .userInitiated) {
+                await screenRecorder.start(lowProfile: false, display: self.scDisplay as? SCDisplay)
+            }
+        }
+        
+        recorderPrewarmWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.stopRecorderPrewarmIfNeeded()
+        }
+        recorderPrewarmWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + recorderPrewarmDuration, execute: workItem)
+    }
+    
+    private func stopRecorderPrewarmIfNeeded() {
+        guard recorderPrewarmActive else {
+            return
+        }
+        
+        recorderPrewarmActive = false
+        recorderPrewarmWorkItem = nil
+        
+        if aboveByPixels > 0 || !windowHidden {
+            return
+        }
+        
+        guard #available(macOS 12.3, *) else {
+            return
+        }
+        
+        guard let screenRecorder = self.manager.contentView?.store.screenRecorder as? ScreenRecorder else {
+            return
+        }
+        
+        Task(priority: .utility) {
+            await screenRecorder.start(lowProfile: true, display: self.scDisplay as? SCDisplay)
+        }
+        
+        DispatchQueue.main.async {
+            (self.manager.capturePreview as? CapturePreview)?.captureView.stopRendering()
+        }
+    }
+    
+    private func cancelRecorderPrewarm() {
+        recorderPrewarmWorkItem?.cancel()
+        recorderPrewarmWorkItem = nil
+        recorderPrewarmActive = false
+    }
     
     func checkWindowStatus(reclose: Bool = true) -> Bool{
         let status = Static.mainWindowClosed
@@ -2674,11 +2780,7 @@ public class Display : Equatable {
         if mouseScarf == NSPoint.zero{
             mouseScarf = accMouse;
         }
-        
-        if recordingPaused {
-            return
-        }
-        
+
         // Disable mouse checking if in fullOverscreenc
         if fullOverscreenMode {
             return
@@ -2689,6 +2791,11 @@ public class Display : Equatable {
         ///
         
         var curSide = checkSide(point: relMouse)
+        prewarmRecorderIfNeeded(side: curSide, mouseDelta: mouseDelta)
+        
+        if recordingPaused && curSide == -1 {
+            return
+        }
         
         // Prevent the closing of the side in case of going near to side
         if curSide >= 0 && curSide != self.side && self.aboveByPixels > 0 {
@@ -3246,6 +3353,7 @@ public class Display : Equatable {
             }
             
             if #available(macOS 12.3, *){
+                cancelRecorderPrewarm()
                 (self.manager.capturePreview as? CapturePreview)?.captureView.restartRendering()
                 self.setRecorderProfile(lowProfile: false)
             }
