@@ -1,0 +1,414 @@
+<style>
+  /* --- Layout --- */
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: #0b0b0b;
+    color: #e6e6e6;
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  }
+  #safariTabs {
+    width: 100%;
+    height: 100%;
+  }
+
+  /* --- Swiper container (support both modern .swiper and legacy .swiper-container) --- */
+  .swiper, .swiper-container {
+    width: 100%;
+    height: 100%;
+    perspective: 1200px;
+
+    /* Horizontal defaults */
+    --rx: 0;              /* rotate around X? (0/1) */
+    --ry: 1;              /* rotate around Y? (0/1) */
+    --dir-sign: -1;       /* sign so left/right tilt toward center */
+  }
+  .swiper.swiper-vertical,
+  .swiper-container.swiper-vertical {
+    --rx: 1;              /* for vertical, rotate around X */
+    --ry: 0;              /* no Y rotation */
+    --dir-sign: 1;        /* top/bottom tilt toward center */
+  }
+
+  /* --- Slides --- */
+  .swiper-slide {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    /* visual card styling */
+    border-radius: 16px;
+    overflow: hidden;
+    border-width: 2.5px;
+    border-style: solid;          /* border image is applied via JS gradient */
+    background: #101010;
+
+    /* 3D + transitions */
+    transform-style: preserve-3d;
+    backface-visibility: hidden;
+    transform-origin: center center;
+    will-change: transform, filter, opacity;
+    transition: transform 420ms cubic-bezier(.2,.7,.2,1), opacity 240ms, filter 240ms;
+
+    /* JS sets these: --p, --absP in [0..1] */
+    --p: 0;
+    --absP: 0;
+
+    /* mapping progress -> transform */
+    --max-rotate: 38deg;           /* max edge tilt */
+    --max-pop: 140px;              /* Z pop at center */
+    --min-scale: .82;              /* smallest scale at edges */
+
+    --rot:  calc(var(--p) * var(--dir-sign) * var(--max-rotate));
+    --pop:  calc((1 - var(--absP)) * var(--max-pop));
+    --sc:   calc(1 - var(--absP) * (1 - var(--min-scale)));
+    --fade: calc(1 - var(--absP) * .35);
+    --sat:  calc(1 - var(--absP) * .2);
+
+    transform: translateZ(var(--pop)) rotate3d(var(--rx), var(--ry), 0, var(--rot)) scale(var(--sc));
+    opacity: var(--fade);
+    filter: saturate(var(--sat));
+    z-index: calc(1000 - var(--absP) * 100);
+    cursor: pointer;
+  }
+
+  .swiper-slide img {
+    max-width: 100%;
+    max-height: 100%;
+    display: block;
+    user-select: none;
+    -webkit-user-drag: none;
+    pointer-events: none;          /* click passes through image to slide */
+  }
+
+  .swiper-pagination {
+    position: absolute;
+    inset-inline: 0;
+    bottom: 8px;
+  }
+
+  /* Motion safety */
+  @media (prefers-reduced-motion: reduce){
+    .swiper-slide{ transition: none; transform: none !important; }
+  }
+</style>
+
+<div id="safariTabs" class="safariSwiperContainer swiper">
+<div class="swiper-wrapper"></div>
+<div class="swiper-pagination"></div>
+</div>
+
+<script>
+// Safe default if host page doesn't define it
+const isHorizontal = (typeof window.isHorizontal !== "undefined") ? window.isHorizontal : true;
+
+// Global state
+window.vars = window.vars || {};
+vars.safari = vars.safari || { tabs: {}, slides: [], swiper: null, swiperIsHorizontal: isHorizontal };
+
+/* ---------------- Utilities ---------------- */
+
+function hashToInt(str){
+  // 32-bit FNV-1a-ish
+  let h = 2166136261;
+  for (let i = 0; i < String(str).length; i++){
+    h ^= String(str).charCodeAt(i);
+    h += (h<<1) + (h<<4) + (h<<7) + (h<<8) + (h<<24);
+  }
+  return Math.abs(h >>> 0);
+}
+
+function getUniqueColorFromId(id){
+  const n = (typeof id === 'number') ? id : hashToInt(id);
+  const hue = n % 360;
+  const s = 100, l = 80;
+
+  // HSL → RGB
+  const h = hue/360, S = s/100, L = l/100;
+  let r,g,b;
+  if (S === 0){ r = g = b = L; }
+  else{
+    const q = L < 0.5 ? L * (1 + S) : L + S - L * S;
+    const p = 2 * L - q;
+    const hue2rgb = (p,q,t)=>{
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+  const R = Math.round(r*255), G = Math.round(g*255), B = Math.round(b*255);
+  return `rgba(${R}, ${G}, ${B}, 1)`;
+}
+
+function addCircularGradientBackground(selector, color){
+  const el = document.querySelector(selector);
+  if (!el) return;
+
+  const m = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
+  if (!m) return;
+
+  const r = +m[1], g = +m[2], b = +m[3];
+  const center = `rgba(${r}, ${g}, ${b}, 1)`;
+  const edge   = `rgba(${r}, ${g}, ${b}, 0)`;
+
+  // soft glow center → transparent edges
+  el.style.background = `radial-gradient(circle at center, ${center} 0%, ${edge} 65%)`;
+  // gradient border
+  const darker = `rgba(${Math.max(0, r-40)}, ${Math.max(0, g-40)}, ${Math.max(0, b-40)}, 1)`;
+  el.style.borderImageSource = `linear-gradient(135deg, ${color}, ${darker})`;
+  el.style.borderImageSlice = '1';
+  el.style.boxSizing = 'border-box';
+}
+
+function base64ToBlob(base64, contentType){
+  const byteChars = atob(base64);
+  const byteNumbers = new Array(byteChars.length);
+  for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+  const byteArray = new Uint8Array(byteNumbers);
+  return new Blob([byteArray], { type: contentType || 'application/octet-stream' });
+}
+
+function blobToImg(blob){
+  const img = document.createElement('img');
+  const url = URL.createObjectURL(blob);
+  img.onload = () => { try { URL.revokeObjectURL(url); } catch(e){} };
+  img.src = url;
+  return img;
+}
+
+function destroySwiper(){
+  if (vars.safari.swiper){
+    try { vars.safari.swiper.destroy(true, true); } catch(e){}
+    vars.safari.swiper = null;
+  }
+}
+
+function instanceSwiper(){
+  if (vars.safari.swiper) return;
+
+  vars.safari.swiperIsHorizontal = isHorizontal;
+
+  // Ensure wrapper is clean (we re-append slides below)
+  document.querySelector("#safariTabs .swiper-wrapper").innerHTML = "";
+
+  const swiper = vars.safari.swiper = new Swiper(".safariSwiperContainer", {
+    // IMPORTANT: no visual effect here; we drive transforms via progress + CSS
+    direction: isHorizontal ? "horizontal" : "vertical",
+    centeredSlides: true,
+    slidesPerView: "auto",
+    spaceBetween: 24,
+    freeMode: true,
+    simulateTouch: false,
+    mousewheel: true,
+    keyboard: { enabled: true, onlyInViewport: false },
+    pagination: { el: ".swiper-pagination" },
+    watchSlidesProgress: true,
+    on: {
+      setTranslate(s){
+        for (const slide of s.slides){
+          const p = slide.progress;
+          const absP = Math.min(1, Math.abs(p));
+          slide.style.setProperty('--p', p);
+          slide.style.setProperty('--absP', absP);
+        }
+      },
+      setTransition(s, dur){
+        for (const slide of s.slides){
+          slide.style.transitionDuration = `${dur}ms`;
+        }
+      }
+    }
+  });
+
+  // Re-attach any previously created slide elements
+  for (const slide of vars.safari.slides){
+    swiper.appendSlide(slide);
+  }
+
+  // Click to focus/slide to index
+  setTimeout(()=>{
+    document.querySelectorAll('.swiper-slide').forEach((slide, index)=>{
+      slide.addEventListener('click', ()=>{
+        try { swiper.slideTo(index); } catch(e){}
+        // optional: inform host
+        const id = slide.getAttribute('data-tabid');
+        if (id) clickedOnSafariTab(id);
+      });
+    });
+  }, 50);
+}
+
+/* ---------------- Host API bindings (called by host) ---------------- */
+
+// Called by host when UI should (re)appear
+if (typeof setEvent === "function"){
+  setEvent('show', ()=>{
+    destroySwiper();
+    instanceSwiper();
+  });
+} else {
+  // Fallback: init on DOM ready
+  document.addEventListener('DOMContentLoaded', instanceSwiper);
+}
+
+// Accumulate base64 chunks if needed (kept for compatibility)
+vars.safari.blob = "";
+function appendBlob(chunk){
+    vars.safari.blob += chunk;
+}
+
+function addScreenshot(blob, tabInfo){
+    let tab = vars.safari.tabs[tabInfo.id]
+    
+    let createSlide = false
+    if(tab == null){
+        tab = {}
+        vars.safari.tabs[tabInfo.id] = tab
+        createSlide = true
+    }
+    
+    tab.info = tabInfo
+    
+    let screenshot = base64ToBlob(blob, 'image/jpeg')
+    console.log("received screenshot", screenshot, tabInfo)
+    
+    if(createSlide){
+        let img = blobToImg(screenshot)
+        
+        let borderColor = getUniqueColorFromId(tabInfo.id)
+        
+        let $slide = $('<div id="safariTab'+tabInfo.id+'" class="swiper-slide" style="border-color: borderColor;" onclick="clickedOnSafariTab('+tabInfo.id+')" oncontextmenu="return animateRemoveSafariTab('+tabInfo.id+')"></div>')
+        $slide.append(img)
+        
+        tab.$slide = $slide
+        
+        //$("#safariTabs").append($slide)
+        
+        instanceSwiper()
+        
+        console.log("appending slide", $slide[0])
+        
+        vars.safari.slides.push($slide[0])
+        vars.safari.swiper.appendSlide($slide[0])
+        
+        setTimeout(()=>{
+            addCircularGradientBackground('#safariTab'+tabInfo.id, borderColor)
+        }, 100)
+    } else {
+        console.log("accumulated blob:", blob)
+        const blobURL = URL.createObjectURL(screenshot);
+        console.log("update img with blobURL", blobURL, tab.$slide.find("img"))
+        tab.$slide.find("img").attr("src", blobURL)
+    }
+    
+    //$(".swiper-wrapper").append($slide)
+}
+
+function clickedOnSafariTab(id){
+    console.log("clicked on tab", id)
+    
+    let status = {type: "clickedOn", id}
+    
+    for(let i=0; i<3; i++){ // try, try and try
+        setTimeout(()=>{
+            sendStatus(JSON.stringify(status))
+        }, i*100)
+    }
+    
+    focusOnMe()
+}
+
+function confirmSafariTabs(ids){
+    if(isShowing)
+        return;
+    
+    let toRemove = []
+    for(let id in vars.safari.tabs){
+        if(ids.indexOf(id)<0)
+            toRemove.push(id)
+    }
+    
+    for(let id of toRemove){
+        removeSafariTab(id)
+    }
+    
+    if(toRemove.length > 0)
+        destroySwiper()
+}
+
+// Function to convert a Base64 string to a Blob
+function base64ToBlob(base64, contentType = '', sliceSize = 512) {
+    const byteCharacters = atob(base64);
+    const byteArrays = [];
+
+    for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
+        const slice = byteCharacters.slice(offset, offset + sliceSize);
+
+        const byteNumbers = new Array(slice.length);
+        for (let i = 0; i < slice.length; i++) {
+            byteNumbers[i] = slice.charCodeAt(i);
+        }
+
+        const byteArray = new Uint8Array(byteNumbers);
+        byteArrays.push(byteArray);
+    }
+
+    return new Blob(byteArrays, { type: contentType });
+}
+
+// Function to create and append an image from a Blob
+function blobToImg(blob) {
+   // Create a URL for the Blob
+   const blobURL = URL.createObjectURL(blob);
+   
+   // Create an image element
+   const img = document.createElement('img');
+   img.src = blobURL;
+   
+   return img
+}
+
+// Still alive
+if(false){
+    setInterval(()=>{
+        sendStatus(JSON.stringify({type: "flush"}))
+    }, 3000)
+}
+
+// Remove a tab (programmatic)
+function removeSafariTab(id){
+  const tab = vars.safari.tabs[id];
+  if (!tab || !tab.$slide) return;
+
+  const el = tab.$slide[0];
+  const idx = vars.safari.slides.indexOf(el);
+
+  if (idx > -1) vars.safari.slides.splice(idx, 1);
+  if (vars.safari.swiper){
+    const slideIndexInSwiper = Array.prototype.indexOf.call(vars.safari.swiper.slides, el);
+    if (slideIndexInSwiper > -1){
+      try { vars.safari.swiper.removeSlide(slideIndexInSwiper); } catch(e){}
+    }
+  }
+  tab.$slide.remove();
+  delete vars.safari.tabs[id];
+}
+
+// Remove with fade animation (context menu)
+function animateRemoveSafariTab(id){
+  const $div = $(`#safariTab${id}`);
+  $div.animate({ opacity: 0 }, 250, () => {
+    $div.remove();
+    removeSafariTab(id);
+  });
+  return false; // prevent context menu
+}
+
+</script>

@@ -6,6 +6,9 @@
 //
 
 import SwiftUI
+import SafariServices
+
+private let makeItHomeWebExtensionBundleIdentifier = "ink.geckos.MakeItHome.WebExtension"
 
 struct MenuBarView: View {
     @State private var currentSensivity : Double
@@ -198,6 +201,10 @@ struct MenuBarView: View {
                         Text("\(Image(systemName: "questionmark.circle.fill")) Help").frame(width: 150).padding(2)//.padding(.horizontal ,50)
                     }).background(Color(red: 0.15, green: 0.75, blue: 0.3)).cornerRadius(5).buttonStyle(.bordered)
                     
+                    Button(action: openSafariWebExtensionSettings, label: {
+                        Text("\(Image(systemName: "safari.fill")) Safari Extension").frame(width: 150).padding(2)
+                    }).background(Color(red: 0.15, green: 0.48, blue: 0.95)).cornerRadius(5).buttonStyle(.bordered)
+                    
                     Button(action: {
                         let appId = 6444596296
                         if let url = URL(string: "https://apps.apple.com/app/id\(appId)?action=write-review") {
@@ -353,6 +360,14 @@ struct MenuBarView: View {
     
     func closeApp(){
         NSApplication.shared.terminate(self)
+    }
+    
+    func openSafariWebExtensionSettings() {
+        SFSafariApplication.showPreferencesForExtension(withIdentifier: makeItHomeWebExtensionBundleIdentifier) { error in
+            if let error {
+                print("Unable to open Safari extension preferences:", error.localizedDescription)
+            }
+        }
     }
     
     let workingDisplay : Display

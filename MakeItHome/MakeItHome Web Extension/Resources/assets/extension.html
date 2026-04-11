@@ -1,0 +1,510 @@
+<style>
+#safariTabs {
+    width: 100%;
+    height: 100%;
+}
+
+#safariTabs img {
+    max-height: 100%;
+    max-width: 100%;
+    
+    margin-top: 20px;
+    
+    cursor: pointer;
+}
+
+.swiper-slide {
+    pointer-events: auto;
+}
+
+.swiper-wrapper {
+    pointer-events: none; /* Disable pointer events on the wrapper if necessary */
+}
+
+    /*
+     Effect
+     */
+    
+    /* Tunables */
+    :root{
+      --max-rotate: 38deg;   /* max tilt at edges */
+      --max-pop: 140px;      /* Z “pop” for center */
+      --min-scale: .82;      /* smallest scale at edges */
+    }
+
+    /* 3D context + orientation-aware axes */
+    .swiper{
+      perspective: 1200px;
+
+      /* HORIZONTAL defaults */
+      --rx: 0;               /* rotate around X? (0=off/1=on) */
+      --ry: 1;               /* rotate around Y? (0=off/1=on) */
+      --dir-sign: -1;        /* angle sign so left/right tilt toward center */
+    }
+
+    /* When Swiper is vertical, it adds .swiper-vertical */
+    .swiper.swiper-vertical{
+      --rx: 1;               /* rotate around X for vertical */
+      --ry: 0;               /* no Y rotation */
+      --dir-sign: 1;         /* top/bottom tilt toward center */
+    }
+
+    .swiper-slide{
+      transform-style: preserve-3d;
+      backface-visibility: hidden;
+      transform-origin: center center;
+      will-change: transform, filter, opacity;
+      transition: transform 420ms cubic-bezier(.2,.7,.2,1), opacity 240ms, filter 240ms;
+
+      /* set by JS */
+      --p: 0;                /* slide.progress (…,-1←0→+1,…) */
+      --absP: 0;             /* clamp01(abs(--p)) */
+
+      /* map progress → visuals */
+      --rot:  calc(var(--p) * var(--dir-sign) * var(--max-rotate));
+      --pop:  calc((1 - var(--absP)) * var(--max-pop));
+      --sc:   calc(1 - var(--absP) * (1 - var(--min-scale)));
+      --fade: calc(1 - var(--absP) * .35);
+      --sat:  calc(1 - var(--absP) * .2);
+
+      /* rotate around X for vertical, Y for horizontal via rotate3d(rx, ry, 0, angle) */
+      transform: translateZ(var(--pop)) rotate3d(var(--rx), var(--ry), 0, var(--rot)) scale(var(--sc));
+      opacity: var(--fade);
+      filter: saturate(var(--sat));
+      z-index: calc(1000 - var(--absP) * 100);
+    }
+
+    /* Optional: motion safety */
+    @media (prefers-reduced-motion: reduce){
+      .swiper-slide{ transition: none; transform: none; }
+    }
+
+    
+</style>
+
+<div id="safariTabs" class="safariSwiperContainer swiper-container">
+    <div class="swiper-wrapper"></div>
+    <div class="swiper-pagination"></div>
+</div>
+
+<script>
+    vars.safari = vars.safari || {}
+    vars.safari.slides = []
+    vars.safari.tabs = {}
+
+    function instanceSwiper(){
+        if(vars.safari.swiper) return;
+        console.log("instance swiper")
+        
+        vars.safari.swiperIsHorizontal = isHorizontal
+        
+        $("#safariTabs .swiper-wrapper").html('')
+        
+        let swiper = vars.safari.swiper = new Swiper(".safariSwiperContainer", {
+            effect: "coverflow",
+            direction: isHorizontal ? "horizontal" : "vertical",
+            grabCursor: true,
+            freeMode: true,
+            centeredSlides: true,
+            slidesPerView: 5,
+            simulateTouch: true,
+            mousewheel: true,
+            preventClicks: false,
+            coverflowEffect: {
+                rotate: 5,
+                stretch: 0,
+                depth: 100,
+                modifier: 1,
+                slideShadows: false,
+            },
+            keyboard: {
+               enabled: true,
+               onlyInViewport: false,
+             },
+            pagination: {
+            el: ".swiper-pagination",
+            },
+        });
+        
+        for(let slide of vars.safari.slides){
+            console.log("appendSlide", slide)
+            vars.safari.swiper.appendSlide(slide)
+        }
+        
+        /*setTimeout(()=>{
+            
+            document.querySelectorAll('.swiper-slide').forEach((slide, index) => {
+                slide.addEventListener('click', () => {
+                    swiper.slideTo(index);
+                });
+            });
+
+        }, 50)*/
+        
+        // Runs after jQuery is loaded
+        // Delegate from a stable ancestor (the Swiper container). Fall back to document if needed.
+        const $root = $('.swiper').length ? $('.swiper') : $(document);
+
+        $root.on('click', '.swiper-slide', function (e) {
+            console.log("Clicked on .swiper-slide")
+          // Read the custom attribute exactly as requested: "tabId"
+          // (also tolerate lowercase and data-* variants just in case)
+          let tabId =
+            $(this).attr('tabId') ??
+            $(this).attr('tabid') ??
+            $(this).data('tabId') ??
+            $(this).data('tab-id');
+
+          if (tabId == null || tabId === '') {
+            console.warn('Clicked .swiper-slide has no tabId attribute:', this);
+            return;
+          }
+
+          // If you expect it to be numeric, normalize here:
+          // const idNum = Number(tabId); if (!Number.isNaN(idNum)) { ... }
+
+          console.log('clicked tabId:', tabId);
+
+          // 👉 do whatever you need with tabId here
+          clickedOnSafariTab(tabId)
+        });
+
+    }
+
+    function destroySwiper(){
+        if(vars.safari.swiper){
+            console.log("destroyng swiper")
+            vars.safari.swiper.destroy(true, true);
+            vars.safari.swiper = null
+        }
+    }
+
+    function resetSwiper(){
+        destroySwiper()
+        instanceSwiper()
+    }
+    
+    setEvent('show', ()=>{
+        //if(vars.safari.swiperIsHorizontal == isHorizontal) return;
+        console.log("showing safari extension", isHorizontal)
+        //resetSwiper(); // moved on extension side
+    })
+
+    vars.safari.blob = ""
+    function appendBlob(blob){
+        vars.safari.blob += blob
+    }
+    
+    function getUniqueColorFromId(id) {
+      // Utilizziamo una semplice funzione di hash per generare un valore da 0 a 359 (per hue)
+      const hue = Math.abs(id * 9973 % 360);
+      
+      // Impostiamo valori fissi per saturazione e luminosità per colori vivaci ma leggibili
+      const saturation = 100;  // percentuale
+      const lightness = 80;   // percentuale
+      
+      // Convertiamo da HSL a RGB
+      const h = hue / 360;
+      const s = saturation / 100;
+      const l = lightness / 100;
+      
+      let r, g, b;
+      
+      if (s === 0) {
+        r = g = b = l; // è un grigio
+      } else {
+        const hue2rgb = (p, q, t) => {
+          if (t < 0) t += 1;
+          if (t > 1) t -= 1;
+          if (t < 1/6) return p + (q - p) * 6 * t;
+          if (t < 1/2) return q;
+          if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+          return p;
+        };
+        
+        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+        const p = 2 * l - q;
+        
+        r = hue2rgb(p, q, h + 1/3);
+        g = hue2rgb(p, q, h);
+        b = hue2rgb(p, q, h - 1/3);
+      }
+      
+      // Convertiamo i valori RGB da 0-1 a 0-255
+      const red = Math.round(r * 255);
+      const green = Math.round(g * 255);
+      const blue = Math.round(b * 255);
+      
+      // Impostiamo un'opacità fissa di 1 (completamente opaco)
+      const alpha = 1;
+      
+      // Restituiamo la stringa nel formato rgba
+      return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+    }
+
+    function addGradientBorder(selector, color) {
+      // Trova l'elemento usando il selettore
+      const element = document.querySelector(selector);
+      
+      if (!element) {
+        console.error(`Elemento con selettore "${selector}" non trovato`);
+        return;
+      }
+      
+      // Estrai i valori RGB dal colore (assumendo formato rgba(r, g, b, a))
+      const rgbaMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
+      
+      if (!rgbaMatch) {
+        console.error(`Formato colore non valido: ${color}`);
+        return;
+      }
+      
+      const r = parseInt(rgbaMatch[1], 10);
+      const g = parseInt(rgbaMatch[2], 10);
+      const b = parseInt(rgbaMatch[3], 10);
+      
+      // Crea una versione più scura del colore per il gradiente (riduce la luminosità del 20%)
+      const darkerR = Math.max(0, Math.floor(r * 0.8));
+      const darkerG = Math.max(0, Math.floor(g * 0.8));
+      const darkerB = Math.max(0, Math.floor(b * 0.8));
+      const darkerColor = `rgba(${darkerR}, ${darkerG}, ${darkerB}, 1)`;
+      
+      // Applica il bordo con gradiente
+      element.style.borderWidth = '2.5px';
+      element.style.borderStyle = 'solid';
+      element.style.borderImageSource = `linear-gradient(135deg, ${color}, ${darkerColor})`;
+      element.style.borderImageSlice = '1';
+      
+      // Assicurati che l'elemento mantenga le dimensioni originali
+      const originalBox = window.getComputedStyle(element).boxSizing;
+      if (originalBox !== 'border-box') {
+        element.style.boxSizing = 'border-box';
+      }
+    }
+    
+    function addCircularGradientBackground(selector, color) {
+      // Trova l'elemento usando il selettore
+      const element = document.querySelector(selector);
+      
+      if (!element) {
+        console.error(`Elemento con selettore "${selector}" non trovato`);
+        return;
+      }
+      
+      // Estrai i valori RGB dal colore
+      const rgbaMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
+      
+      if (!rgbaMatch) {
+        console.error(`Formato colore non valido: ${color}`);
+        return;
+      }
+      
+      const r = parseInt(rgbaMatch[1], 10);
+      const g = parseInt(rgbaMatch[2], 10);
+      const b = parseInt(rgbaMatch[3], 10);
+      
+      // Crea il colore con opacità piena al centro
+      const centerColor = `rgba(${r}, ${g}, ${b}, 1.0)`;
+      // Crea la versione trasparente per i bordi
+      const transparentColor = `rgba(${r}, ${g}, ${b}, 0)`;
+      
+      // Applica un semplice gradiente radiale che va da opaco al centro a trasparente ai bordi
+      element.style.background = `radial-gradient(circle at center, ${centerColor} 0%, ${transparentColor} 65%)`;
+      
+      // In Safari, a volte è utile forzare la modalità di rendering
+      element.style.webkitBackgroundClip = 'padding-box';
+      element.style.backgroundClip = 'padding-box';
+    }
+    
+    function addPulsatingGradientBackground(selector, color) {
+      // Trova l'elemento usando il selettore
+      const element = document.querySelector(selector);
+      
+      if (!element) {
+        console.error(`Elemento con selettore "${selector}" non trovato`);
+        return;
+      }
+      
+      // Estrai i valori RGB dal colore
+      const rgbaMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
+      
+      if (!rgbaMatch) {
+        console.error(`Formato colore non valido: ${color}`);
+        return;
+      }
+      
+      const r = parseInt(rgbaMatch[1], 10);
+      const g = parseInt(rgbaMatch[2], 10);
+      const b = parseInt(rgbaMatch[3], 10);
+      
+      // Crea il colore con opacità piena al centro
+      const centerColor = `rgba(${r}, ${g}, ${b}, 0.8)`;
+      // Crea la versione trasparente per i bordi
+      const transparentColor = `rgba(${r}, ${g}, ${b}, 0)`;
+      
+      // Crea una keyframe animation per far pulsare il gradiente
+      const styleSheet = document.createElement('style');
+      const uniqueAnimationName = `pulseGradient_${Math.floor(Math.random() * 10000)}`;
+      
+      styleSheet.textContent = `
+        @keyframes ${uniqueAnimationName} {
+          0% { background: radial-gradient(circle at center, ${centerColor} 0%, ${transparentColor} 80%); }
+          50% { background: radial-gradient(circle at center, ${centerColor} 0%, ${transparentColor} 50%); }
+          100% { background: radial-gradient(circle at center, ${centerColor} 0%, ${transparentColor} 70%); }
+        }
+      `;
+      document.head.appendChild(styleSheet);
+      
+      // Applica l'animazione all'elemento
+      element.style.animation = `${uniqueAnimationName} 8s ease-in-out infinite alternate`;
+      
+      // Imposta un valore iniziale
+      element.style.background = `radial-gradient(circle at center, ${centerColor} 0%, ${transparentColor} 70%)`;
+      
+      // Assicurati che le proprietà di background siano ben supportate
+      element.style.webkitBackgroundClip = 'padding-box';
+      element.style.backgroundClip = 'padding-box';
+    }
+    
+    function addScreenshot(blob, tabInfo){
+        let tab = vars.safari.tabs[tabInfo.id]
+        
+        let createSlide = false
+        if(tab == null){
+            tab = {}
+            vars.safari.tabs[tabInfo.id] = tab
+            createSlide = true
+        }
+        
+        tab.info = tabInfo
+        
+        let screenshot = base64ToBlob(blob, 'image/jpeg')
+        console.log("received screenshot", screenshot, tabInfo)
+        
+        if(createSlide){
+            let img = blobToImg(screenshot)
+            
+            let borderColor = getUniqueColorFromId(tabInfo.id)
+            
+            let $slide = $('<div id="safariTab'+tabInfo.id+'" class="swiper-slide" style="border-color: borderColor;" tabId="'+tabInfo.id+'" oncontextmenu="return animateRemoveSafariTab('+tabInfo.id+')"></div>')
+            $slide.append(img)
+            
+            tab.$slide = $slide
+            
+            //$("#safariTabs").append($slide)
+            
+            instanceSwiper()
+            
+            console.log("appending slide", $slide[0])
+            
+            vars.safari.slides.push($slide[0])
+            vars.safari.swiper.appendSlide($slide[0])
+            
+            setTimeout(()=>{
+                addCircularGradientBackground('#safariTab'+tabInfo.id, borderColor)
+            }, 100)
+        } else {
+            console.log("accumulated blob:", blob)
+            const blobURL = URL.createObjectURL(screenshot);
+            console.log("update img with blobURL", blobURL, tab.$slide.find("img"))
+            tab.$slide.find("img").attr("src", blobURL)
+        }
+        
+        //$(".swiper-wrapper").append($slide)
+    }
+
+    function clickedOnSafariTab(id){
+        console.log("clicked on tab", id)
+        
+        let status = {type: "clickedOn", id}
+        
+        for(let i=0; i<3; i++){ // try, try and try
+            setTimeout(()=>{
+                focusOnMe()
+                sendStatus(JSON.stringify(status))
+            }, i*100)
+        }
+                
+        //closeOverscreen()
+    }
+
+    function removeSafariTab(id){
+        let tab = vars.safari.tabs[id]
+        if(tab){
+            let $slide = tab.$slide
+            let islide = vars.safari.slides.indexOf($slide[0])
+            console.log("removing slide", islide)
+            vars.safari.slides.splice(islide, 1)
+            delete vars.safari.tabs[id]
+        }
+    }
+
+    function animateRemoveSafariTab(id){
+        let $div = $("#safariTab"+id)
+        $div.animate({
+            opacity: 0
+        }, 250, ()=>{
+            $div.remove()
+            removeSafariTab(id)
+        })
+        
+        return false
+    }
+
+    function confirmSafariTabs(ids){
+        if(isShowing)
+            return;
+        
+        let toRemove = []
+        for(let id in vars.safari.tabs){
+            if(ids.indexOf(id)<0)
+                toRemove.push(id)
+        }
+        
+        for(let id of toRemove){
+            removeSafariTab(id)
+        }
+        
+        if(toRemove.length > 0)
+            destroySwiper()
+    }
+
+    // Function to convert a Base64 string to a Blob
+    function base64ToBlob(base64, contentType = '', sliceSize = 512) {
+        const byteCharacters = atob(base64);
+        const byteArrays = [];
+
+        for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
+            const slice = byteCharacters.slice(offset, offset + sliceSize);
+
+            const byteNumbers = new Array(slice.length);
+            for (let i = 0; i < slice.length; i++) {
+                byteNumbers[i] = slice.charCodeAt(i);
+            }
+
+            const byteArray = new Uint8Array(byteNumbers);
+            byteArrays.push(byteArray);
+        }
+
+        return new Blob(byteArrays, { type: contentType });
+    }
+
+    // Function to create and append an image from a Blob
+   function blobToImg(blob) {
+       // Create a URL for the Blob
+       const blobURL = URL.createObjectURL(blob);
+       
+       // Create an image element
+       const img = document.createElement('img');
+       img.src = blobURL;
+       
+       return img
+   }
+
+    // Still alive
+    if(false){
+        setInterval(()=>{
+            sendStatus(JSON.stringify({type: "flush"}))
+        }, 3000)
+    }
+</script>
