@@ -63,7 +63,7 @@
 		8BB0E3A5293DC881006DA326 /* ServiceManagement.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8B557446292AA716009D645D /* ServiceManagement.framework */; };
 		8BB0E3A6293DC881006DA326 /* Collections in Frameworks */ = {isa = PBXBuildFile; productRef = 8BB0E383293DC881006DA326 /* Collections */; };
 		8BB0E3A7293DC881006DA326 /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8B5785DE2905701600C626C3 /* Accelerate.framework */; };
-		8BB0E3A9293DC881006DA326 /* info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 8B557444292AA647009D645D /* info.plist */; settings = {ASSET_TAGS = (New, ); }; };
+		8BB0E3A9293DC881006DA326 /* Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 8B557444292AA647009D645D /* Info.plist */; settings = {ASSET_TAGS = (New, ); }; };
 		8BB0E3AB293DC881006DA326 /* Synth.aif in Resources */ = {isa = PBXBuildFile; fileRef = 8B5785DA290511BF00C626C3 /* Synth.aif */; settings = {ASSET_TAGS = (New, ); }; };
 		8BB0E3AC293DC881006DA326 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8B74406628E6A89B00E7AD36 /* Preview Assets.xcassets */; };
 		8BB0E3AD293DC881006DA326 /* wallpaper.jpeg in Resources */ = {isa = PBXBuildFile; fileRef = 8B4AC9E0292EACAC00DE44E5 /* wallpaper.jpeg */; settings = {ASSET_TAGS = (New, ); }; };
@@ -102,7 +102,7 @@
 		8B4B7CF02915B7B0009B55FE /* SwifterWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwifterWindow.swift; sourceTree = "<group>"; };
 		8B4B7D1C29180A27009B55FE /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		8B4B7D2029181373009B55FE /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions.swift; sourceTree = "<group>"; };
-		8B557444292AA647009D645D /* info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = info.plist; sourceTree = "<group>"; };
+		8B557444292AA647009D645D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		8B557446292AA716009D645D /* ServiceManagement.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ServiceManagement.framework; path = System/Library/Frameworks/ServiceManagement.framework; sourceTree = SDKROOT; };
 		8B5785D52904A6D000C626C3 /* ScreenRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenRecorder.swift; sourceTree = "<group>"; };
 		8B5785D729050FE200C626C3 /* ConfigurationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurationView.swift; sourceTree = "<group>"; };
@@ -281,7 +281,7 @@
 				8B81DDBE291B1D0A00B3E3CC /* Settings.swift */,
 				8B81DDC02927FF5300B3E3CC /* GeneralFuncs.swift */,
 				8BB0E381293DC2D1006DA326 /* Bridge-Header.h */,
-				8B557444292AA647009D645D /* info.plist */,
+				8B557444292AA647009D645D /* Info.plist */,
 			);
 			path = MakeItHome;
 			sourceTree = "<group>";
@@ -469,7 +469,7 @@
 				8B11BBA22C07742C00E46355 /* AuroraBorealis.png in Resources */,
 				8B3D40592AD70F94003DFAC7 /* mrWhite.html in Resources */,
 				8BAFBF672AE4AB2A000663AE /* release.mov in Resources */,
-				8BB0E3A9293DC881006DA326 /* info.plist in Resources */,
+				8BB0E3A9293DC881006DA326 /* Info.plist in Resources */,
 				8BB0E3AB293DC881006DA326 /* Synth.aif in Resources */,
 				8BB0E3AC293DC881006DA326 /* Preview Assets.xcassets in Resources */,
 				8BAFBF5F2AE2F40F000663AE /* assets in Resources */,
