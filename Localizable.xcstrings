@@ -987,6 +987,9 @@
         }
       }
     },
+    "%@ Safari Extension" : {
+
+    },
     "%@ Sensivity:" : {
       "localizations" : {
         "ar" : {
