@@ -631,6 +631,9 @@
         }
       }
     },
+    "%@ Install extension" : {
+
+    },
     "%@ Max apps: %lld" : {
       "localizations" : {
         "ar" : {
