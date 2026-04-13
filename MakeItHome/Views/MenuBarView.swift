@@ -29,6 +29,7 @@ struct MenuBarView: View {
     @State private var thisDisplayEnableRight : Bool
     @State private var thisDisplayEnableBottom : Bool
     @State private var thisDisplayEnableTop : Bool
+    @State private var showInstallWebExtension: Bool
     
     var body: some View {
         VStack{
@@ -204,6 +205,12 @@ struct MenuBarView: View {
                     Button(action: openSafariWebExtensionSettings, label: {
                         Text("\(Image(systemName: "safari.fill")) Safari Extension").frame(width: 150).padding(2)
                     }).background(Color(red: 0.15, green: 0.48, blue: 0.95)).cornerRadius(5).buttonStyle(.bordered)
+
+                    if showInstallWebExtension {
+                        Button(action: installSafariWebExtension, label: {
+                            Text("\(Image(systemName: "arrow.down.app.fill")) Install extension").frame(width: 150).padding(2)
+                        }).background(Color(red: 0.25, green: 0.4, blue: 0.95)).cornerRadius(5).buttonStyle(.bordered)
+                    }
                     
                     Button(action: {
                         let appId = 6444596296
@@ -356,6 +363,9 @@ struct MenuBarView: View {
         }
         .frame(width: Static.MenuBarPopupWidth, alignment: .center)
         .background(MenuBackground())
+        .onAppear {
+            refreshInstallWebExtensionVisibility()
+        }
     }
     
     func closeApp(){
@@ -367,6 +377,19 @@ struct MenuBarView: View {
             if let error {
                 print("Unable to open Safari extension preferences:", error.localizedDescription)
             }
+        }
+    }
+
+    func installSafariWebExtension() {
+        openSafariWebExtensionSettings()
+        delay(ms: 600) {
+            refreshInstallWebExtensionVisibility()
+        }
+    }
+
+    func refreshInstallWebExtensionVisibility() {
+        Static.refreshWebExtensionInstallButtonVisibility { shouldShow in
+            showInstallWebExtension = shouldShow
         }
     }
     
@@ -394,6 +417,7 @@ struct MenuBarView: View {
         thisDisplayEnableBottom = Static.User.object(forKey: "DisplayEnableBottom_\(workingDisplay.screen.localizedName)") as? Bool ?? true
         
         thisDisplayEnableTop = Static.User.object(forKey: "DisplayEnableTop_\(workingDisplay.screen.localizedName)") as? Bool ?? true
+        showInstallWebExtension = Static.showInstallWebExtension
         
         // Set default settings
         workingDisplay.disable = thisDisplayDisable

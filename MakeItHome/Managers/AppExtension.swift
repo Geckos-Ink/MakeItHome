@@ -7,9 +7,17 @@
 //
 
 import Foundation
+import AppKit
 
 class AppExtensionManager {
     var apps : [String: AppExtension] = [:]
+    private let trustPrefix = "TrustedAppExtension_"
+    private let trustNamePrefix = "TrustedAppExtensionName_"
+    private let trustSecretPrefix = "TrustedAppExtensionSecret_"
+    private let tokenClockSkewSeconds: Int64 = 3
+    private let pollWhenShowingMs = 700
+    private let pollWhenHiddenMs = 2800
+    private let pollWhenMessagePendingMs = 160
     
     func closedApp(bundleId: String){
         guard let app = apps[bundleId] else { return }
@@ -26,6 +34,9 @@ class AppExtensionManager {
             reply.description = "invalidRequest"
             return reply
         }
+        let extensionName = query["extensionName"]
+        let providedSecret = query["secret"]
+        let providedToken = query["token"]
         
         let path = url.components(separatedBy: "?").first ?? url
         let req = path.replacingOccurrences(of: "/appExtension", with: "")
@@ -34,18 +45,90 @@ class AppExtensionManager {
         var app = apps[bundleId]
         
         if req.hasPrefix("/connect"){
-            if app == nil {
+            if let app = app {
+                if hasValidToken(secret: app.secret, token: providedToken) {
+                    reply.secret = app.secret
+                    reply.description = "appAlreadyConnected" // fantastic. A typo in release.
+                    reply.status = "ok"
+
+                    saveTrustedExtension(bundleId: bundleId, extensionName: extensionName, secret: app.secret)
+                    markInstallCompletedIfNeeded(bundleId: bundleId)
+
+                    app.syncIfNeeded(force: true)
+                    app.scheduleHealthCheckIfNeeded(force: true)
+                    return reply
+                }
+
+                let isMissingToken = providedToken?.isEmpty ?? true
+                let isAllowed = requestConnectionApproval(
+                    bundleId: bundleId,
+                    extensionName: extensionName,
+                    isReplacingConnection: true,
+                    reason: isMissingToken ? "Missing security token." : "Invalid security token."
+                )
+
+                if !isAllowed {
+                    reply.status = "error"
+                    reply.description = "connectionDenied"
+                    return reply
+                }
+
+                let newApp = AppExtension(bundleId: bundleId)
+                apps[bundleId] = newApp
+                saveTrustedExtension(bundleId: bundleId, extensionName: extensionName, secret: newApp.secret)
+                markInstallCompletedIfNeeded(bundleId: bundleId)
+
+                reply.secret = newApp.secret
+                reply.description = "appConnected"
+                reply.status = "ok"
+
+                newApp.syncIfNeeded(force: true)
+                newApp.scheduleHealthCheckIfNeeded(force: true)
+                return reply
+            } else {
+                let trustedSecret = getTrustedSecret(bundleId: bundleId)
+                let isTrusted = isTrustedExtension(bundleId: bundleId)
+                let tokenIsValidForTrustedSecret: Bool
+
+                if let trustedSecret = trustedSecret,
+                   let providedSecret = providedSecret,
+                   providedSecret == trustedSecret {
+                    tokenIsValidForTrustedSecret = hasValidToken(secret: trustedSecret, token: providedToken)
+                } else {
+                    tokenIsValidForTrustedSecret = false
+                }
+
+                if !isTrusted || !tokenIsValidForTrustedSecret {
+                    let reason: String
+                    if !isTrusted {
+                        reason = "First connection request."
+                    } else if providedToken?.isEmpty ?? true {
+                        reason = "Missing security token."
+                    } else {
+                        reason = "Invalid security token."
+                    }
+
+                    let isAllowed = requestConnectionApproval(
+                        bundleId: bundleId,
+                        extensionName: extensionName,
+                        isReplacingConnection: isTrusted,
+                        reason: reason
+                    )
+
+                    if !isAllowed {
+                        reply.status = "error"
+                        reply.description = "connectionDenied"
+                        return reply
+                    }
+                }
+
                 app = AppExtension(bundleId: bundleId)
                 apps[bundleId] = app
-                
+                saveTrustedExtension(bundleId: bundleId, extensionName: extensionName, secret: app?.secret)
+                markInstallCompletedIfNeeded(bundleId: bundleId)
+
                 reply.secret = app?.secret
                 reply.description = "appConnected"
-            }
-            else {
-                apps[bundleId] = app
-                reply.secret = app?.secret
-                
-                reply.description = "appAlreadyConnected" // fantastic. A typo in release.
             }
             
             app?.syncIfNeeded(force: true)
@@ -60,11 +143,23 @@ class AppExtensionManager {
                 return reply
             }
             
-            let secret = query["secret"]
+            let secret = providedSecret
             
             if secret == nil || secret != app?.secret {
                 reply.status = "error"
                 reply.description = "invalidSecret"
+                return reply
+            }
+
+            if providedToken?.isEmpty ?? true {
+                reply.status = "error"
+                reply.description = "missingToken"
+                return reply
+            }
+
+            if !hasValidToken(secret: app?.secret ?? "", token: providedToken) {
+                reply.status = "error"
+                reply.description = "invalidToken"
                 return reply
             }
         }
@@ -85,6 +180,7 @@ class AppExtensionManager {
             }
             
             let content = body!["content"] as? String
+            let forceReload = body!["forceReload"] as? Bool ?? false
             
             if content == nil {
                 reply.status = "error"
@@ -92,7 +188,7 @@ class AppExtensionManager {
                 return reply
             }
              
-            app?.setHTMLContent(content: content!)
+            app?.setHTMLContent(content: content!, forceReload: forceReload)
             
             reply.status = "ok"
             return reply
@@ -130,15 +226,19 @@ class AppExtensionManager {
         
         if req.hasPrefix("/checkStatus"){
             let isShowing = app!.imShowing()
+            let statusMessages = app!.consumeStatusMessages()
             
             reply.appExtensionIsShowing = isShowing
-            reply.statusMessages = app!.consumeStatusMessages()
+            reply.statusMessages = statusMessages
             
             reply.appLinked = app?.app != nil
+            reply.nextPollInMs = nextPollIntervalMs(isShowing: isShowing, hasMessages: statusMessages?.isEmpty == false)
             
             reply.status = "ok"
             
-            app!.syncIfNeeded()
+            if isShowing || (statusMessages?.isEmpty == false) {
+                app!.syncIfNeeded()
+            }
             if isShowing {
                 app!.scheduleHealthCheckIfNeeded()
             }
@@ -155,6 +255,119 @@ class AppExtensionManager {
         reply.status = "nothing"
         return reply
     }
+
+    private func trustKey(bundleId: String) -> String {
+        return trustPrefix + bundleId
+    }
+
+    private func trustNameKey(bundleId: String) -> String {
+        return trustNamePrefix + bundleId
+    }
+
+    private func trustSecretKey(bundleId: String) -> String {
+        return trustSecretPrefix + bundleId
+    }
+
+    private func isTrustedExtension(bundleId: String) -> Bool {
+        return UserDefaults.standard.bool(forKey: trustKey(bundleId: bundleId))
+    }
+
+    private func getTrustedSecret(bundleId: String) -> String? {
+        return UserDefaults.standard.object(forKey: trustSecretKey(bundleId: bundleId)) as? String
+    }
+
+    private func saveTrustedExtension(bundleId: String, extensionName: String?, secret: String?) {
+        let user = UserDefaults.standard
+        user.set(true, forKey: trustKey(bundleId: bundleId))
+        if let extensionName = extensionName, !extensionName.isEmpty {
+            user.set(extensionName, forKey: trustNameKey(bundleId: bundleId))
+        }
+
+        if let secret = secret {
+            user.set(secret, forKey: trustSecretKey(bundleId: bundleId))
+        }
+    }
+
+    private func extensionDisplayName(bundleId: String, extensionName: String?) -> String {
+        if let extensionName = extensionName?.trimmingCharacters(in: .whitespacesAndNewlines), !extensionName.isEmpty {
+            return extensionName
+        }
+
+        if let savedName = UserDefaults.standard.object(forKey: trustNameKey(bundleId: bundleId)) as? String, !savedName.isEmpty {
+            return savedName
+        }
+
+        return bundleId
+    }
+
+    private func tokenHash(secret: String, second: Int64) -> String {
+        let raw = "\(secret):\(second)"
+        guard let data = raw.data(using: .utf8) else {
+            return ""
+        }
+
+        return data.sha256Hexa
+    }
+
+    private func hasValidToken(secret: String, token: String?) -> Bool {
+        guard let token = token, !token.isEmpty else {
+            return false
+        }
+
+        let now = Int64(Date().timeIntervalSince1970)
+        for offset in -tokenClockSkewSeconds...tokenClockSkewSeconds {
+            let candidateSecond = now + offset
+            if tokenHash(secret: secret, second: candidateSecond) == token {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    private func nextPollIntervalMs(isShowing: Bool, hasMessages: Bool) -> Int {
+        if hasMessages {
+            return pollWhenMessagePendingMs
+        }
+
+        return isShowing ? pollWhenShowingMs : pollWhenHiddenMs
+    }
+
+    private func requestConnectionApproval(bundleId: String, extensionName: String?, isReplacingConnection: Bool, reason: String) -> Bool {
+        let action = {
+            let extensionDisplayName = self.extensionDisplayName(bundleId: bundleId, extensionName: extensionName)
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = "Allow \(extensionDisplayName) extension?"
+
+            var informativeText = "\(extensionDisplayName) (\(bundleId)) requested a connection to MakeItHome.\n\nReason: \(reason)"
+            if isReplacingConnection {
+                informativeText += "\n\nThis will replace the previously confirmed connection."
+            }
+
+            informativeText += "\n\nAllow only if you trust this extension."
+            alert.informativeText = informativeText
+            alert.addButton(withTitle: "Allow")
+            alert.addButton(withTitle: "Deny")
+
+            NSApp.activate(ignoringOtherApps: true)
+            return alert.runModal() == .alertFirstButtonReturn
+        }
+
+        if Thread.isMainThread {
+            return action()
+        }
+
+        return DispatchQueue.main.sync {
+            action()
+        }
+    }
+
+    private func markInstallCompletedIfNeeded(bundleId: String) {
+        if bundleId == "com.apple.Safari" {
+            Static.markWebExtensionInstalled()
+        }
+    }
 }
 
 struct AppExtensionMsg : Codable {
@@ -167,6 +380,7 @@ struct AppExtensionMsg : Codable {
     var statusMessages : [String]?
     
     var appLinked : Bool?
+    var nextPollInMs : Int?
 }
 
 class AppExtension {
@@ -184,7 +398,7 @@ class AppExtension {
     private var lastHealthCheckAt: TimeInterval = 0
     private var lastWebViewIdentity: ObjectIdentifier?
     private let syncThrottle: TimeInterval = 0.25
-    private let healthCheckInterval: TimeInterval = 1.0
+    private let healthCheckInterval: TimeInterval = 2.0
     private let maxQueuedMessages = 200
     
     var hasStatusUpdate : Bool = false
@@ -200,8 +414,12 @@ class AppExtension {
         syncIfNeeded(force: true)
     }
     
-    func setHTMLContent(content: String){
-        if htmlContent != content {
+    func setHTMLContent(content: String, forceReload: Bool = false){
+        if forceReload {
+            markNeedsContainer()
+        }
+
+        if forceReload || htmlContent != content {
             htmlContent = content
             contentRevision += 1
         }

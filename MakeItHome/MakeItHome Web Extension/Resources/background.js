@@ -1,15 +1,5 @@
 // background.js
 
-// In your background script
-chrome.alarms.create("keepAlive", { periodInMinutes: 0.1 });
-
-chrome.alarms.onAlarm.addListener(function(alarm) {
-    if (alarm.name === "keepAlive") {
-        console.log("Alarm triggered to keep the background script alive");
-        // Perform a no-op or some small task to keep the background script running
-    }
-});
-
 ///
 /// image-blob-reduce
 ///
@@ -25,29 +15,29 @@ chrome.alarms.onAlarm.addListener(function(alarm) {
 async function sendJsMessage(msg){
     if(toConnect){
         console.warn("sendJsMessage blocked: not connected")
-        return
+        return false
     }
     
-    let req = makeRequestUrl('/sendJSMessage')
+    let req = await makeRequestUrl('/sendJSMessage')
     
     let body = {
         jsMessage: msg
     }
     
-    let res = null
     try{
-        res = await makePost(req, body)
-    }
-    catch {
-        console.log("sendJSMessage error, retry.")
-        return await sendJsMessage(msg)
-    }
-    
-    res = await res.json()
-    console.log("sendJsMessage res", res)
-    if(res.status == 'error' && res.description=="invalidJsonBody"){
-        console.log("retry sendJsMessage")
-        return await sendJsMessage(msg)
+        let res = await makePost(req, body)
+        let json = await res.json()
+        if(json.status === "error"){
+            if(json.description === "appNotConnected" || json.description === "invalidSecret" || json.description === "invalidToken" || json.description === "missingToken"){
+                resetSecret = true
+                toConnect = true
+            }
+            return false
+        }
+        return true
+    } catch(err) {
+        console.error("sendJsMessage failed", err)
+        return false
     }
 }
 
@@ -56,25 +46,84 @@ async function sendJsMessage(msg){
 ///
 
 const bundleId = "com.apple.Safari"
+const manifest = chrome.runtime.getManifest()
+const extensionName = manifest?.name || "Unknown extension"
+const extensionVersion = manifest?.version || "0"
+
 let secret = ""
+let tokenCache = {
+    secret: "",
+    second: 0,
+    token: ""
+}
 
 let storage = {}
 
 let toConnect = true
 
-function makeRequestUrl(req){
-    url = 'http://127.0.0.1:19494/appExtension'+req
+function setSecret(nextSecret){
+    secret = nextSecret || ""
+    tokenCache = {
+        secret: "",
+        second: 0,
+        token: ""
+    }
+}
+
+async function sha256Hex(value){
+    const encoder = new TextEncoder()
+    const bytes = encoder.encode(value)
+    const digest = await crypto.subtle.digest("SHA-256", bytes)
+    const arr = Array.from(new Uint8Array(digest))
+    return arr.map((byte)=>byte.toString(16).padStart(2, "0")).join("")
+}
+
+async function getRollingToken(secretValue){
+    if(!secretValue){
+        return ""
+    }
+
+    const nowSecond = Math.floor(Date.now() / 1000)
+    if(tokenCache.secret === secretValue && tokenCache.second === nowSecond && tokenCache.token){
+        return tokenCache.token
+    }
+
+    const token = await sha256Hex(`${secretValue}:${nowSecond}`)
+    tokenCache = {
+        secret: secretValue,
+        second: nowSecond,
+        token
+    }
+    return token
+}
+
+async function makeRequestUrl(req, options = {}){
+    let url = 'http://127.0.0.1:19494/appExtension'+req
     
     if(url.includes('?'))
         url += '&'
     else
         url += '?'
-        
-    url += 'bundleId='+bundleId
-        
-    if(secret)
-        url += '&secret='+secret
-        
+
+    const params = []
+    params.push('bundleId='+encodeURIComponent(bundleId))
+
+    if(options.includeExtensionMeta){
+        params.push('extensionName='+encodeURIComponent(extensionName))
+        params.push('extensionVersion='+encodeURIComponent(extensionVersion))
+    }
+
+    const effectiveSecret = options.secret !== undefined ? options.secret : secret
+    if(effectiveSecret){
+        params.push('secret='+encodeURIComponent(effectiveSecret))
+        const token = await getRollingToken(effectiveSecret)
+        if(token){
+            params.push('token='+encodeURIComponent(token))
+        }
+    }
+
+    url += params.join("&")
+
     return url
 }
 
@@ -166,63 +215,35 @@ async function readTextFile(asset) {
 }
 
 
-function makeGet(url){
-    return new Promise((res, err)=>{
-        try {
-            fetch(url)
-            .then(response => {
-                res(response)
-            })
-            .catch(error => {
-                err(error)
-            });
-        }
-        catch(error){
-            err(error)
-        }
-    })
+async function makeGet(url){
+    return await fetch(url)
 }
 
-var postErrorsCounter = 0
-function makePost(url, body){
-    if(typeof body == 'object')
+async function makePost(url, body, maxRetries = 1){
+    if(typeof body === "object"){
         body = JSON.stringify(body)
-        
-    console.log("POST json content length:", body.length)
-    
-    return new Promise((res, err)=>{
+    }
+
+    for(let attempt = 0; attempt <= maxRetries; attempt++){
         try{
-            fetch(url, {
-            method: "POST",
-            body: body,
-            headers: {
-                'Content-Type': 'application/json',
-                'Body-Length': body.length.toString() // Set the Content-Length header
-            },
+            return await fetch(url, {
+                method: "POST",
+                body: body,
+                headers: {
+                    "Content-Type": "application/json",
+                    "Body-Length": body.length.toString()
+                }
             })
-            .then(async(response) => {
-                //console.log("makePost", url, await response.text())
-                res(response)
-            })
-            .catch(async (error) => {
-                console.error("makePost", url, error)
-                
-                //err(error)
-                res(await makePost(url, body))
-            });
         }
         catch(error){
-            if(postErrorsCounter == 5 && false) {
-                resetSecret = true
-                postErrorsCounter = 0
-                loadScripts()
+            if(attempt >= maxRetries){
+                throw error
             }
-            
-            postErrorsCounter += 1
-            
-            err(error)
+            await new Promise((resolve)=>setTimeout(resolve, 120 * (attempt + 1)))
         }
-    })
+    }
+
+    throw new Error("unreachable")
 }
 
 function waitFor(ms, cbk){
@@ -270,15 +291,15 @@ let orderedTabs = []
 
 const screenshotPolicy = {
     minCaptureGapMs: 450,
-    appShowingCaptureMs: 800,
-    activeCaptureMs: 1800,
-    idleCaptureMs: 7000,
-    tabSyncIntervalMs: 5000,
-    statusPollActiveMs: 280,
-    statusPollIdleMs: 1300,
-    statusRequestTimeoutMs: 2500,
-    statusMaxInFlightMs: 6000,
-    maxSendWhenShowing: 3,
+    appShowingCaptureMs: 900,
+    activeCaptureMs: 2500,
+    idleCaptureMs: 9500,
+    tabSyncIntervalMs: 7000,
+    statusPollActiveMs: 700,
+    statusPollIdleMs: 3200,
+    statusRequestTimeoutMs: 3500,
+    statusMaxInFlightMs: 7000,
+    maxSendWhenShowing: 2,
     maxSendWhenIdle: 1
 }
 
@@ -292,10 +313,13 @@ let lastConfirmedTabsSignature = ""
 let screenshotLoopTimeout = null
 let screenshotInProgress = false
 let suppressSendsUntil = 0
+let cachedExtensionPayload = null
 
 let waitForStatusInFlight = false
 let waitForStatusStartedAt = 0
 let waitForStatusRunId = 0
+let lastServerSuggestedStatusPollMs = null
+let connectionBlockedUntil = 0
 
 function spliceOrderedTabs(index){
     orderedTabs.splice(index, 1)
@@ -435,6 +459,10 @@ let appIsShowing = false
 
 let nextWaitForStatusTimeout = null;
 function getStatusPollIntervalMs(){
+    if(Number.isFinite(lastServerSuggestedStatusPollMs)){
+        return Math.max(160, lastServerSuggestedStatusPollMs)
+    }
+
     if(appIsShowing){
         return screenshotPolicy.statusPollActiveMs
     }
@@ -446,7 +474,7 @@ function nextWaitForStatus(delayMs = getStatusPollIntervalMs()){
     clearTimeout(nextWaitForStatusTimeout)
     nextWaitForStatusTimeout = setTimeout(() => {
         waitForStatus();
-    }, Math.max(120, delayMs));
+    }, Math.max(160, delayMs));
 }
 
 async function makeGetWithTimeout(url, timeoutMs){
@@ -483,6 +511,12 @@ async function handleStatusMessages(statusMessages){
 }
 
 async function waitForStatus() {
+    if(toConnect){
+        lastServerSuggestedStatusPollMs = null
+        nextWaitForStatus(350)
+        return
+    }
+
     let now = Date.now()
     if(waitForStatusInFlight){
         if(now - waitForStatusStartedAt > screenshotPolicy.statusMaxInFlightMs){
@@ -506,10 +540,16 @@ async function waitForStatus() {
     let runId = ++waitForStatusRunId
 
     try {
-        let req = makeRequestUrl('/checkStatus'); // /waitForStatus
+        let req = await makeRequestUrl('/checkStatus')
         let res = await makeGetWithTimeout(req, screenshotPolicy.statusRequestTimeoutMs);
 
         res = await res.json();
+        if(Number.isFinite(res.nextPollInMs)){
+            lastServerSuggestedStatusPollMs = res.nextPollInMs
+        } else {
+            lastServerSuggestedStatusPollMs = null
+        }
+
         await handleStatusMessages(res.statusMessages)
         
         if (res.status === "error") {
@@ -517,9 +557,13 @@ async function waitForStatus() {
                 toConnect = true;
             }
             
-            if (res.description === "invalidSecret") {
+            if (res.description === "invalidSecret" || res.description === "invalidToken" || res.description === "missingToken") {
                 resetSecret = true;
                 toConnect = true;
+            }
+
+            if(toConnect){
+                lastServerSuggestedStatusPollMs = null
             }
         }
         
@@ -550,6 +594,7 @@ async function waitForStatus() {
         
     } catch (err) {
         console.error("waitForStatus: ", err)
+        lastServerSuggestedStatusPollMs = null
     } finally {
         if(runId == waitForStatusRunId){
             waitForStatusInFlight = false
@@ -560,41 +605,67 @@ async function waitForStatus() {
 }
 
 function resetSwiper(){
-    sendJsMessage("resetSwiper()");
+    return sendJsMessage("resetSwiper()");
 }
 
 let resetSecret = false
 async function connect(){
-    let req = makeRequestUrl('/connect')
-    let res = await makeGet(req)
-    
-    let json = await res.json()
-    console.log("connect response", json)
-    
-    if(json.description == "appAlreadyConnected" && !resetSecret){
-        console.log("Already connected to MakeItHome")
-        secret = (await storageGet()).secret
-        
-        if(!secret){
-            return;
-        }
-        
-        nextWaitForStatus(10)
-        
-        toConnect = false
+    if(Date.now() < connectionBlockedUntil){
         return false
     }
-    
-    secret = storage.secret = json['secret']
-    storageSave()
+
+    await storageGet()
+    if(!secret && storage.secret){
+        setSecret(storage.secret)
+    }
+
+    if(resetSecret){
+        setSecret("")
+        storage.secret = ""
+        storageSave()
+    }
+
+    let req = await makeRequestUrl('/connect', {
+        secret: secret,
+        includeExtensionMeta: true
+    })
+
+    let res = null
+    let json = null
+    try {
+        res = await makeGet(req)
+        json = await res.json()
+    } catch(err){
+        console.error("connect failed", err)
+        return false
+    }
+
+    if(json?.status === "error"){
+        if(json.description === "connectionDenied"){
+            connectionBlockedUntil = Date.now() + 15000
+        }
+
+        if(json.description === "invalidSecret" || json.description === "invalidToken" || json.description === "missingToken"){
+            resetSecret = true
+        }
+
+        toConnect = true
+        return false
+    }
+
+    if(json?.secret){
+        setSecret(json.secret)
+        storage.secret = json.secret
+        storageSave()
+    }
+
     resetSecret = false
-    
-    console.log("MakeItHome Connect: ",res)
-                
-    nextWaitForStatus(10)
-    
+    connectionBlockedUntil = 0
     toConnect = false
-    return true
+    lastServerSuggestedStatusPollMs = null
+
+    nextWaitForStatus(40)
+    return json?.description !== "appAlreadyConnected"
 }
 
 /**
@@ -664,28 +735,39 @@ function btoaUnicode(input) {
 // console.log(btoaUnicode(html));
 
 
-async function setHtmlContent(html){
+async function setHtmlContent(html, options = {}){
     if(toConnect){
         console.warn("setHtmlContent blocked: not connected")
-        return
+        return false
     }
     
-    let req = makeRequestUrl('/setHtmlContent')
+    let req = await makeRequestUrl('/setHtmlContent')
     
     html = sanitizeStringExtensive(html)
     html = btoaUnicode(html)
     
     let body = {
-        content: html
+        content: html,
+        forceReload: options.forceReload === true
     }
     
-    let res = null
-    res = await makePost(req, body)
-    
-    // for some reasons, sometime you have to try hard to set the html content for the first time
-    res = await res.json()
-    if(res.status == 'error' && res.description=="invalidJsonBody")
-        return await setHtmlContent(html)
+    try {
+        let res = await makePost(req, body)
+        let json = await res.json()
+
+        if(json.status === "error"){
+            if(json.description === "appNotConnected" || json.description === "invalidSecret" || json.description === "invalidToken" || json.description === "missingToken"){
+                resetSecret = true
+                toConnect = true
+            }
+            return false
+        }
+
+        return true
+    } catch(err){
+        console.error("setHtmlContent failed", err)
+        return false
+    }
 }
 
 function formatStrForJsMessage(str){
@@ -971,18 +1053,19 @@ chrome.action.onClicked.addListener(()=>{
 });
 
 async function loadScripts(){
-    let extension = await readTextFile("extension.html")
-    
-    let swiperCss = await readTextFile("swiper.css")
-    let swiperJs = await readTextFile("swiper.min.js")
-    
-    console.log("working on extension", extension)
-    extension = "<style>"+swiperCss+"\r\n</style><script>"+swiperJs+"\r\n</script>\r\n\r\n" + extension
-    
-    console.log("loading extension: ", extension)
-    await setHtmlContent(extension)
-    
-    postErrorsCounter = 0
+    if(!cachedExtensionPayload){
+        let extension = await readTextFile("extension.html")
+        let swiperCss = await readTextFile("swiper.css")
+        let swiperJs = await readTextFile("swiper.min.js")
+
+        cachedExtensionPayload = "<style>"+swiperCss+"\r\n</style><script>"+swiperJs+"\r\n</script>\r\n\r\n" + extension
+    }
+
+    let loaded = await setHtmlContent(cachedExtensionPayload, { forceReload: true })
+    if(!loaded){
+        return
+    }
+
     suppressSendsUntil = Date.now() + 1500
     
     for(let tabId in tabs){
@@ -1004,7 +1087,7 @@ async function loadScripts(){
 }
 
 async function checkConnect(){
-    if(toConnect){
+    if(toConnect && Date.now() >= connectionBlockedUntil){
         if(await connect()){
             await loadScripts()
         }

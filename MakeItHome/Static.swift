@@ -9,6 +9,7 @@ import Foundation
 import ServiceManagement
 
 import SwiftUI
+import SafariServices
 
 public class Static {
             
@@ -37,6 +38,11 @@ public class Static {
     public static var UpdateAvailable = false
     
     public static let ShowOnEverySpace : Bool = false
+
+    public static let WebExtensionBundleIdentifier = "ink.geckos.MakeItHome.WebExtension"
+    private static let showInstallWebExtensionKey = "ShowInstallWebExtension"
+    private static let installedWebExtensionVersionKey = "InstalledWebExtensionVersion"
+    private static var showInstallWebExtensionCache: Bool?
     
     static var _showInDock = false;
     
@@ -53,6 +59,62 @@ public class Static {
             }
             
             checkShowInDock()
+        }
+    }
+
+    public static var showInstallWebExtension: Bool {
+        get {
+            if let cached = showInstallWebExtensionCache {
+                return cached
+            }
+
+            let installedVersion = User.object(forKey: installedWebExtensionVersionKey) as? String
+            if let stored = User.object(forKey: showInstallWebExtensionKey) as? Bool {
+                if !stored && installedVersion != CurVersion {
+                    showInstallWebExtensionCache = true
+                    return true
+                }
+
+                showInstallWebExtensionCache = stored
+                return stored
+            }
+
+            if installedVersion == CurVersion {
+                showInstallWebExtensionCache = false
+                return false
+            }
+
+            showInstallWebExtensionCache = true
+            return true
+        }
+
+        set {
+            showInstallWebExtensionCache = newValue
+            User.set(newValue, forKey: showInstallWebExtensionKey)
+        }
+    }
+
+    public static func markWebExtensionInstalled(version: String? = nil) {
+        let latestVersion = version ?? CurVersion
+        User.set(latestVersion, forKey: installedWebExtensionVersionKey)
+        showInstallWebExtension = false
+    }
+
+    public static func refreshWebExtensionInstallButtonVisibility(completion: ((Bool) -> Void)? = nil) {
+        SFSafariExtensionManager.getStateOfSafariExtension(withIdentifier: WebExtensionBundleIdentifier) { state, error in
+            DispatchQueue.main.async {
+                if let state = state, error == nil, state.isEnabled {
+                    Static.markWebExtensionInstalled()
+                    completion?(false)
+                    return
+                }
+
+                let installedVersion = User.object(forKey: installedWebExtensionVersionKey) as? String
+                let shouldShowButton = installedVersion != CurVersion
+
+                Static.showInstallWebExtension = shouldShowButton
+                completion?(shouldShowButton)
+            }
         }
     }
     
@@ -256,6 +318,7 @@ public class Static {
         
         // Check version
         Static.User.set(CurVersion, forKey: "LastVersion")
+        refreshWebExtensionInstallButtonVisibility()
     }
     
     static var thankYouDone = false

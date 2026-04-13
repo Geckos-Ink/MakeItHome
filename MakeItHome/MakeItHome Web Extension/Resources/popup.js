@@ -10,7 +10,10 @@ function takeScreenshot(){
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("takeScreenshot").addEventListener("click", takeScreenshot);
+    const screenshotButton = document.getElementById("takeScreenshot")
+    if(screenshotButton){
+        screenshotButton.addEventListener("click", takeScreenshot);
+    }
 });
 
 forceConnect()
@@ -35,7 +38,7 @@ function checkConnectionStatus(){
 
 setInterval(()=>{
     checkConnectionStatus()
-}, 500)
+}, 2200)
 
 checkConnectionStatus()
 
