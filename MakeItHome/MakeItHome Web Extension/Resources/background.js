@@ -49,6 +49,7 @@ const bundleId = "com.apple.Safari"
 const manifest = chrome.runtime.getManifest()
 const extensionName = manifest?.name || "Unknown extension"
 const extensionVersion = manifest?.version || "0"
+const extensionClientId = chrome.runtime?.id || `${extensionName}@${extensionVersion}`
 
 let secret = ""
 let tokenCache = {
@@ -111,6 +112,7 @@ async function makeRequestUrl(req, options = {}){
     if(options.includeExtensionMeta){
         params.push('extensionName='+encodeURIComponent(extensionName))
         params.push('extensionVersion='+encodeURIComponent(extensionVersion))
+        params.push('clientId='+encodeURIComponent(extensionClientId))
     }
 
     const effectiveSecret = options.secret !== undefined ? options.secret : secret

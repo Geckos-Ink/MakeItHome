@@ -35,6 +35,9 @@ class AppExtensionManager {
             return reply
         }
         let extensionName = query["extensionName"]
+        let extensionVersion = query["extensionVersion"]
+        let clientId = query["clientId"]
+        let identity = extensionIdentity(bundleId: bundleId, clientId: clientId)
         let providedSecret = query["secret"]
         let providedToken = query["token"]
         
@@ -51,8 +54,8 @@ class AppExtensionManager {
                     reply.description = "appAlreadyConnected" // fantastic. A typo in release.
                     reply.status = "ok"
 
-                    saveTrustedExtension(bundleId: bundleId, extensionName: extensionName, secret: app.secret)
-                    markInstallCompletedIfNeeded(bundleId: bundleId)
+                    saveTrustedExtension(identity: identity, extensionName: extensionName, secret: app.secret)
+                    markInstallCompletedIfNeeded(bundleId: bundleId, extensionName: extensionName)
 
                     app.syncIfNeeded(force: true)
                     app.scheduleHealthCheckIfNeeded(force: true)
@@ -62,7 +65,9 @@ class AppExtensionManager {
                 let isMissingToken = providedToken?.isEmpty ?? true
                 let isAllowed = requestConnectionApproval(
                     bundleId: bundleId,
+                    clientId: clientId,
                     extensionName: extensionName,
+                    extensionVersion: extensionVersion,
                     isReplacingConnection: true,
                     reason: isMissingToken ? "Missing security token." : "Invalid security token."
                 )
@@ -75,8 +80,8 @@ class AppExtensionManager {
 
                 let newApp = AppExtension(bundleId: bundleId)
                 apps[bundleId] = newApp
-                saveTrustedExtension(bundleId: bundleId, extensionName: extensionName, secret: newApp.secret)
-                markInstallCompletedIfNeeded(bundleId: bundleId)
+                saveTrustedExtension(identity: identity, extensionName: extensionName, secret: newApp.secret)
+                markInstallCompletedIfNeeded(bundleId: bundleId, extensionName: extensionName)
 
                 reply.secret = newApp.secret
                 reply.description = "appConnected"
@@ -86,8 +91,9 @@ class AppExtensionManager {
                 newApp.scheduleHealthCheckIfNeeded(force: true)
                 return reply
             } else {
-                let trustedSecret = getTrustedSecret(bundleId: bundleId)
-                let isTrusted = isTrustedExtension(bundleId: bundleId)
+                let trustedSecret = getTrustedSecret(identity: identity)
+                let isTrusted = isTrustedExtension(identity: identity)
+                let missingClientIdentity = bundleId == "com.apple.Safari" && normalizedClientId(clientId) == nil
                 let tokenIsValidForTrustedSecret: Bool
 
                 if let trustedSecret = trustedSecret,
@@ -98,9 +104,11 @@ class AppExtensionManager {
                     tokenIsValidForTrustedSecret = false
                 }
 
-                if !isTrusted || !tokenIsValidForTrustedSecret {
+                if !isTrusted || !tokenIsValidForTrustedSecret || missingClientIdentity {
                     let reason: String
-                    if !isTrusted {
+                    if missingClientIdentity {
+                        reason = "Missing extension identity."
+                    } else if !isTrusted {
                         reason = "First connection request."
                     } else if providedToken?.isEmpty ?? true {
                         reason = "Missing security token."
@@ -110,7 +118,9 @@ class AppExtensionManager {
 
                     let isAllowed = requestConnectionApproval(
                         bundleId: bundleId,
+                        clientId: clientId,
                         extensionName: extensionName,
+                        extensionVersion: extensionVersion,
                         isReplacingConnection: isTrusted,
                         reason: reason
                     )
@@ -124,8 +134,8 @@ class AppExtensionManager {
 
                 app = AppExtension(bundleId: bundleId)
                 apps[bundleId] = app
-                saveTrustedExtension(bundleId: bundleId, extensionName: extensionName, secret: app?.secret)
-                markInstallCompletedIfNeeded(bundleId: bundleId)
+                saveTrustedExtension(identity: identity, extensionName: extensionName, secret: app?.secret)
+                markInstallCompletedIfNeeded(bundleId: bundleId, extensionName: extensionName)
 
                 reply.secret = app?.secret
                 reply.description = "appConnected"
@@ -256,44 +266,62 @@ class AppExtensionManager {
         return reply
     }
 
-    private func trustKey(bundleId: String) -> String {
-        return trustPrefix + bundleId
+    private func normalizedClientId(_ clientId: String?) -> String? {
+        guard let value = clientId?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty else {
+            return nil
+        }
+        
+        return value
     }
 
-    private func trustNameKey(bundleId: String) -> String {
-        return trustNamePrefix + bundleId
+    private func extensionIdentity(bundleId: String, clientId: String?) -> String {
+        guard let clientId = normalizedClientId(clientId) else {
+            return bundleId
+        }
+        
+        return "\(bundleId)#\(clientId)"
     }
 
-    private func trustSecretKey(bundleId: String) -> String {
-        return trustSecretPrefix + bundleId
+    private func trustKey(identity: String) -> String {
+        return trustPrefix + identity
     }
 
-    private func isTrustedExtension(bundleId: String) -> Bool {
-        return UserDefaults.standard.bool(forKey: trustKey(bundleId: bundleId))
+    private func trustNameKey(identity: String) -> String {
+        return trustNamePrefix + identity
     }
 
-    private func getTrustedSecret(bundleId: String) -> String? {
-        return UserDefaults.standard.object(forKey: trustSecretKey(bundleId: bundleId)) as? String
+    private func trustSecretKey(identity: String) -> String {
+        return trustSecretPrefix + identity
     }
 
-    private func saveTrustedExtension(bundleId: String, extensionName: String?, secret: String?) {
+    private func isTrustedExtension(identity: String) -> Bool {
+        return UserDefaults.standard.bool(forKey: trustKey(identity: identity))
+    }
+
+    private func getTrustedSecret(identity: String) -> String? {
+        return UserDefaults.standard.object(forKey: trustSecretKey(identity: identity)) as? String
+    }
+
+    private func saveTrustedExtension(identity: String, extensionName: String?, secret: String?) {
         let user = UserDefaults.standard
-        user.set(true, forKey: trustKey(bundleId: bundleId))
+        user.set(true, forKey: trustKey(identity: identity))
         if let extensionName = extensionName, !extensionName.isEmpty {
-            user.set(extensionName, forKey: trustNameKey(bundleId: bundleId))
+            user.set(extensionName, forKey: trustNameKey(identity: identity))
         }
 
         if let secret = secret {
-            user.set(secret, forKey: trustSecretKey(bundleId: bundleId))
+            user.set(secret, forKey: trustSecretKey(identity: identity))
         }
     }
 
-    private func extensionDisplayName(bundleId: String, extensionName: String?) -> String {
+    private func extensionDisplayName(bundleId: String, clientId: String?, extensionName: String?) -> String {
         if let extensionName = extensionName?.trimmingCharacters(in: .whitespacesAndNewlines), !extensionName.isEmpty {
             return extensionName
         }
 
-        if let savedName = UserDefaults.standard.object(forKey: trustNameKey(bundleId: bundleId)) as? String, !savedName.isEmpty {
+        let identity = extensionIdentity(bundleId: bundleId, clientId: clientId)
+        if let savedName = UserDefaults.standard.object(forKey: trustNameKey(identity: identity)) as? String, !savedName.isEmpty {
             return savedName
         }
 
@@ -333,14 +361,20 @@ class AppExtensionManager {
         return isShowing ? pollWhenShowingMs : pollWhenHiddenMs
     }
 
-    private func requestConnectionApproval(bundleId: String, extensionName: String?, isReplacingConnection: Bool, reason: String) -> Bool {
+    private func requestConnectionApproval(bundleId: String, clientId: String?, extensionName: String?, extensionVersion: String?, isReplacingConnection: Bool, reason: String) -> Bool {
         let action = {
-            let extensionDisplayName = self.extensionDisplayName(bundleId: bundleId, extensionName: extensionName)
+            let extensionDisplayName = self.extensionDisplayName(bundleId: bundleId, clientId: clientId, extensionName: extensionName)
             let alert = NSAlert()
             alert.alertStyle = .warning
             alert.messageText = "Allow \(extensionDisplayName) extension?"
 
             var informativeText = "\(extensionDisplayName) (\(bundleId)) requested a connection to MakeItHome.\n\nReason: \(reason)"
+            if let clientId = self.normalizedClientId(clientId) {
+                informativeText += "\nClient ID: \(clientId)"
+            }
+            if let extensionVersion = extensionVersion, !extensionVersion.isEmpty {
+                informativeText += "\nVersion: \(extensionVersion)"
+            }
             if isReplacingConnection {
                 informativeText += "\n\nThis will replace the previously confirmed connection."
             }
@@ -363,8 +397,8 @@ class AppExtensionManager {
         }
     }
 
-    private func markInstallCompletedIfNeeded(bundleId: String) {
-        if bundleId == "com.apple.Safari" {
+    private func markInstallCompletedIfNeeded(bundleId: String, extensionName: String?) {
+        if bundleId == "com.apple.Safari", extensionName == "MakeItHome Web" {
             Static.markWebExtensionInstalled()
         }
     }
