@@ -9,21 +9,138 @@
 import Foundation
 import AppKit
 
+enum ConnectionApprovalDecision: String {
+    case allow
+    case deny
+    case ignored
+}
+
+struct AppExtensionPermissionStatus: Codable {
+    var identity: String
+    var bundleId: String
+    var clientId: String?
+    var extensionName: String
+    var extensionVersion: String?
+    var trusted: Bool
+    var hasSecret: Bool
+    var connected: Bool
+    var lastSeenAt: TimeInterval?
+    var ignoredUntil: TimeInterval?
+}
+
 class AppExtensionManager {
     var apps : [String: AppExtension] = [:]
     private let trustPrefix = "TrustedAppExtension_"
     private let trustNamePrefix = "TrustedAppExtensionName_"
     private let trustSecretPrefix = "TrustedAppExtensionSecret_"
+    private let trustIgnoreUntilPrefix = "TrustedAppExtensionIgnoreUntil_"
+    private let knownExtensionsKey = "KnownAppExtensions"
+    private let knownBundlePrefix = "KnownAppExtensionBundle_"
+    private let knownClientPrefix = "KnownAppExtensionClient_"
+    private let knownVersionPrefix = "KnownAppExtensionVersion_"
+    private let knownNamePrefix = "KnownAppExtensionName_"
+    private let knownLastSeenPrefix = "KnownAppExtensionLastSeen_"
     private let tokenClockSkewSeconds: Int64 = 3
     private let pollWhenShowingMs = 700
     private let pollWhenHiddenMs = 2800
     private let pollWhenMessagePendingMs = 160
+    private let approvalIgnoreCooldownSeconds: TimeInterval = 30
+    private let approvalTimeoutSeconds: TimeInterval = 30
     
     func closedApp(bundleId: String){
         guard let app = apps[bundleId] else { return }
         app.addMessage(msg: "appExtensionRemoved")
         app.teardown()
         apps.removeValue(forKey: bundleId)
+    }
+
+    func extensionPermissionsStatus() -> [AppExtensionPermissionStatus] {
+        let now = Date().timeIntervalSince1970
+        var identities = knownExtensionIdentities()
+
+        // Keep backward compatibility with trust records saved before known-extension tracking.
+        for (key, value) in UserDefaults.standard.dictionaryRepresentation() where key.hasPrefix(trustPrefix) {
+            guard (value as? Bool) == true else { continue }
+            let identity = String(key.dropFirst(trustPrefix.count))
+            if !identity.isEmpty && !identities.contains(identity) {
+                identities.append(identity)
+            }
+        }
+
+        var items: [AppExtensionPermissionStatus] = []
+        for identity in identities {
+            let bundleId = knownBundleId(identity: identity) ?? bundleIdFromIdentity(identity)
+            let clientId = knownClientId(identity: identity) ?? clientIdFromIdentity(identity)
+            let extensionName = knownExtensionName(identity: identity) ?? extensionDisplayName(bundleId: bundleId, clientId: clientId, extensionName: nil)
+            let connected = apps[bundleId]?.identity == identity
+            let ignoredUntil = getIgnoredUntil(identity: identity)
+
+            items.append(AppExtensionPermissionStatus(
+                identity: identity,
+                bundleId: bundleId,
+                clientId: clientId,
+                extensionName: extensionName,
+                extensionVersion: knownExtensionVersion(identity: identity),
+                trusted: isTrustedExtension(identity: identity),
+                hasSecret: getTrustedSecret(identity: identity) != nil,
+                connected: connected,
+                lastSeenAt: knownLastSeen(identity: identity),
+                ignoredUntil: (ignoredUntil ?? 0) > now ? ignoredUntil : nil
+            ))
+        }
+
+        items.sort {
+            let leftSeen = $0.lastSeenAt ?? 0
+            let rightSeen = $1.lastSeenAt ?? 0
+            if leftSeen == rightSeen {
+                return $0.extensionName.localizedCaseInsensitiveCompare($1.extensionName) == .orderedAscending
+            }
+            return leftSeen > rightSeen
+        }
+
+        return items
+    }
+
+    func revokeExtensionPermission(identity: String) {
+        setTrustedExtension(identity: identity, trusted: false)
+        clearIgnoredUntil(identity: identity)
+
+        let bundleId = knownBundleId(identity: identity) ?? bundleIdFromIdentity(identity)
+        if apps[bundleId]?.identity == identity {
+            closedApp(bundleId: bundleId)
+        }
+    }
+
+    @discardableResult
+    func requestExtensionPermission(identity: String) -> ConnectionApprovalDecision {
+        let bundleId = knownBundleId(identity: identity) ?? bundleIdFromIdentity(identity)
+        let clientId = knownClientId(identity: identity) ?? clientIdFromIdentity(identity)
+        let extensionName = knownExtensionName(identity: identity)
+        let extensionVersion = knownExtensionVersion(identity: identity)
+        let isReplacingConnection = isTrustedExtension(identity: identity)
+
+        let decision = requestConnectionApproval(
+            bundleId: bundleId,
+            clientId: clientId,
+            extensionName: extensionName,
+            extensionVersion: extensionVersion,
+            isReplacingConnection: isReplacingConnection,
+            reason: "Permission requested from Settings."
+        )
+
+        switch decision {
+        case .allow:
+            let currentSecret = (apps[bundleId]?.identity == identity) ? apps[bundleId]?.secret : nil
+            saveTrustedExtension(identity: identity, extensionName: extensionName, secret: currentSecret)
+            clearIgnoredUntil(identity: identity)
+        case .deny:
+            setTrustedExtension(identity: identity, trusted: false)
+            clearIgnoredUntil(identity: identity)
+        case .ignored:
+            setIgnoredUntil(identity: identity, value: Date().timeIntervalSince1970 + approvalIgnoreCooldownSeconds)
+        }
+
+        return decision
     }
     
     func httpRequest(url: String, dataReq: String?) -> AppExtensionMsg {
@@ -48,6 +165,14 @@ class AppExtensionManager {
         var app = apps[bundleId]
         
         if req.hasPrefix("/connect"){
+            rememberKnownExtension(
+                identity: identity,
+                bundleId: bundleId,
+                clientId: clientId,
+                extensionName: extensionName,
+                extensionVersion: extensionVersion
+            )
+
             if let app = app {
                 if hasValidToken(secret: app.secret, token: providedToken) {
                     reply.secret = app.secret
@@ -55,6 +180,7 @@ class AppExtensionManager {
                     reply.status = "ok"
 
                     saveTrustedExtension(identity: identity, extensionName: extensionName, secret: app.secret)
+                    clearIgnoredUntil(identity: identity)
                     markInstallCompletedIfNeeded(bundleId: bundleId, extensionName: extensionName)
 
                     app.syncIfNeeded(force: true)
@@ -62,8 +188,14 @@ class AppExtensionManager {
                     return reply
                 }
 
+                if shouldDelayApprovalPrompt(identity: identity) {
+                    reply.status = "error"
+                    reply.description = "connectionIgnored"
+                    return reply
+                }
+
                 let isMissingToken = providedToken?.isEmpty ?? true
-                let isAllowed = requestConnectionApproval(
+                let decision = requestConnectionApproval(
                     bundleId: bundleId,
                     clientId: clientId,
                     extensionName: extensionName,
@@ -72,13 +204,22 @@ class AppExtensionManager {
                     reason: isMissingToken ? "Missing security token." : "Invalid security token."
                 )
 
-                if !isAllowed {
+                switch decision {
+                case .allow:
+                    clearIgnoredUntil(identity: identity)
+                case .deny:
+                    clearIgnoredUntil(identity: identity)
                     reply.status = "error"
                     reply.description = "connectionDenied"
                     return reply
+                case .ignored:
+                    setIgnoredUntil(identity: identity, value: Date().timeIntervalSince1970 + approvalIgnoreCooldownSeconds)
+                    reply.status = "error"
+                    reply.description = "connectionIgnored"
+                    return reply
                 }
 
-                let newApp = AppExtension(bundleId: bundleId)
+                let newApp = AppExtension(bundleId: bundleId, identity: identity)
                 apps[bundleId] = newApp
                 saveTrustedExtension(identity: identity, extensionName: extensionName, secret: newApp.secret)
                 markInstallCompletedIfNeeded(bundleId: bundleId, extensionName: extensionName)
@@ -104,7 +245,15 @@ class AppExtensionManager {
                     tokenIsValidForTrustedSecret = false
                 }
 
-                if !isTrusted || !tokenIsValidForTrustedSecret || missingClientIdentity {
+                let canRestoreTrustedSessionWithoutSecret = isTrusted && trustedSecret == nil
+
+                if !isTrusted || (!tokenIsValidForTrustedSecret && !canRestoreTrustedSessionWithoutSecret) || missingClientIdentity {
+                    if shouldDelayApprovalPrompt(identity: identity) {
+                        reply.status = "error"
+                        reply.description = "connectionIgnored"
+                        return reply
+                    }
+
                     let reason: String
                     if missingClientIdentity {
                         reason = "Missing extension identity."
@@ -116,7 +265,7 @@ class AppExtensionManager {
                         reason = "Invalid security token."
                     }
 
-                    let isAllowed = requestConnectionApproval(
+                    let decision = requestConnectionApproval(
                         bundleId: bundleId,
                         clientId: clientId,
                         extensionName: extensionName,
@@ -125,16 +274,26 @@ class AppExtensionManager {
                         reason: reason
                     )
 
-                    if !isAllowed {
+                    switch decision {
+                    case .allow:
+                        clearIgnoredUntil(identity: identity)
+                    case .deny:
+                        clearIgnoredUntil(identity: identity)
                         reply.status = "error"
                         reply.description = "connectionDenied"
+                        return reply
+                    case .ignored:
+                        setIgnoredUntil(identity: identity, value: Date().timeIntervalSince1970 + approvalIgnoreCooldownSeconds)
+                        reply.status = "error"
+                        reply.description = "connectionIgnored"
                         return reply
                     }
                 }
 
-                app = AppExtension(bundleId: bundleId)
+                app = AppExtension(bundleId: bundleId, identity: identity)
                 apps[bundleId] = app
                 saveTrustedExtension(identity: identity, extensionName: extensionName, secret: app?.secret)
+                clearIgnoredUntil(identity: identity)
                 markInstallCompletedIfNeeded(bundleId: bundleId, extensionName: extensionName)
 
                 reply.secret = app?.secret
@@ -287,6 +446,10 @@ class AppExtensionManager {
         return trustPrefix + identity
     }
 
+    private func trustIgnoreUntilKey(identity: String) -> String {
+        return trustIgnoreUntilPrefix + identity
+    }
+
     private func trustNameKey(identity: String) -> String {
         return trustNamePrefix + identity
     }
@@ -295,19 +458,160 @@ class AppExtensionManager {
         return trustSecretPrefix + identity
     }
 
+    private func knownBundleKey(identity: String) -> String {
+        return knownBundlePrefix + identity
+    }
+
+    private func knownClientKey(identity: String) -> String {
+        return knownClientPrefix + identity
+    }
+
+    private func knownVersionKey(identity: String) -> String {
+        return knownVersionPrefix + identity
+    }
+
+    private func knownNameKey(identity: String) -> String {
+        return knownNamePrefix + identity
+    }
+
+    private func knownLastSeenKey(identity: String) -> String {
+        return knownLastSeenPrefix + identity
+    }
+
+    private func knownExtensionIdentities() -> [String] {
+        return UserDefaults.standard.stringArray(forKey: knownExtensionsKey) ?? []
+    }
+
+    private func knownBundleId(identity: String) -> String? {
+        return UserDefaults.standard.object(forKey: knownBundleKey(identity: identity)) as? String
+    }
+
+    private func knownClientId(identity: String) -> String? {
+        return UserDefaults.standard.object(forKey: knownClientKey(identity: identity)) as? String
+    }
+
+    private func knownExtensionVersion(identity: String) -> String? {
+        return UserDefaults.standard.object(forKey: knownVersionKey(identity: identity)) as? String
+    }
+
+    private func knownExtensionName(identity: String) -> String? {
+        let defaults = UserDefaults.standard
+        if let name = defaults.object(forKey: knownNameKey(identity: identity)) as? String, !name.isEmpty {
+            return name
+        }
+        if let trustedName = defaults.object(forKey: trustNameKey(identity: identity)) as? String, !trustedName.isEmpty {
+            return trustedName
+        }
+        return nil
+    }
+
+    private func knownLastSeen(identity: String) -> TimeInterval? {
+        guard UserDefaults.standard.object(forKey: knownLastSeenKey(identity: identity)) != nil else {
+            return nil
+        }
+        return UserDefaults.standard.double(forKey: knownLastSeenKey(identity: identity))
+    }
+
+    private func bundleIdFromIdentity(_ identity: String) -> String {
+        if let hashIndex = identity.firstIndex(of: "#") {
+            return String(identity[..<hashIndex])
+        }
+        return identity
+    }
+
+    private func clientIdFromIdentity(_ identity: String) -> String? {
+        guard let hashIndex = identity.firstIndex(of: "#") else {
+            return nil
+        }
+
+        let nextIndex = identity.index(after: hashIndex)
+        let value = String(identity[nextIndex...])
+        return value.isEmpty ? nil : value
+    }
+
+    private func rememberKnownExtension(identity: String, bundleId: String, clientId: String?, extensionName: String?, extensionVersion: String?) {
+        let defaults = UserDefaults.standard
+        var identities = knownExtensionIdentities()
+        if !identities.contains(identity) {
+            identities.append(identity)
+            defaults.set(identities, forKey: knownExtensionsKey)
+        }
+
+        defaults.set(bundleId, forKey: knownBundleKey(identity: identity))
+        if let clientId = normalizedClientId(clientId) {
+            defaults.set(clientId, forKey: knownClientKey(identity: identity))
+        }
+
+        if let extensionVersion = extensionVersion, !extensionVersion.isEmpty {
+            defaults.set(extensionVersion, forKey: knownVersionKey(identity: identity))
+        }
+
+        if let extensionName = extensionName?.trimmingCharacters(in: .whitespacesAndNewlines), !extensionName.isEmpty {
+            defaults.set(extensionName, forKey: knownNameKey(identity: identity))
+            defaults.set(extensionName, forKey: trustNameKey(identity: identity))
+        }
+
+        defaults.set(Date().timeIntervalSince1970, forKey: knownLastSeenKey(identity: identity))
+    }
+
     private func isTrustedExtension(identity: String) -> Bool {
         return UserDefaults.standard.bool(forKey: trustKey(identity: identity))
+    }
+
+    private func setTrustedExtension(identity: String, trusted: Bool) {
+        let defaults = UserDefaults.standard
+        if trusted {
+            defaults.set(true, forKey: trustKey(identity: identity))
+        } else {
+            defaults.removeObject(forKey: trustKey(identity: identity))
+            defaults.removeObject(forKey: trustSecretKey(identity: identity))
+        }
     }
 
     private func getTrustedSecret(identity: String) -> String? {
         return UserDefaults.standard.object(forKey: trustSecretKey(identity: identity)) as? String
     }
 
+    private func setIgnoredUntil(identity: String, value: TimeInterval) {
+        UserDefaults.standard.set(value, forKey: trustIgnoreUntilKey(identity: identity))
+    }
+
+    private func clearIgnoredUntil(identity: String) {
+        UserDefaults.standard.removeObject(forKey: trustIgnoreUntilKey(identity: identity))
+    }
+
+    private func getIgnoredUntil(identity: String) -> TimeInterval? {
+        guard UserDefaults.standard.object(forKey: trustIgnoreUntilKey(identity: identity)) != nil else {
+            return nil
+        }
+        return UserDefaults.standard.double(forKey: trustIgnoreUntilKey(identity: identity))
+    }
+
+    private func shouldDelayApprovalPrompt(identity: String) -> Bool {
+        guard let ignoredUntil = getIgnoredUntil(identity: identity) else {
+            return false
+        }
+
+        if ignoredUntil > Date().timeIntervalSince1970 {
+            return true
+        }
+
+        clearIgnoredUntil(identity: identity)
+        return false
+    }
+
     private func saveTrustedExtension(identity: String, extensionName: String?, secret: String?) {
         let user = UserDefaults.standard
-        user.set(true, forKey: trustKey(identity: identity))
+        var identities = knownExtensionIdentities()
+        if !identities.contains(identity) {
+            identities.append(identity)
+            user.set(identities, forKey: knownExtensionsKey)
+        }
+
+        setTrustedExtension(identity: identity, trusted: true)
         if let extensionName = extensionName, !extensionName.isEmpty {
             user.set(extensionName, forKey: trustNameKey(identity: identity))
+            user.set(extensionName, forKey: knownNameKey(identity: identity))
         }
 
         if let secret = secret {
@@ -361,8 +665,8 @@ class AppExtensionManager {
         return isShowing ? pollWhenShowingMs : pollWhenHiddenMs
     }
 
-    private func requestConnectionApproval(bundleId: String, clientId: String?, extensionName: String?, extensionVersion: String?, isReplacingConnection: Bool, reason: String) -> Bool {
-        let action = {
+    private func requestConnectionApproval(bundleId: String, clientId: String?, extensionName: String?, extensionVersion: String?, isReplacingConnection: Bool, reason: String) -> ConnectionApprovalDecision {
+        let action: () -> ConnectionApprovalDecision = {
             let extensionDisplayName = self.extensionDisplayName(bundleId: bundleId, clientId: clientId, extensionName: extensionName)
             let alert = NSAlert()
             alert.alertStyle = .warning
@@ -380,12 +684,29 @@ class AppExtensionManager {
             }
 
             informativeText += "\n\nAllow only if you trust this extension."
+            informativeText += "\nThis confirmation expires in \(Int(self.approvalTimeoutSeconds)) seconds."
             alert.informativeText = informativeText
             alert.addButton(withTitle: "Allow")
             alert.addButton(withTitle: "Deny")
 
+            let timeoutWork = DispatchWorkItem {
+                NSApp.abortModal()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + self.approvalTimeoutSeconds, execute: timeoutWork)
+
             NSApp.activate(ignoringOtherApps: true)
-            return alert.runModal() == .alertFirstButtonReturn
+            let response = alert.runModal()
+            timeoutWork.cancel()
+            alert.window.orderOut(nil)
+
+            switch response {
+            case .alertFirstButtonReturn:
+                return .allow
+            case .alertSecondButtonReturn:
+                return .deny
+            default:
+                return .ignored
+            }
         }
 
         if Thread.isMainThread {
@@ -419,6 +740,7 @@ struct AppExtensionMsg : Codable {
 
 class AppExtension {
     let bundleId : String
+    let identity : String
     let secret : String
     var app : Display.AppWindows?
     private var htmlContent : String = ""
@@ -440,8 +762,9 @@ class AppExtension {
     
     var jsMessages : [String] = []
     
-    init(bundleId : String){
+    init(bundleId : String, identity: String){
         self.bundleId = bundleId
+        self.identity = identity
         self.secret = generateRandomString(length: 64)
         
         markNeedsContainer()

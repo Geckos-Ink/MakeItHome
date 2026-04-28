@@ -240,6 +240,10 @@ function receiveMessage(message){
                 if(obj.valBool !== undefined) retrieveSetting(obj.setting, obj.valBool)
                 break;
 
+            case 'extensionPermissionsStatus':
+                receiveExtensionPermissionsStatus(obj)
+                break;
+
             case 'toApp':
                 try {
                     eval("appReceive_"+obj.value+"(obj)")
@@ -1368,6 +1372,7 @@ $sections.css("left", $setsList.width()+"px")
 renderParagraph(".section.general .paragraphs")
 renderParagraph(".section.guides .paragraphs")
 renderParagraph(".section.myWidgets .paragraphs")
+renderParagraph(".section.extensions .paragraphs")
 
 function showSettingsSection(sect){
     const wait = 250
@@ -1399,6 +1404,11 @@ $("ons-list-item.myWidgets").on('click', () => {
     showSettingsSection("myWidgets")
 })
 
+$("ons-list-item.extensions").on('click', () => {
+    showSettingsSection("extensions")
+    requestExtensionPermissionsStatus()
+})
+
 ///
 /// Events
 ///
@@ -1415,6 +1425,7 @@ function clearClipboard(){
 ///
 
 let $checkDragAndDropDetect = null
+let $extensionPermissionsList = null
 
 function retrieveSetting(setting, val){
     if(setting == "detectDragAndDrop") 
@@ -1429,12 +1440,137 @@ function setSettings_dragAndDropDetect(val){
     })
 }
 
+function requestExtensionPermissionsStatus(){
+    sendMessage({
+        type: 'extensionPermissions',
+        op: 'status'
+    })
+}
+
+function requestExtensionPermission(identity){
+    if(!identity) return
+    sendMessage({
+        type: 'extensionPermissions',
+        op: 'request',
+        strId: identity
+    })
+}
+
+function revokeExtensionPermission(identity){
+    if(!identity) return
+    sendMessage({
+        type: 'extensionPermissions',
+        op: 'revoke',
+        strId: identity
+    })
+}
+
+function formatExtensionTimestamp(seconds){
+    if(!seconds) return "Unknown"
+    let dt = new Date(seconds * 1000)
+    return dt.toLocaleString()
+}
+
+function extensionPermissionStatusLabel(permission){
+    let statuses = []
+    statuses.push(permission.trusted ? "Trusted" : "Not trusted")
+    if(permission.connected) statuses.push("Connected")
+    if(permission.hasSecret) statuses.push("Secret stored")
+
+    if(permission.ignoredUntil){
+        let msLeft = (permission.ignoredUntil * 1000) - Date.now()
+        if(msLeft > 0){
+            statuses.push("Popup retry in " + Math.ceil(msLeft / 1000) + "s")
+        }
+    }
+
+    return statuses.join(" • ")
+}
+
+function renderExtensionPermissionsStatus(list){
+    if(!$extensionPermissionsList || !$extensionPermissionsList.length) return
+
+    $extensionPermissionsList.html("")
+    if(!list || !list.length){
+        $extensionPermissionsList.append('<div class="extensionPermissionCard">No extension detected yet. Open the extension once, then refresh this list.</div>')
+        return
+    }
+
+    for(let permission of list){
+        let extensionName = antiHtmlInjection(permission.extensionName || permission.bundleId || "Unknown extension")
+        let bundleId = antiHtmlInjection(permission.bundleId || "unknown.bundle")
+        let clientId = permission.clientId ? antiHtmlInjection(permission.clientId) : "-"
+        let extensionVersion = permission.extensionVersion ? antiHtmlInjection(permission.extensionVersion) : "-"
+        let identity = antiHtmlInjection(permission.identity || bundleId)
+        let status = antiHtmlInjection(extensionPermissionStatusLabel(permission))
+        let lastSeenAt = antiHtmlInjection(formatExtensionTimestamp(permission.lastSeenAt))
+
+        let html = ''
+        html += '<div class="extensionPermissionCard">'
+        html += '  <div class="name">' + extensionName + '</div>'
+        html += '  <div class="meta">Bundle: ' + bundleId + '<br>Client ID: ' + clientId + '<br>Version: ' + extensionVersion + '<br>Last seen: ' + lastSeenAt + '</div>'
+        html += '  <div class="status">' + status + '</div>'
+        html += '  <div class="actions">'
+        html += '    <button class="action request" data-identity="' + identity + '">Request Permission</button>'
+        html += '    <button class="action revoke" data-identity="' + identity + '">Revoke Permission</button>'
+        html += '  </div>'
+        html += '</div>'
+
+        $extensionPermissionsList.append(html)
+    }
+}
+
+function notifyPermissionDecision(decision){
+    if(!decision) return
+
+    let text = ""
+    switch(decision){
+        case "allow":
+            text = "Permission allowed."
+            break
+        case "deny":
+            text = "Permission denied."
+            break
+        case "ignored":
+            text = "Popup ignored. MakeItHome will ask again after 30 seconds."
+            break
+    }
+
+    if(!text) return
+
+    if(typeof ons !== "undefined" && ons.notification && ons.notification.toast){
+        ons.notification.toast(text, { timeout: 3000 })
+    } else {
+        console.log(text)
+    }
+}
+
+function receiveExtensionPermissionsStatus(obj){
+    if(!obj) return
+    notifyPermissionDecision(obj.decision)
+    renderExtensionPermissionsStatus(obj.extensionPermissions || [])
+}
+
 $(document).ready(function() {
     $checkDragAndDropDetect = $('#check-detectDragAndDrop')
     $checkDragAndDropDetect.on('change', function() {
         let checked = $(this).is(':checked')
         setSettings_dragAndDropDetect(checked)
     });
+
+    $extensionPermissionsList = $('#extensionPermissionsList')
+    $extensionPermissionsList.on('click', '.action.request', function() {
+        let identity = $(this).data('identity')
+        requestExtensionPermission(identity)
+    })
+    $extensionPermissionsList.on('click', '.action.revoke', function() {
+        let identity = $(this).data('identity')
+        revokeExtensionPermission(identity)
+    })
+
+    $('#refreshExtensionPermissions').on('click', function() {
+        requestExtensionPermissionsStatus()
+    })
 });
 
 ///
