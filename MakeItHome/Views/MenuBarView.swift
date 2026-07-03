@@ -202,9 +202,9 @@ struct MenuBarView: View {
                         Text("\(Image(systemName: "questionmark.circle.fill")) Help").frame(width: 150).padding(2)//.padding(.horizontal ,50)
                     }).background(Color(red: 0.15, green: 0.75, blue: 0.3)).cornerRadius(5).buttonStyle(.bordered)
                     
-                    Button(action: openSafariWebExtensionSettings, label: {
+                    /*Button(action: openSafariWebExtensionSettings, label: {
                         Text("\(Image(systemName: "safari.fill")) Safari Extension").frame(width: 150).padding(2)
-                    }).background(Color(red: 0.15, green: 0.48, blue: 0.95)).cornerRadius(5).buttonStyle(.bordered)
+                    }).background(Color(red: 0.15, green: 0.48, blue: 0.95)).cornerRadius(5).buttonStyle(.bordered)*/
 
                     if showInstallWebExtension {
                         Button(action: installSafariWebExtension, label: {
