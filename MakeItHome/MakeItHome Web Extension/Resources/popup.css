@@ -1,0 +1,32 @@
+:root {
+    color-scheme: light dark;
+}
+
+body {
+    width: 300px;
+    padding: 10px;
+
+    font-family: system-ui;
+    text-align: center;
+    
+    font-size: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+    /* Dark Mode styles go here. */
+}
+
+.logo {
+    width: 200px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+#isConnected {
+    color: green;
+    display: none;
+}
+
+#isNotConnected {
+    color: red;
+}

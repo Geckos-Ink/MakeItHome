@@ -799,6 +799,72 @@ ons-list-item label:nth-child(1) {
   cursor: pointer;
 }
 
+#refreshExtensionPermissions{
+  padding: 5px;
+  margin: 5px;
+  font-weight: bold;
+  background-color: #315f9f;
+  border: 1px solid #5f8fdd;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.extensionPermissionsList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.extensionPermissionCard {
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.25);
+  background-color: rgba(0,0,0,0.25);
+  backdrop-filter: blur(10px);
+}
+
+.extensionPermissionCard .name {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.extensionPermissionCard .meta {
+  margin-top: 4px;
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.extensionPermissionCard .status {
+  margin-top: 8px;
+  font-size: 14px;
+}
+
+.extensionPermissionCard .actions {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+}
+
+.extensionPermissionCard .action {
+  cursor: pointer;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.35);
+  padding: 5px 10px;
+  color: white;
+  font-size: 13px;
+  background-color: rgba(255,255,255,0.12);
+}
+
+.extensionPermissionCard .action.request {
+  background-color: rgba(53, 172, 111, 0.35);
+  border-color: rgba(53, 172, 111, 0.7);
+}
+
+.extensionPermissionCard .action.revoke {
+  background-color: rgba(205, 64, 85, 0.35);
+  border-color: rgba(205, 64, 85, 0.7);
+}
+
 /* ROCK 'n SCROLL */
 
  /* Webkit Scrollbar Styles */

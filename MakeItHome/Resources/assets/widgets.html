@@ -176,6 +176,7 @@
                       <ons-list-header>Sections</ons-list-header>
                       <ons-list-item modifier="chevron" tappable class="general">General</ons-list-item>
                       <ons-list-item modifier="chevron" tappable class="myWidgets">My Widgets</ons-list-item>
+                      <ons-list-item modifier="chevron" tappable class="extensions">External Extensions</ons-list-item>
                       <ons-list-item modifier="chevron" tappable class="guides">Guides</ons-list-item>
                     </ons-list>                  
                 </ons-page>
@@ -237,6 +238,24 @@
                                     </div>
                                 </ons-card>
                                 <div id="myWidgetsList"></div>                     
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section extensions">
+                        <div class="paragraphs">
+                            <div class="paragraph">
+                                <div class="title">External Extensions Permissions</div>
+                                You can review every known extension and grant or revoke access at any time.
+                                <br>
+                                If the first popup was ignored, MakeItHome asks again after 30 seconds.
+                                <br><br>
+                                <button id="refreshExtensionPermissions">Refresh list</button>
+                            </div>
+
+                            <div class="paragraph">
+                                <div class="title">Known Extensions</div>
+                                <div id="extensionPermissionsList" class="extensionPermissionsList"></div>
                             </div>
                         </div>
                     </div>

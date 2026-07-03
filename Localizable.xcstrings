@@ -131,7 +131,7 @@
         "hi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : ""
+            "value" : " %@ डॉक की ओर अक्षम करें"
           }
         },
         "it" : {
@@ -196,6 +196,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ Auf Dock-Seite deaktivieren"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : " %@  Disable on Dock side"
           }
         },
         "es" : {
@@ -267,7 +273,92 @@
       }
     },
     "- Retrieve your current desktop background for using it as overscreen background" : {
-
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "- استرداد خلفية سطح المكتب الحالية لاستخدامها كخلفية للشاشة الممتدة"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "- Aktuellen Desktophintergrund abrufen, um ihn als Overscreen-Hintergrund zu verwenden"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "- Retrieve your current desktop background for using it as overscreen background"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "- Recuperar el fondo de escritorio actual para usarlo como fondo de la pantalla extendida"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "- Récupérer votre fond d’écran actuel pour l’utiliser comme arrière-plan de l’écran étendu"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "- विस्तारित स्क्रीन की पृष्ठभूमि के रूप में उपयोग करने के लिए अपना वर्तमान डेस्कटॉप वॉलपेपर प्राप्त करें"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "- Recupera lo sfondo attuale della scrivania per usarlo come sfondo dell’overscreen"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "- 現在のデスクトップ背景を取得して、オーバースクリーンの背景として使用します"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "- 현재 데스크탑 배경을 가져와 오버스크린 배경으로 사용"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "- Obter o fundo atual do ambiente de trabalho para o utilizar como fundo do ecrã expandido"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "- Получить текущий фон рабочего стола для использования в качестве фона расширенного экрана"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "- Отримати поточне тло робочого столу для використання як тло розширеного екрана"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "- 获取当前桌面背景，用作扩展屏幕背景"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "- 取得目前的桌面背景，用作延伸螢幕背景"
+          }
+        }
+      }
     },
     "%@ %@" : {
       "localizations" : {
@@ -358,10 +449,180 @@
       }
     },
     "%@ Basic how to use" : {
-
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ طريقة الاستخدام الأساسية"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Grundlegende Bedienung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Basic how to use"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Uso básico"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Utilisation de base"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ बुनियादी उपयोग विधि"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Utilizzo di base"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 基本的な使い方"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 기본 사용법"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Utilização básica"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Основы использования"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Основи використання"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 基本使用方法"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 基本使用方式"
+          }
+        }
+      }
     },
     "%@ Close" : {
-
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ إغلاق"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Schließen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Close"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Cerrar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Fermer"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ बंद करें"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Chiudi"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 閉じる"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 닫기"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Fechar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Закрыть"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Закрити"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 关闭"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 關閉"
+          }
+        }
+      }
     },
     "%@ Disable on this display" : {
       "localizations" : {
@@ -487,7 +748,7 @@
         "hi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : ""
+            "value" : "%@ Dock पर माउस धीमा करना"
           }
         },
         "it" : {
@@ -541,7 +802,92 @@
       }
     },
     "%@ Don't ask anymore" : {
-
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ عدم السؤال مرة أخرى"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Nicht mehr fragen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Don't ask anymore"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ No volver a preguntar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Ne plus demander"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ दोबारा न पूछें"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Non chiedere più"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 今後は確認しない"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 다시 묻지 않기"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Não voltar a perguntar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Больше не спрашивать"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Більше не запитувати"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 不再询问"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 不再詢問"
+          }
+        }
+      }
     },
     "%@ Help" : {
       "localizations" : {
@@ -631,6 +977,94 @@
         }
       }
     },
+    "%@ Install extension" : {
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ تثبيت الامتداد"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Erweiterung installieren"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Install extension"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Instalar extensión"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Installer l’extension"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ एक्सटेंशन इंस्टॉल करें"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Installa estensione"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 拡張機能をインストール"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 확장 프로그램 설치"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Instalar extensão"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Установить расширение"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Установити розширення"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 安装扩展"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 安裝延伸功能"
+          }
+        }
+      }
+    },
     "%@ Max apps: %lld" : {
       "localizations" : {
         "ar" : {
@@ -678,13 +1112,13 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "アプリの最大数: %lld"
+            "value" : "%@ アプリの最大数: %lld "
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ 최대 앱: %ld"
+            "value" : "%@ 최대 앱: %lld "
           }
         },
         "pt-PT" : {
@@ -808,7 +1242,92 @@
       }
     },
     "%@ Open Settings" : {
-
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ فتح الإعدادات"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Einstellungen öffnen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Open Settings"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Abrir Ajustes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Ouvrir les réglages"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ सेटिंग्स खोलें"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Apri Impostazioni"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 設定を開く"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 설정 열기"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Abrir Definições"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Открыть настройки"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Відкрити параметри"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 打开设置"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 打開設定"
+          }
+        }
+      }
     },
     "%@ Require acceleration" : {
       "extractionState" : "stale",
@@ -846,7 +1365,7 @@
         "hi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : ""
+            "value" : "%@ त्वरण आवश्यक"
           }
         },
         "it" : {
@@ -987,6 +1506,95 @@
         }
       }
     },
+    "%@ Safari Extension" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ امتداد Safari"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Safari-Erweiterung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Safari Extension"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Extensión de Safari"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Extension Safari"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Safari एक्सटेंशन"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Estensione Safari"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Safari機能拡張"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Safari 확장 프로그램"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Extensão do Safari"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Расширение Safari"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Розширення Safari"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Safari 扩展"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Safari 延伸功能"
+          }
+        }
+      }
+    },
     "%@ Sensivity:" : {
       "localizations" : {
         "ar" : {
@@ -1089,6 +1697,12 @@
             "value" : "%@ Aktie!"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Share!"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1171,6 +1785,12 @@
             "value" : "%@ Im Dock anzeigen"
           }
         },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Show in Dock"
+          }
+        },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
@@ -1244,7 +1864,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : ""
+            "value" : "يتوفر تحديث جديد"
           }
         },
         "de" : {
@@ -1274,7 +1894,7 @@
         "hi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : ""
+            "value" : "एक नया अपडेट उपलब्ध है"
           }
         },
         "it" : {
@@ -1538,7 +2158,7 @@
         "hi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : ""
+            "value" : "Gecko's Ink द्वारा"
           }
         },
         "it" : {
@@ -1596,7 +2216,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : ""
+            "value" : "تحقق"
           }
         },
         "de" : {
@@ -1626,7 +2246,7 @@
         "hi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : ""
+            "value" : "जाँचें"
           }
         },
         "it" : {
@@ -1684,7 +2304,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : ""
+            "value" : "تم التحقق ✓"
           }
         },
         "de" : {
@@ -1714,7 +2334,7 @@
         "hi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : ""
+            "value" : "जाँच पूर्ण ✓"
           }
         },
         "it" : {
@@ -1860,7 +2480,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : ""
+            "value" : "نسخ إلى الحافظة وفتح الوحدة الطرفية %@"
           }
         },
         "de" : {
@@ -2036,7 +2656,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : ""
+            "value" : "تنزيل!"
           }
         },
         "de" : {
@@ -2066,7 +2686,7 @@
         "hi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : ""
+            "value" : "डाउनलोड करें!"
           }
         },
         "it" : {
@@ -2124,7 +2744,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : ""
+            "value" : "عرض فارغ"
           }
         },
         "de" : {
@@ -2154,7 +2774,7 @@
         "hi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : ""
+            "value" : "खाली दृश्य"
           }
         },
         "it" : {
@@ -2384,7 +3004,92 @@
       }
     },
     "Hello, World!" : {
-
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "مرحبًا بالعالم!"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hallo, Welt!"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hello, World!"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¡Hola, mundo!"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bonjour le monde !"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "नमस्ते, दुनिया!"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ciao, mondo!"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "こんにちは、世界！"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "안녕하세요, 세상!"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Olá, mundo!"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Привет, мир!"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Привіт, світе!"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你好，世界！"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你好，世界！"
+          }
+        }
+      }
     },
     "How to give Screen Recording permissions." : {
       "localizations" : {
@@ -2398,6 +3103,12 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "So erteilen Sie Berechtigungen zur Bildschirmaufzeichnung."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "How to give Screen Recording permissions."
           }
         },
         "es" : {
@@ -2469,14 +3180,99 @@
       }
     },
     "If you want enable these feature you have to give Automation permissions to MakeItHome" : {
-
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "إذا كنت تريد تمكين هذه الميزات، فيجب منح MakeItHome أذونات الأتمتة"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn Sie diese Funktionen aktivieren möchten, müssen Sie MakeItHome Automatisierungsberechtigungen erteilen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If you want enable these feature you have to give Automation permissions to MakeItHome"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si quieres activar estas funciones, debes conceder permisos de Automatización a MakeItHome"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pour activer ces fonctionnalités, vous devez accorder à MakeItHome les autorisations d’automatisation"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "इन सुविधाओं को सक्षम करने के लिए आपको MakeItHome को ऑटोमेशन की अनुमति देनी होगी"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Per abilitare queste funzioni devi concedere a MakeItHome i permessi di Automazione"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これらの機能を有効にするには、MakeItHomeにオートメーションの許可を与える必要があります"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 기능을 활성화하려면 MakeItHome에 자동화 권한을 부여해야 합니다"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para ativar estas funcionalidades, tem de conceder permissões de Automatização ao MakeItHome"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чтобы включить эти функции, необходимо предоставить MakeItHome разрешение на автоматизацию"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Щоб увімкнути ці функції, потрібно надати MakeItHome дозвіл на автоматизацію"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要启用这些功能，您必须授予 MakeItHome 自动化权限"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "若要啟用這些功能，您必須授予 MakeItHome 自動化權限"
+          }
+        }
+      }
     },
     "Internet connection is necessary during the trial version!" : {
       "localizations" : {
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : ""
+            "value" : "الاتصال بالإنترنت ضروري أثناء الفترة التجريبية!"
           }
         },
         "de" : {
@@ -2506,7 +3302,7 @@
         "hi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : ""
+            "value" : "परीक्षण संस्करण के दौरान इंटरनेट कनेक्शन आवश्यक है!"
           }
         },
         "it" : {
@@ -2560,7 +3356,92 @@
       }
     },
     "MakeItHome can use Apple Events to get and make some automations for you." : {
-
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يمكن لـ MakeItHome استخدام أحداث Apple للحصول على بعض المعلومات وتنفيذ عمليات تلقائية نيابةً عنك."
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MakeItHome kann Apple Events verwenden, um Informationen abzurufen und einige Automatisierungen für Sie auszuführen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MakeItHome can use Apple Events to get and make some automations for you."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MakeItHome puede usar Apple Events para obtener información y realizar algunas automatizaciones por ti."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MakeItHome peut utiliser Apple Events pour obtenir des informations et effectuer certaines automatisations pour vous."
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MakeItHome जानकारी प्राप्त करने और आपके लिए कुछ ऑटोमेशन करने हेतु Apple Events का उपयोग कर सकता है।"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MakeItHome può usare Apple Events per ottenere informazioni ed eseguire alcune automazioni per te."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MakeItHomeはApple Eventsを使用して情報を取得し、いくつかの操作を自動化できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MakeItHome은 Apple Events를 사용하여 정보를 가져오고 일부 작업을 자동화할 수 있습니다."
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O MakeItHome pode utilizar Apple Events para obter informações e executar algumas automatizações por si."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MakeItHome может использовать Apple Events для получения информации и выполнения некоторых автоматических действий."
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MakeItHome може використовувати Apple Events для отримання інформації та виконання деяких автоматизованих дій."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MakeItHome 可以使用 Apple Events 获取信息并为您执行一些自动化操作。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MakeItHome 可以使用 Apple Events 取得資訊並為您執行一些自動化操作。"
+          }
+        }
+      }
     },
     "No screen recording permission." : {
       "localizations" : {
@@ -2743,7 +3624,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : ""
+            "value" : "فتح App Store"
           }
         },
         "de" : {
@@ -3007,7 +3888,7 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : ""
+            "value" : "يرجى الاتصال بالإنترنت لمتابعة الفترة التجريبية، أو شراء المنتج مقابل 3.49€"
           }
         },
         "de" : {
@@ -3037,7 +3918,7 @@
         "hi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : ""
+            "value" : "परीक्षण जारी रखने के लिए कृपया इंटरनेट से कनेक्ट करें। या उत्पाद को 3.49€ में खरीदें"
           }
         },
         "it" : {
@@ -3125,7 +4006,7 @@
         "hi" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : ""
+            "value" : "बाहर निकलें"
           }
         },
         "it" : {
@@ -3443,13 +4324,268 @@
       }
     },
     "Thank you for tried Gecko's Ink MakeItHome for 30 days. But now it's your choice!" : {
-
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "شكرًا لتجربة MakeItHome من Gecko's Ink لمدة 30 يومًا. والآن القرار لك!"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vielen Dank, dass Sie Gecko's Ink MakeItHome 30 Tage lang getestet haben. Jetzt haben Sie die Wahl!"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Thank you for tried Gecko's Ink MakeItHome for 30 days. But now it's your choice!"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gracias por probar MakeItHome de Gecko's Ink durante 30 días. ¡Ahora tú decides!"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Merci d’avoir essayé MakeItHome de Gecko's Ink pendant 30 jours. À vous de choisir maintenant !"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gecko's Ink MakeItHome को 30 दिनों तक आज़माने के लिए धन्यवाद। अब फैसला आपका है!"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grazie per aver provato MakeItHome di Gecko's Ink per 30 giorni. Ora la scelta è tua!"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gecko's Ink MakeItHomeを30日間お試しいただき、ありがとうございました。あとはあなた次第です！"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gecko's Ink MakeItHome을 30일 동안 사용해 주셔서 감사합니다. 이제 선택은 여러분의 몫입니다!"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obrigado por experimentar o MakeItHome da Gecko's Ink durante 30 dias. Agora a escolha é sua!"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Спасибо, что пользовались Gecko's Ink MakeItHome в течение 30 дней. Теперь выбор за вами!"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Дякуємо, що випробовували Gecko's Ink MakeItHome протягом 30 днів. Тепер вибір за вами!"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "感谢您试用 Gecko's Ink MakeItHome 30 天。现在由您决定！"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "感謝您試用 Gecko's Ink MakeItHome 30 天。現在由您決定！"
+          }
+        }
+      }
     },
     "This is not mandatory and allows to:" : {
-
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "هذا ليس إلزاميًا ويتيح لك ما يلي："
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dies ist nicht obligatorisch und ermöglicht Folgendes:"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This is not mandatory and allows to:"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esto no es obligatorio y permite:"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce n’est pas obligatoire et permet de :"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "यह अनिवार्य नहीं है और इससे आप यह कर सकते हैं:"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non è obbligatorio e consente di:"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これは必須ではなく、次のことが可能になります："
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "필수 사항은 아니며 다음 기능을 사용할 수 있습니다:"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Isto não é obrigatório e permite:"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Это необязательно и позволяет:"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Це не обов’язково й дає змогу:"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这不是必需的，并可用于："
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這不是必要的，並可用於："
+          }
+        }
+      }
     },
     "Your 30 days of trial are expired!" : {
-
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "انتهت فترة التجربة التي مدتها 30 يومًا!"
+          }
+        },
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ihre 30-tägige Testphase ist abgelaufen!"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your 30 days of trial are expired!"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¡Tu periodo de prueba de 30 días ha terminado!"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre période d’essai de 30 jours est terminée !"
+          }
+        },
+        "hi" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "आपकी 30 दिनों की परीक्षण अवधि समाप्त हो गई है!"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo periodo di prova di 30 giorni è scaduto!"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "30日間の試用期間が終了しました！"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "30일 체험 기간이 만료되었습니다!"
+          }
+        },
+        "pt-PT" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O seu período experimental de 30 dias terminou!"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваш 30-дневный пробный период истёк!"
+          }
+        },
+        "uk" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваш 30-денний пробний період завершився!"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "您的 30 天试用期已结束！"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "您的 30 天試用期已結束！"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

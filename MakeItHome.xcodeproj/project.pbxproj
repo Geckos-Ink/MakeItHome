@@ -63,7 +63,7 @@
 		8BB0E3A5293DC881006DA326 /* ServiceManagement.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8B557446292AA716009D645D /* ServiceManagement.framework */; };
 		8BB0E3A6293DC881006DA326 /* Collections in Frameworks */ = {isa = PBXBuildFile; productRef = 8BB0E383293DC881006DA326 /* Collections */; };
 		8BB0E3A7293DC881006DA326 /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 8B5785DE2905701600C626C3 /* Accelerate.framework */; };
-		8BB0E3A9293DC881006DA326 /* info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 8B557444292AA647009D645D /* info.plist */; settings = {ASSET_TAGS = (New, ); }; };
+		8BB0E3A9293DC881006DA326 /* Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 8B557444292AA647009D645D /* Info.plist */; settings = {ASSET_TAGS = (New, ); }; };
 		8BB0E3AB293DC881006DA326 /* Synth.aif in Resources */ = {isa = PBXBuildFile; fileRef = 8B5785DA290511BF00C626C3 /* Synth.aif */; settings = {ASSET_TAGS = (New, ); }; };
 		8BB0E3AC293DC881006DA326 /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 8B74406628E6A89B00E7AD36 /* Preview Assets.xcassets */; };
 		8BB0E3AD293DC881006DA326 /* wallpaper.jpeg in Resources */ = {isa = PBXBuildFile; fileRef = 8B4AC9E0292EACAC00DE44E5 /* wallpaper.jpeg */; settings = {ASSET_TAGS = (New, ); }; };
@@ -74,7 +74,49 @@
 		8BB5D8002AA0A2B4007453F0 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 8BB5D7FF2AA0A156007453F0 /* Localizable.xcstrings */; };
 		8BC56F902AD073E6008B3788 /* WidgetZoneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BC56F8E2AD073E6008B3788 /* WidgetZoneView.swift */; };
 		8BD2DD542B48E2C900F74622 /* SimpleHttpServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8BD2DD522B48E2C900F74622 /* SimpleHttpServer.swift */; };
+		C10000012F11A00100ABCDEF /* MakeItHome Web Extension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C10001012F11A00100ABCDEF /* MakeItHome Web Extension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		C10000022F11A00100ABCDEF /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = C10001022F11A00100ABCDEF /* SafariWebExtensionHandler.swift */; };
+		C10000032F11A00100ABCDEF /* _locales in Resources */ = {isa = PBXBuildFile; fileRef = C10001062F11A00100ABCDEF /* _locales */; settings = {ASSET_TAGS = (Resources, ); }; };
+		C10000042F11A00100ABCDEF /* images in Resources */ = {isa = PBXBuildFile; fileRef = C10001072F11A00100ABCDEF /* images */; settings = {ASSET_TAGS = (Resources, ); }; };
+		C10000052F11A00100ABCDEF /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = C10001082F11A00100ABCDEF /* manifest.json */; settings = {ASSET_TAGS = (Resources, ); }; };
+		C10000062F11A00100ABCDEF /* background.js in Resources */ = {isa = PBXBuildFile; fileRef = C10001092F11A00100ABCDEF /* background.js */; settings = {ASSET_TAGS = (Resources, ); }; };
+		C10000072F11A00100ABCDEF /* content.js in Resources */ = {isa = PBXBuildFile; fileRef = C100010A2F11A00100ABCDEF /* content.js */; settings = {ASSET_TAGS = (Resources, ); }; };
+		C10000082F11A00100ABCDEF /* popup.html in Resources */ = {isa = PBXBuildFile; fileRef = C100010B2F11A00100ABCDEF /* popup.html */; settings = {ASSET_TAGS = (Resources, ); }; };
+		C10000092F11A00100ABCDEF /* popup.css in Resources */ = {isa = PBXBuildFile; fileRef = C100010C2F11A00100ABCDEF /* popup.css */; settings = {ASSET_TAGS = (Resources, ); }; };
+		C100000A2F11A00100ABCDEF /* popup.js in Resources */ = {isa = PBXBuildFile; fileRef = C100010D2F11A00100ABCDEF /* popup.js */; settings = {ASSET_TAGS = (Resources, ); }; };
+		C100000B2F11A00100ABCDEF /* Icon.png in Resources */ = {isa = PBXBuildFile; fileRef = C100010E2F11A00100ABCDEF /* Icon.png */; settings = {ASSET_TAGS = (Resources, ); }; };
+		C100000C2F11A00100ABCDEF /* extension.html in Resources */ = {isa = PBXBuildFile; fileRef = C10001102F11A00100ABCDEF /* extension.html */; settings = {ASSET_TAGS = (Resources, ); }; };
+		C100000D2F11A00100ABCDEF /* swiper.css in Resources */ = {isa = PBXBuildFile; fileRef = C10001112F11A00100ABCDEF /* swiper.css */; settings = {ASSET_TAGS = (Resources, ); }; };
+		C100000E2F11A00100ABCDEF /* swiper.min.js in Resources */ = {isa = PBXBuildFile; fileRef = C10001132F11A00100ABCDEF /* swiper.min.js */; settings = {ASSET_TAGS = (Resources, ); }; };
+		C100000F2F11A00100ABCDEF /* extension.chatgpt.v1.html in Resources */ = {isa = PBXBuildFile; fileRef = C10001152F11A00100ABCDEF /* extension.chatgpt.v1.html */; settings = {ASSET_TAGS = (Resources, ); }; };
+		C10000102F11A00100ABCDEF /* extension.chatgpt.v2.html in Resources */ = {isa = PBXBuildFile; fileRef = C10001162F11A00100ABCDEF /* extension.chatgpt.v2.html */; settings = {ASSET_TAGS = (Resources, ); }; };
+		C10000112F11A00100ABCDEF /* image-blob-reduce.js in Resources */ = {isa = PBXBuildFile; fileRef = C10001182F11A00100ABCDEF /* image-blob-reduce.js */; settings = {ASSET_TAGS = (Resources, ); }; };
+		C10000122F11A00100ABCDEF /* swiper.js in Resources */ = {isa = PBXBuildFile; fileRef = C10001122F11A00100ABCDEF /* swiper.js */; settings = {ASSET_TAGS = (Resources, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		C10004012F11A00100ABCDEF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8B74405428E6A89700E7AD36 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = C10005012F11A00100ABCDEF;
+			remoteInfo = "MakeItHome Web Extension";
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		C10003012F11A00100ABCDEF /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 12;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				C10000012F11A00100ABCDEF /* MakeItHome Web Extension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		8B10BE9B2B52DFA100872640 /* MyAppleEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MyAppleEvents.swift; sourceTree = "<group>"; };
@@ -102,7 +144,7 @@
 		8B4B7CF02915B7B0009B55FE /* SwifterWindow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SwifterWindow.swift; sourceTree = "<group>"; };
 		8B4B7D1C29180A27009B55FE /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
 		8B4B7D2029181373009B55FE /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions.swift; sourceTree = "<group>"; };
-		8B557444292AA647009D645D /* info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = info.plist; sourceTree = "<group>"; };
+		8B557444292AA647009D645D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		8B557446292AA716009D645D /* ServiceManagement.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ServiceManagement.framework; path = System/Library/Frameworks/ServiceManagement.framework; sourceTree = SDKROOT; };
 		8B5785D52904A6D000C626C3 /* ScreenRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScreenRecorder.swift; sourceTree = "<group>"; };
 		8B5785D729050FE200C626C3 /* ConfigurationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConfigurationView.swift; sourceTree = "<group>"; };
@@ -150,6 +192,26 @@
 		8BE1B25E28F0BB950037D132 /* Displays.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Displays.swift; sourceTree = "<group>"; };
 		8BED85022E6F365000FC34C5 /* ERRORS.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = ERRORS.md; sourceTree = "<group>"; };
 		8BF0A583290AB56900E4E372 /* Static.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Static.swift; sourceTree = "<group>"; };
+		C10001012F11A00100ABCDEF /* MakeItHome Web Extension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "MakeItHome Web Extension.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
+		C10001022F11A00100ABCDEF /* SafariWebExtensionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariWebExtensionHandler.swift; sourceTree = "<group>"; };
+		C10001032F11A00100ABCDEF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		C10001042F11A00100ABCDEF /* MakeItHome_Web_Extension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = MakeItHome_Web_Extension.entitlements; sourceTree = "<group>"; };
+		C10001062F11A00100ABCDEF /* _locales */ = {isa = PBXFileReference; lastKnownFileType = folder; path = _locales; sourceTree = "<group>"; };
+		C10001072F11A00100ABCDEF /* images */ = {isa = PBXFileReference; lastKnownFileType = folder; path = images; sourceTree = "<group>"; };
+		C10001082F11A00100ABCDEF /* manifest.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = manifest.json; sourceTree = "<group>"; };
+		C10001092F11A00100ABCDEF /* background.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = background.js; sourceTree = "<group>"; };
+		C100010A2F11A00100ABCDEF /* content.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = content.js; sourceTree = "<group>"; };
+		C100010B2F11A00100ABCDEF /* popup.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = popup.html; sourceTree = "<group>"; };
+		C100010C2F11A00100ABCDEF /* popup.css */ = {isa = PBXFileReference; lastKnownFileType = text.css; path = popup.css; sourceTree = "<group>"; };
+		C100010D2F11A00100ABCDEF /* popup.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = popup.js; sourceTree = "<group>"; };
+		C100010E2F11A00100ABCDEF /* Icon.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = Icon.png; sourceTree = "<group>"; };
+		C10001102F11A00100ABCDEF /* extension.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = extension.html; sourceTree = "<group>"; };
+		C10001112F11A00100ABCDEF /* swiper.css */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.css; path = swiper.css; sourceTree = "<group>"; };
+		C10001122F11A00100ABCDEF /* swiper.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; path = swiper.js; sourceTree = "<group>"; };
+		C10001132F11A00100ABCDEF /* swiper.min.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = swiper.min.js; sourceTree = "<group>"; };
+		C10001152F11A00100ABCDEF /* extension.chatgpt.v1.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = extension.chatgpt.v1.html; sourceTree = "<group>"; };
+		C10001162F11A00100ABCDEF /* extension.chatgpt.v2.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = extension.chatgpt.v2.html; sourceTree = "<group>"; };
+		C10001182F11A00100ABCDEF /* image-blob-reduce.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "image-blob-reduce.js"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -170,6 +232,13 @@
 				8BB0E3A5293DC881006DA326 /* ServiceManagement.framework in Frameworks */,
 				8BB0E3A6293DC881006DA326 /* Collections in Frameworks */,
 				8BB0E3A7293DC881006DA326 /* Accelerate.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C10003032F11A00100ABCDEF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -256,6 +325,7 @@
 			isa = PBXGroup;
 			children = (
 				8BB0E3B2293DC881006DA326 /* MakeItHome.app */,
+				C10001012F11A00100ABCDEF /* MakeItHome Web Extension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -275,13 +345,14 @@
 				8B74406128E6A89800E7AD36 /* ContentView.swift */,
 				8B74406328E6A89B00E7AD36 /* Assets.xcassets */,
 				8B74406828E6A89B00E7AD36 /* MakeItHome.entitlements */,
+				C10002012F11A00100ABCDEF /* MakeItHome Web Extension */,
 				8B74406528E6A89B00E7AD36 /* Preview Content */,
 				8BF0A583290AB56900E4E372 /* Static.swift */,
 				8B4B7D2029181373009B55FE /* Extensions.swift */,
 				8B81DDBE291B1D0A00B3E3CC /* Settings.swift */,
 				8B81DDC02927FF5300B3E3CC /* GeneralFuncs.swift */,
 				8BB0E381293DC2D1006DA326 /* Bridge-Header.h */,
-				8B557444292AA647009D645D /* info.plist */,
+				8B557444292AA647009D645D /* Info.plist */,
 			);
 			path = MakeItHome;
 			sourceTree = "<group>";
@@ -385,6 +456,64 @@
 			path = Overscreen;
 			sourceTree = "<group>";
 		};
+		C10002012F11A00100ABCDEF /* MakeItHome Web Extension */ = {
+			isa = PBXGroup;
+			children = (
+				C10001022F11A00100ABCDEF /* SafariWebExtensionHandler.swift */,
+				C10001032F11A00100ABCDEF /* Info.plist */,
+				C10001042F11A00100ABCDEF /* MakeItHome_Web_Extension.entitlements */,
+				C10002022F11A00100ABCDEF /* Resources */,
+			);
+			path = "MakeItHome Web Extension";
+			sourceTree = "<group>";
+		};
+		C10002022F11A00100ABCDEF /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				C10002032F11A00100ABCDEF /* assets */,
+				C10001062F11A00100ABCDEF /* _locales */,
+				C10001072F11A00100ABCDEF /* images */,
+				C10001082F11A00100ABCDEF /* manifest.json */,
+				C10001092F11A00100ABCDEF /* background.js */,
+				C100010A2F11A00100ABCDEF /* content.js */,
+				C100010B2F11A00100ABCDEF /* popup.html */,
+				C100010C2F11A00100ABCDEF /* popup.css */,
+				C100010D2F11A00100ABCDEF /* popup.js */,
+				C100010E2F11A00100ABCDEF /* Icon.png */,
+				C10002052F11A00100ABCDEF /* ext_assets */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		C10002032F11A00100ABCDEF /* assets */ = {
+			isa = PBXGroup;
+			children = (
+				C10002042F11A00100ABCDEF /* chatgpt */,
+				C10001102F11A00100ABCDEF /* extension.html */,
+				C10001112F11A00100ABCDEF /* swiper.css */,
+				C10001122F11A00100ABCDEF /* swiper.js */,
+				C10001132F11A00100ABCDEF /* swiper.min.js */,
+			);
+			path = assets;
+			sourceTree = "<group>";
+		};
+		C10002042F11A00100ABCDEF /* chatgpt */ = {
+			isa = PBXGroup;
+			children = (
+				C10001152F11A00100ABCDEF /* extension.chatgpt.v1.html */,
+				C10001162F11A00100ABCDEF /* extension.chatgpt.v2.html */,
+			);
+			path = chatgpt;
+			sourceTree = "<group>";
+		};
+		C10002052F11A00100ABCDEF /* ext_assets */ = {
+			isa = PBXGroup;
+			children = (
+				C10001182F11A00100ABCDEF /* image-blob-reduce.js */,
+			);
+			path = ext_assets;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -395,10 +524,12 @@
 				8BB0E386293DC881006DA326 /* Sources */,
 				8BB0E3A0293DC881006DA326 /* Frameworks */,
 				8BB0E3A8293DC881006DA326 /* Resources */,
+				C10003012F11A00100ABCDEF /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				C10004022F11A00100ABCDEF /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				8B6B3A422F0F9B4D00D7D99C /* Helpers */,
@@ -413,6 +544,23 @@
 			productReference = 8BB0E3B2293DC881006DA326 /* MakeItHome.app */;
 			productType = "com.apple.product-type.application";
 		};
+		C10005012F11A00100ABCDEF /* MakeItHome Web Extension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C10007012F11A00100ABCDEF /* Build configuration list for PBXNativeTarget "MakeItHome Web Extension" */;
+			buildPhases = (
+				C10003022F11A00100ABCDEF /* Sources */,
+				C10003032F11A00100ABCDEF /* Frameworks */,
+				C10003042F11A00100ABCDEF /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "MakeItHome Web Extension";
+			productName = "MakeItHome Web Extension";
+			productReference = C10001012F11A00100ABCDEF /* MakeItHome Web Extension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -422,6 +570,7 @@
 				BuildIndependentTargetsInParallel = 1;
 				KnownAssetTags = (
 					New,
+					Resources,
 				);
 				LastSwiftUpdateCheck = 1410;
 				LastUpgradeCheck = 1520;
@@ -456,6 +605,7 @@
 			projectRoot = "";
 			targets = (
 				8BB0E382293DC881006DA326 /* MakeItHome */,
+				C10005012F11A00100ABCDEF /* MakeItHome Web Extension */,
 			);
 		};
 /* End PBXProject section */
@@ -469,7 +619,7 @@
 				8B11BBA22C07742C00E46355 /* AuroraBorealis.png in Resources */,
 				8B3D40592AD70F94003DFAC7 /* mrWhite.html in Resources */,
 				8BAFBF672AE4AB2A000663AE /* release.mov in Resources */,
-				8BB0E3A9293DC881006DA326 /* info.plist in Resources */,
+				8BB0E3A9293DC881006DA326 /* Info.plist in Resources */,
 				8BB0E3AB293DC881006DA326 /* Synth.aif in Resources */,
 				8BB0E3AC293DC881006DA326 /* Preview Assets.xcassets in Resources */,
 				8BAFBF5F2AE2F40F000663AE /* assets in Resources */,
@@ -480,6 +630,29 @@
 				8BB5D8002AA0A2B4007453F0 /* Localizable.xcstrings in Resources */,
 				8BB0E3AE293DC881006DA326 /* Assets.xcassets in Resources */,
 				8BAFBF632AE47EBF000663AE /* lock.mov in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C10003042F11A00100ABCDEF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C10000122F11A00100ABCDEF /* swiper.js in Resources */,
+				C10000112F11A00100ABCDEF /* image-blob-reduce.js in Resources */,
+				C100000F2F11A00100ABCDEF /* extension.chatgpt.v1.html in Resources */,
+				C10000042F11A00100ABCDEF /* images in Resources */,
+				C10000052F11A00100ABCDEF /* manifest.json in Resources */,
+				C10000062F11A00100ABCDEF /* background.js in Resources */,
+				C10000072F11A00100ABCDEF /* content.js in Resources */,
+				C10000082F11A00100ABCDEF /* popup.html in Resources */,
+				C10000092F11A00100ABCDEF /* popup.css in Resources */,
+				C100000A2F11A00100ABCDEF /* popup.js in Resources */,
+				C100000B2F11A00100ABCDEF /* Icon.png in Resources */,
+				C100000C2F11A00100ABCDEF /* extension.html in Resources */,
+				C100000D2F11A00100ABCDEF /* swiper.css in Resources */,
+				C100000E2F11A00100ABCDEF /* swiper.min.js in Resources */,
+				C10000102F11A00100ABCDEF /* extension.chatgpt.v2.html in Resources */,
+				C10000032F11A00100ABCDEF /* _locales in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -537,7 +710,23 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C10003022F11A00100ABCDEF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C10000022F11A00100ABCDEF /* SafariWebExtensionHandler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		C10004022F11A00100ABCDEF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = C10005012F11A00100ABCDEF /* MakeItHome Web Extension */;
+			targetProxy = C10004012F11A00100ABCDEF /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		8B74407F28E6A89B00E7AD36 /* Debug */ = {
@@ -671,7 +860,7 @@
 				CODE_SIGN_ENTITLEMENTS = MakeItHome/MakeItHome.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 152;
+				CURRENT_PROJECT_VERSION = 155;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"MakeItHome/Preview Content\"";
 				DEVELOPMENT_TEAM = UYSXKZ8U4Z;
@@ -688,7 +877,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.3;
-				MARKETING_VERSION = 2.0.5;
+				MARKETING_VERSION = 2.0.6;
 				PRODUCT_BUNDLE_IDENTIFIER = ink.geckos.MakeItHome;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = NO;
@@ -708,7 +897,7 @@
 				CODE_SIGN_ENTITLEMENTS = MakeItHome/MakeItHome.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 152;
+				CURRENT_PROJECT_VERSION = 155;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_ASSET_PATHS = "\"MakeItHome/Preview Content\"";
 				DEVELOPMENT_TEAM = UYSXKZ8U4Z;
@@ -725,12 +914,74 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.3;
-				MARKETING_VERSION = 2.0.5;
+				MARKETING_VERSION = 2.0.6;
 				PRODUCT_BUNDLE_IDENTIFIER = ink.geckos.MakeItHome;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "MakeItHome/Bridge-Header.h";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		C10006012F11A00100ABCDEF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "MakeItHome/MakeItHome Web Extension/MakeItHome_Web_Extension.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = UYSXKZ8U4Z;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "MakeItHome/MakeItHome Web Extension/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "MakeItHome Web Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.3;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ink.geckos.MakeItHome.WebExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		C10006022F11A00100ABCDEF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "MakeItHome/MakeItHome Web Extension/MakeItHome_Web_Extension.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = UYSXKZ8U4Z;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "MakeItHome/MakeItHome Web Extension/Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "MakeItHome Web Extension";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 12.3;
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = ink.geckos.MakeItHome.WebExtension;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};
 			name = Release;
@@ -752,6 +1003,15 @@
 			buildConfigurations = (
 				8BB0E3B0293DC881006DA326 /* Debug */,
 				8BB0E3B1293DC881006DA326 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C10007012F11A00100ABCDEF /* Build configuration list for PBXNativeTarget "MakeItHome Web Extension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C10006012F11A00100ABCDEF /* Debug */,
+				C10006022F11A00100ABCDEF /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

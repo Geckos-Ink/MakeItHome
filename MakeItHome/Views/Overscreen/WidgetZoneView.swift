@@ -428,6 +428,21 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
                         break
                     }
                 }
+
+                if json?.type == "extensionPermissions" {
+                    var reply = JSMessage()
+                    reply.type = "extensionPermissionsStatus"
+
+                    if json?.op == "revoke", let identity = json?.strId, !identity.isEmpty {
+                        Static.appExtensionManager?.revokeExtensionPermission(identity: identity)
+                    } else if json?.op == "request", let identity = json?.strId, !identity.isEmpty {
+                        let decision = Static.appExtensionManager?.requestExtensionPermission(identity: identity)
+                        reply.decision = decision?.rawValue
+                    }
+
+                    reply.extensionPermissions = Static.appExtensionManager?.extensionPermissionsStatus() ?? []
+                    self.parent.sendMessage(obj: reply)
+                }
                 
                 if json?.type == "calendar" {
                     Static.calendar?.receive(msg: json!)
@@ -829,6 +844,10 @@ public struct JSMessage: Codable {
     var strId : String?
     
     var data : Data?
+
+    // App extension permissions
+    var extensionPermissions: [AppExtensionPermissionStatus]?
+    var decision: String?
     
     var x: CGFloat?
     var y: CGFloat?

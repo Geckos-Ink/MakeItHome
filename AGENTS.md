@@ -7,10 +7,13 @@
 
 ## Repo Layout
 - `MakeItHome/Managers/Displays.swift`: display detection, mouse/overscreen logic, window tracking, screenshot cropping.
+- `MakeItHome/Managers/AppExtension.swift`: external extension connection auth/trust, 30s popup timeout+retry handling, permission listing/revoke/re-request APIs for settings.
 - `MakeItHome/Managers/Capture/ScreenRecorder.swift`: ScreenCaptureKit capture engine and stream configuration.
 - `MakeItHome/Managers/Capture/Views/CapturePreview.swift`: SceneKit preview renderer and interaction.
 - `MakeItHome/Views/Overscreen/WidgetZoneView.swift`: widgets zone SwiftUI controller.
+- `MakeItHome/Resources/assets/widgets.html` and `MakeItHome/Resources/assets/script.js`: settings UI sections, including External Extensions permission controls.
 - `MakeItHome/Resources/assets/`: web assets for the top widgets zone.
+- `MakeItHome/MakeItHome Web Extension/Resources/background.js`: browser extension handshake, tokenized auth, and reconnect backoff on ignored permission popups.
 - `MakeItHome/Static.swift`: global app state and configuration.
 - `MakeItHome.xcodeproj`: Xcode project.
 

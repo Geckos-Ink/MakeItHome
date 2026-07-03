@@ -68,9 +68,15 @@
         let isShowing = false
         let version = ''
 
+        function clearExtensionEvents(bundleId){
+            delete vars[bundleId+'_event_show']
+            delete vars[bundleId+'_event_exit']
+        }
+
         function createAppExtension(bundleId){
             bundleId = bundleId.replaceAll(".", "-")
 
+            clearExtensionEvents(bundleId)
             $("#"+bundleId).remove() // ensure there are no duplicates
 
             let $ext = $('<div class="appExtension" id="'+bundleId+'"><div class="extensionPlaceholder">Extension not already loaded...</div></div>')
@@ -81,8 +87,24 @@
             bundleId = bundleId.replaceAll(".", "-")
             let $ext = $('#'+bundleId)
 
-            content = atob(content)
-            $ext.html(content)
+            if($ext.length === 0){
+                createAppExtension(bundleId)
+                $ext = $('#'+bundleId)
+            }
+
+            $ext.stop(true, true)
+            $ext.empty()
+
+            let decoded = (()=>{
+                try {
+                    return atob(content)
+                }
+                catch(err){
+                    console.error("setContent decode error", err)
+                    return ""
+                }
+            })()
+            $ext.html(decoded)
         }
 
         function showAppExtension(bundleId, _isHorizontal=true){

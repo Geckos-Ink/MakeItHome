@@ -45,7 +45,8 @@ public class DisplaysManager {
     private var pendingStrictSample: StrictMotionSample?
     private let strictMotionQueue = DispatchQueue(label: "ink.makeithome.strictMotion", qos: Static.ActiveMouseTimerQoS)
     private var strictMotionState = StrictMotionState()
-    private var mainScreenHeight: CGFloat = 0
+    fileprivate var mainScreenHeight: CGFloat = 0
+    private var recorderSelectionTask: Task<Void, Never>?
     var curMouseLoc : NSPoint = NSPoint(x:0,y:0);
     var curDisplay : Display?
     
@@ -188,7 +189,7 @@ public class DisplaysManager {
     public func initCurrentDisplays(load: Bool = false){
         
         screens = NSScreen.screens
-        mainScreenHeight = NSScreen.main?.frame.height ?? screens.first?.frame.height ?? 0
+        mainScreenHeight = NSScreen.main?.frame.maxY ?? screens.first?.frame.maxY ?? 0
         
         var foundSomething = false
         
@@ -242,30 +243,34 @@ public class DisplaysManager {
     }
     
     func screenRecorderSelectDisplay(){
-        if #available(macOS 12.3, *){
-            DispatchQueue.main.async {
-                Task{
-                    let screenRecorder = self.contentView!.store.screenRecorder as! ScreenRecorder
-                    await screenRecorder.refreshAvailableContent()
-                    
-                    // Removed: this can cause some types of crashes
-                    //await screenRecorder.refreshAvailableContent()
-                    
-                    var scDisplay : SCDisplay? = nil
-                    for d in screenRecorder.availableDisplays {
-                        if(d.displayID == self.curDisplay?.screen.displayID){
-                            scDisplay = d
-                        }
-                    }
-                    
-                    if(scDisplay != nil && !(self.curDisplay?.disable ?? true)){
-                        print("starting recording on display", scDisplay?.displayID)
-                        self.curDisplay?.scDisplay = scDisplay
-                        screenRecorder.capturePreview.currentDisplay(display: self.curDisplay!)
-                        await screenRecorder.start(lowProfile: true, display: scDisplay)
-                    }
-                }
+        guard #available(macOS 12.3, *) else {
+            return
+        }
+        
+        recorderSelectionTask?.cancel()
+        recorderSelectionTask = Task { @MainActor [weak self] in
+            guard let self = self,
+                  let screenRecorder = self.contentView?.store.screenRecorder as? ScreenRecorder else {
+                return
             }
+            
+            await screenRecorder.refreshAvailableContent()
+            
+            let activeDisplay = self.curDisplay
+            let activeDisplayId = activeDisplay?.screen.displayID
+            let scDisplay = screenRecorder.availableDisplays.first { $0.displayID == activeDisplayId }
+            
+            guard let activeDisplay,
+                  !activeDisplay.disable,
+                  let scDisplay else {
+                await screenRecorder.stop()
+                return
+            }
+            
+            print("starting recording on display", scDisplay.displayID)
+            activeDisplay.scDisplay = scDisplay
+            screenRecorder.capturePreview.currentDisplay(display: activeDisplay)
+            await screenRecorder.start(lowProfile: true, display: scDisplay)
         }
     }
     
@@ -332,27 +337,17 @@ public class DisplaysManager {
             if(self.curDisplay?.screen != display!.screen){
                 print("display id", display!.screen.displayID, self.curMouseLoc)
                 
-                if(self.curDisplay != nil){
-                    if #available(macOS 12.3, *){
-                        DispatchQueue.main.async {
-                            Task {
-                                await (self.contentView?.store.screenRecorder as! ScreenRecorder).stop()
-                            }
-                        }
-                    }
-                }
-                
                 //MARK: Display changed
                 
                 //window?.makeKeyAndOrderFront(nil)
                 //window?.orderFront(nil)
                 
                 Static.curDisplay = display
+                self.curDisplay = display
                 
                 if !(display!.disable) {
                                                             
                     display!.newSet()
-                    self.curDisplay = display
                                         
                     if(enableMouseEvent){ // currently false
                         stopMouseEvent()
@@ -375,6 +370,10 @@ public class DisplaysManager {
                             self.menuBarView = MenuBarView()
                         }
                     }*/
+                }
+                else {
+                    self.curDisplay?.hideWindow()
+                    screenRecorderSelectDisplay()
                 }
             }
             else {
@@ -408,8 +407,8 @@ public class DisplaysManager {
             guard let self = self else { return }
             
             let loc: CGPoint
-            if let quartzLoc = CGEvent(source: nil)?.location, self.mainScreenHeight > 0 {
-                loc = CGPoint(x: quartzLoc.x, y: self.mainScreenHeight - quartzLoc.y)
+            if let unflippedLoc = CGEvent(source: nil)?.unflippedLocation {
+                loc = unflippedLoc
             }
             else {
                 loc = NSEvent.mouseLocation
@@ -1173,17 +1172,18 @@ public class Display : Equatable {
     public func loadScreenInfo(){
         self.frame = screen.frame
         self.sizeFrame = NSRect(origin: NSPoint.zero, size: frame.size)
-        self.isMain = screen.displayID == 1
+        self.isMain = screen.displayID == NSScreen.main?.displayID
         
         print("screen", screen.displayID, "is main", isMain)
         
         setScreenScaling() // for align other variables (mostly unused)
         
         // Load user settings
-        /*self.disable = Static.User.object(forKey: "DisableDisplay_\(self.screen.localizedName)") as? Bool ?? false
-        self.activateSide[0] = Static.User.object(forKey: "DisplayEnableLeft_\(self.screen.localizedName)") as? Bool ?? true
-        self.activateSide[1] = Static.User.object(forKey: "DisplayEnableRight_\(self.screen.localizedName)") as? Bool ?? true
-        self.activateSide[2] = Static.User.object(forKey: "DisplayEnableBottom_\(self.screen.localizedName)") as? Bool ?? true*/
+        self.disable = Static.User.object(forKey: "DisableDisplay_\(self.screen.localizedName)") as? Bool ?? false
+        self.activateSide[0] = Static.User.object(forKey: "DisplayEnableLeft_\(self.screen.localizedName)") as? Bool ?? false
+        self.activateSide[1] = Static.User.object(forKey: "DisplayEnableRight_\(self.screen.localizedName)") as? Bool ?? false
+        self.activateSide[2] = Static.User.object(forKey: "DisplayEnableBottom_\(self.screen.localizedName)") as? Bool ?? true
+        self.activateSide[3] = Static.User.object(forKey: "DisplayEnableTop_\(self.screen.localizedName)") as? Bool ?? true
     }
     
     public var isFullscreen : Bool = false
@@ -1280,7 +1280,7 @@ public class Display : Equatable {
                 return
             }
             
-            if self.disable || self.screen != NSScreen.main {
+            if self.disable || self.manager.curDisplay !== self {
                 return
             }
             
@@ -1526,13 +1526,19 @@ public class Display : Equatable {
                         
                         let bounds = dict["kCGWindowBounds"] as! NSDictionary
                         
-                        let width = CGFloat(truncating: (bounds["Width"] as? Int ?? 0) as NSNumber)
-                        let rect = CGRect(
-                            x: CGFloat(truncating: (bounds["X"] as? Int ?? 0) as NSNumber),
-                            y: CGFloat(truncating: (bounds["Y"] as? Int ?? 0) as NSNumber), // this to respect CGRect principles
-                            width: width,
-                            height: CGFloat(truncating: (bounds["Height"] as? Int ?? 0) as NSNumber)
-                        )
+                        let width = CGFloat((bounds["Width"] as? NSNumber)?.doubleValue ?? 0)
+                        let height = CGFloat((bounds["Height"] as? NSNumber)?.doubleValue ?? 0)
+                        let rawX = CGFloat((bounds["X"] as? NSNumber)?.doubleValue ?? 0)
+                        let rawY = CGFloat((bounds["Y"] as? NSNumber)?.doubleValue ?? 0)
+                        let convertedY: CGFloat
+                        if self.manager.mainScreenHeight > 0 {
+                            convertedY = self.manager.mainScreenHeight - rawY - height
+                        } else {
+                            convertedY = rawY
+                        }
+                        
+                        let rect = CGRect(x: rawX, y: convertedY, width: width, height: height)
+                        let rectOnCurrentDisplay = !NSIntersectionRect(rect, self.frame).isEmpty
                         
                         let appWin = getWindow(winId: winId)
                         appWin?.stillExisting = true
@@ -1541,7 +1547,7 @@ public class Display : Equatable {
                         
                         let winOwnerChecked = (winOwnerName == name || pid == winPid!)
                         
-                        if winLayer == 0 && !excludedApps.contains(winOwnerName ?? "") {
+                        if winLayer == 0 && rectOnCurrentDisplay && !excludedApps.contains(winOwnerName ?? "") {
                             // In case of emergency break the glass: https://developer.apple.com/documentation/appkit/nswindowwillenterfullscreennotification (seems not working for other apps)
                             if rect.height >= (screen.frame.height-removeMenuHeight) && rect.width >= screen.frame.width {
                                 self.isFullscreen = true
@@ -1550,7 +1556,7 @@ public class Display : Equatable {
                         
                         let thisTimeHasTitle = winner != nil && winnerTitle == "" && !(winTitle ?? "").isEmpty
                         
-                        if winTitle == lowerTitle && winOnScreen == 1 {
+                        if winTitle == lowerTitle && winOnScreen == 1 && rectOnCurrentDisplay {
                             // found placeholder panel
                             spaceHolderId = winId
                             
@@ -1571,7 +1577,7 @@ public class Display : Equatable {
                                 self.currentSpaceId = spaceHolderFound
                             }
                         }
-                        else if (winner == nil || thisTimeHasTitle) && (winOnScreen == 1 && self.frame.contains(CGPoint(x: rect.origin.x, y: self.frame.minY)) && !excludedApps.contains(winOwnerName ?? "") && winOwnerChecked && (rect.width+rect.height)/2 > 150)/* window must be enough big */{
+                        else if (winner == nil || thisTimeHasTitle) && (winOnScreen == 1 && rectOnCurrentDisplay && !excludedApps.contains(winOwnerName ?? "") && winOwnerChecked && (rect.width+rect.height)/2 > 150)/* window must be enough big */{
                             // winOnScreen == Int(self.screen.displayID)
                             
                             // Check if it's showed elsewhere
@@ -2285,14 +2291,22 @@ public class Display : Equatable {
     
     func setRecorderProfile(lowProfile: Bool){
         DispatchQueue.main.async{
+            guard self.manager.curDisplay === self, !self.disable else {
+                return
+            }
+            
             if #available(macOS 12.3, *){
                 let screenRecorder = (self.manager.contentView?.store.screenRecorder as! ScreenRecorder)
                 screenRecorder.windowShowing = !lowProfile
                 
-                if let displayId = (self.scDisplay as? SCDisplay)?.displayID,
-                   screenRecorder.isRunning,
+                guard let scDisplay = self.scDisplay as? SCDisplay else {
+                    self.manager.screenRecorderSelectDisplay()
+                    return
+                }
+                
+                if screenRecorder.isRunning,
                    screenRecorder.isLowPriority == lowProfile,
-                   screenRecorder.recordingOnDisplay == displayId {
+                   screenRecorder.recordingOnDisplay == scDisplay.displayID {
                     self.setRefresh()
                     return
                 }
@@ -2301,7 +2315,7 @@ public class Display : Equatable {
                 delay(ms: waitForIt){
                     let priority: TaskPriority = lowProfile ? .utility : .userInteractive
                     Task(priority: priority){
-                        await screenRecorder.start(lowProfile: lowProfile, display: self.scDisplay as? SCDisplay)
+                        await screenRecorder.start(lowProfile: lowProfile, display: scDisplay)
                     }
                 }
             }
@@ -2354,6 +2368,11 @@ public class Display : Equatable {
             return
         }
         
+        guard manager.curDisplay === self, !disable else {
+            cancelRecorderPrewarm()
+            return
+        }
+        
         if aboveByPixels > 0 || !windowHidden {
             cancelRecorderPrewarm()
             return
@@ -2396,6 +2415,14 @@ public class Display : Equatable {
         
         recorderPrewarmActive = false
         recorderPrewarmWorkItem = nil
+        
+        guard manager.curDisplay === self, !disable else {
+            DispatchQueue.main.async {
+                (self.manager.capturePreview as? CapturePreview)?.captureView.stopRendering()
+            }
+            updatePerformanceActivity()
+            return
+        }
         
         if aboveByPixels > 0 || !windowHidden {
             return
