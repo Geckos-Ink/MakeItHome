@@ -261,7 +261,7 @@ public class DisplaysManager {
             let scDisplay = screenRecorder.availableDisplays.first { $0.displayID == activeDisplayId }
             
             guard let activeDisplay,
-                  !activeDisplay.disable,
+                  activeDisplay.shouldKeepScreenRecorderActive(),
                   let scDisplay else {
                 await screenRecorder.stop()
                 return
@@ -2291,7 +2291,12 @@ public class Display : Equatable {
     
     func setRecorderProfile(lowProfile: Bool){
         DispatchQueue.main.async{
-            guard self.manager.curDisplay === self, !self.disable else {
+            guard self.manager.curDisplay === self else {
+                return
+            }
+            
+            guard self.shouldKeepScreenRecorderActive() else {
+                self.stopScreenRecordingIfNeeded()
                 return
             }
             
@@ -2332,6 +2337,60 @@ public class Display : Equatable {
                     await screenRecorder.stop()
                 }
             }
+        }
+    }
+
+    func shouldKeepScreenRecorderActive() -> Bool {
+        ready = manager.curDekstop != nil
+        
+        if Static.ScreenRecordingUnauthorized && !Static.debugForceWorking {
+            return false
+        }
+        
+        if Static.ActivationStatus <= 0 || !ready {
+            return false
+        }
+        
+        return !disable && !isFullscreen
+    }
+
+    func stopScreenRecordingIfNeeded() {
+        cancelRecorderPrewarm()
+        recordingPaused = false
+        toBeRecorded = false
+        updatePerformanceActivity()
+        
+        guard #available(macOS 12.3, *) else {
+            return
+        }
+        
+        Task { @MainActor in
+            (self.manager.capturePreview as? CapturePreview)?.captureView.stopRendering()
+            
+            guard let screenRecorder = self.manager.contentView?.store.screenRecorder as? ScreenRecorder else {
+                return
+            }
+            
+            screenRecorder.windowShowing = false
+            
+            guard screenRecorder.isRunning else {
+                return
+            }
+            
+            await screenRecorder.stop()
+        }
+    }
+
+    private func disableOverscreenAndStopRecording() {
+        aboveBy = 0
+        aboveByPixels = 0
+        forceAboveBy = 0
+        sideToClose = -1
+        
+        stopScreenRecordingIfNeeded()
+        
+        if !windowHidden {
+            hideWindow(allowRecorderRestart: false)
         }
     }
 
@@ -2581,7 +2640,7 @@ public class Display : Equatable {
         }
     }
     
-    func hideWindow(){
+    func hideWindow(allowRecorderRestart: Bool = true){
         
         if windowHidden{
             return
@@ -2637,7 +2696,7 @@ public class Display : Equatable {
                     // Forced operation for solving the "screen not updated issue"
                     // it starts automatically screen recording in low profile
                     delay(ms: 500){
-                        if self.aboveByPixels == 0 && self.side == -1 {
+                        if allowRecorderRestart && self.aboveByPixels == 0 && self.side == -1 && self.shouldKeepScreenRecorderActive() {
                             if Static.ReloadScreenRecorderDisplay {
                                 self.manager.screenRecorderSelectDisplay()
                             }
@@ -2865,16 +2924,23 @@ public class Display : Equatable {
     //MARK: Active area
     @MainActor func active(mouse: NSPoint, strictSample: StrictMotionSample? = nil){ // was @MainActor
         
-        if(Static.ScreenRecordingUnauthorized && !Static.debugForceWorking){
+        if(Static.ScreenRecordingUnauthorized && !Static.debugForceWorking){            
+            disableOverscreenAndStopRecording()
             return
         }
         
         self.ready = manager.curDekstop != nil
         if(Static.ActivationStatus <= 0 || !ready){
+            disableOverscreenAndStopRecording()
             return
         }
         
         if(!mouseIn || isFullscreen || disable){
+            if isFullscreen || disable {
+                disableOverscreenAndStopRecording()
+                return
+            }
+            
             if !windowHidden{
                 aboveBy = 0
                 hideWindow()
