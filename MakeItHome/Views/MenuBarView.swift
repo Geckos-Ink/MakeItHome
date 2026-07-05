@@ -16,6 +16,7 @@ struct MenuBarView: View {
     @State private var requireAcceleration : Bool
     @State private var maxApps : Int
     @State private var disableDockSide : Bool
+    @State private var enableShortcuts : Bool
     @State private var launchAtStartup : Bool
     @State private var showInDock : Bool
     @State private var enableDragDropDetection : Bool
@@ -174,6 +175,10 @@ struct MenuBarView: View {
                         Static.User.set(Static.DisableOnDockSide, forKey: "DisableOnDockSide")
                     }
                     
+                    Toggle(" \(Image(systemName: "keyboard"))  Enable shortcuts", isOn: $enableShortcuts).onChange(of: enableShortcuts){ newVal in
+                        Static.EnableShortcuts = newVal
+                    }
+                    
                     Toggle("\(Image(systemName: "appclip")) Show in Dock", isOn: $showInDock).onChange(of: showInDock){ newVal in
                         Static.ShowInDock = newVal
                     }
@@ -266,6 +271,16 @@ struct MenuBarView: View {
                 Button(action: closeApp, label: {
                     Text("Quit").padding(.horizontal , 20)
                 }).background(Color.red).cornerRadius(5).buttonStyle(.bordered).padding(.bottom)
+                
+                if enableShortcuts {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("\(GlobalShortcutManager.openSideShortcutDescription): open side")
+                        Text("\(GlobalShortcutManager.toggleDisplayShortcutDescription): enable/disable display")
+                    }
+                    .font(.caption)
+                    .frame(width: Static.MenuBarPopupWidth - 20, alignment: .leading)
+                    .padding(.bottom)
+                }
             }
             
             Group {
@@ -403,6 +418,7 @@ struct MenuBarView: View {
         maxApps = Static.MaxApps
         requireAcceleration = Static.EnableRequiredAcceleration
         disableDockSide = Static.DisableOnDockSide
+        enableShortcuts = Static.EnableShortcuts
         launchAtStartup = Static.OpenAtStartup
         showInDock = Static.ShowInDock
         enableDragDropDetection = Static.EnableDragDropDetection

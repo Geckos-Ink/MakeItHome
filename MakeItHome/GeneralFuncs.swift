@@ -8,6 +8,7 @@
 import Foundation
 import IOKit.ps
 import AppKit
+import Carbon
 
 public class GeneralFuncs {
     public static func ComputerIsConnectedToAdapter() -> Bool{
@@ -102,5 +103,149 @@ final class PermissionsService: ObservableObject {
             // Require accessibility permissions
             PermissionsService.acquireAccessibilityPrivileges()
         }
+    }
+}
+
+final class GlobalShortcutManager {
+    static let shared = GlobalShortcutManager()
+    
+    static let openSideShortcutDescription = "⌃⌥⌘ + Arrow"
+    static let toggleDisplayShortcutDescription = "⌃⌥⌘↩"
+    
+    private enum Action: UInt32 {
+        case openLeft = 1
+        case openRight = 2
+        case openBottom = 3
+        case openTop = 4
+        case toggleCurrentDisplay = 5
+    }
+    
+    private static let signature = fourCharCode("MIHS")
+    private let modifierFlags = UInt32(controlKey | optionKey | cmdKey)
+    private var hotKeyRefs: [UInt32: EventHotKeyRef] = [:]
+    private var eventHandlerRef: EventHandlerRef?
+    
+    private init() {}
+    
+    func setEnabled(_ enabled: Bool) {
+        if enabled {
+            PermissionsService.checkAccessibilityPrivileges()
+            start()
+        }
+        else {
+            stop()
+        }
+    }
+    
+    private func start() {
+        if eventHandlerRef == nil {
+            var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard),
+                                          eventKind: UInt32(kEventHotKeyPressed))
+            let status = InstallEventHandler(GetApplicationEventTarget(),
+                                             GlobalShortcutManager.eventHandler,
+                                             1,
+                                             &eventType,
+                                             UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque()),
+                                             &eventHandlerRef)
+            if status != noErr {
+                print("Unable to install global shortcut handler:", status)
+                return
+            }
+        }
+        
+        guard hotKeyRefs.isEmpty else {
+            return
+        }
+        
+        registerHotKey(keyCode: UInt32(kVK_LeftArrow), action: .openLeft)
+        registerHotKey(keyCode: UInt32(kVK_RightArrow), action: .openRight)
+        registerHotKey(keyCode: UInt32(kVK_DownArrow), action: .openBottom)
+        registerHotKey(keyCode: UInt32(kVK_UpArrow), action: .openTop)
+        registerHotKey(keyCode: UInt32(kVK_Return), action: .toggleCurrentDisplay)
+    }
+    
+    private func stop() {
+        for ref in hotKeyRefs.values {
+            UnregisterEventHotKey(ref)
+        }
+        hotKeyRefs.removeAll()
+        
+        if let eventHandlerRef {
+            RemoveEventHandler(eventHandlerRef)
+            self.eventHandlerRef = nil
+        }
+    }
+    
+    private func registerHotKey(keyCode: UInt32, action: Action) {
+        var hotKeyRef: EventHotKeyRef?
+        let hotKeyID = EventHotKeyID(signature: Self.signature, id: action.rawValue)
+        let status = RegisterEventHotKey(keyCode,
+                                         modifierFlags,
+                                         hotKeyID,
+                                         GetApplicationEventTarget(),
+                                         0,
+                                         &hotKeyRef)
+        
+        if status == noErr, let hotKeyRef {
+            hotKeyRefs[action.rawValue] = hotKeyRef
+        }
+        else {
+            print("Unable to register global shortcut \(action):", status)
+        }
+    }
+    
+    private static let eventHandler: EventHandlerUPP = { _, eventRef, userData in
+        guard let eventRef, let userData else {
+            return OSStatus(eventNotHandledErr)
+        }
+        
+        var hotKeyID = EventHotKeyID(signature: 0, id: 0)
+        let status = GetEventParameter(eventRef,
+                                       EventParamName(kEventParamDirectObject),
+                                       EventParamType(typeEventHotKeyID),
+                                       nil,
+                                       MemoryLayout<EventHotKeyID>.size,
+                                       nil,
+                                       &hotKeyID)
+        
+        guard status == noErr, hotKeyID.signature == GlobalShortcutManager.signature else {
+            return OSStatus(eventNotHandledErr)
+        }
+        
+        let manager = Unmanaged<GlobalShortcutManager>.fromOpaque(userData).takeUnretainedValue()
+        Task { @MainActor in
+            manager.handleHotKey(id: hotKeyID.id)
+        }
+        
+        return OSStatus(noErr)
+    }
+    
+    @MainActor
+    private func handleHotKey(id: UInt32) {
+        guard let action = Action(rawValue: id) else {
+            return
+        }
+        
+        switch action {
+        case .openLeft:
+            currentDisplay()?.openSideFromShortcut(side: 0)
+        case .openRight:
+            currentDisplay()?.openSideFromShortcut(side: 1)
+        case .openBottom:
+            currentDisplay()?.openSideFromShortcut(side: 2)
+        case .openTop:
+            currentDisplay()?.openSideFromShortcut(side: 3)
+        case .toggleCurrentDisplay:
+            currentDisplay()?.toggleDisabledFromShortcut()
+        }
+    }
+    
+    @MainActor
+    private func currentDisplay() -> Display? {
+        return Static.mouseInDisplay ?? Static.curDisplay
+    }
+    
+    private static func fourCharCode(_ value: String) -> OSType {
+        return value.utf8.reduce(0) { ($0 << 8) + OSType($1) }
     }
 }

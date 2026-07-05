@@ -2755,6 +2755,99 @@ public class Display : Equatable {
         }
     }
     
+    @MainActor public func openSideFromShortcut(side shortcutSide: Int) {
+        guard shortcutSide >= 0 && shortcutSide < activateSide.count else {
+            return
+        }
+        
+        guard !disable, !isFullscreen, activateSide[shortcutSide] else {
+            return
+        }
+        
+        dockPos = getDockPosition(screen: NSScreen.main!)
+        if Static.DisableOnDockSide && dockPos.rawValue == shortcutSide {
+            return
+        }
+        
+        Static.mouseInDisplay = self
+        Static.curDisplay = self
+        manager.curDisplay = self
+        mouseIn = true
+        timerHideWindowStarted = false
+        activateNewApp = false
+        checkedDragging = true
+        
+        Static.OverscreenSize = shortcutSide == 3 ? Static.OverscreenSizeTop : Static.OverscreenSizeDefault
+        side = shortcutSide
+        sideToClose = shortcutSide
+        aboveBy = 1
+        prevAboveByPixels = aboveByPixels
+        aboveByPixels = Static.OverscreenSize
+        aboveByTriggeredSince = Date.now.timeIntervalSince1970
+        alongLine = AlongLine()
+        alongLine.aboveBy = activateOnPixelsLimit
+        
+        forceFrameUpdate()
+        cancelRecorderPrewarm()
+        showWindow()
+        setRecorderProfile(lowProfile: false)
+        updatePerformanceActivity()
+        
+        if #available(macOS 12.3, *) {
+            (manager.capturePreview as? CapturePreview)?.captureView.restartRendering()
+            (manager.capturePreview as? CapturePreview)?.setCurrentAbove(side: shortcutSide,
+                                                                          aboveBy: aboveByPixels,
+                                                                          display: self)
+        }
+        
+        moveMouse(to: shortcutCursorEventPoint(side: shortcutSide))
+    }
+    
+    @MainActor public func toggleDisabledFromShortcut() {
+        disable.toggle()
+        Static.User.set(disable, forKey: "DisableDisplay_\(screen.localizedName)")
+        
+        if disable {
+            aboveBy = 0
+            aboveByPixels = 0
+            side = -1
+            sideToClose = -1
+            hideWindow()
+            recorderPause()
+        }
+        else {
+            setRecorderProfile(lowProfile: true)
+        }
+    }
+    
+    private func shortcutCursorEventPoint(side shortcutSide: Int) -> CGPoint {
+        let inset = max(20, min(Static.OverscreenSize * 0.5, min(frame.width, frame.height) * 0.25))
+        var appKitPoint = CGPoint(x: frame.midX, y: frame.midY)
+        
+        switch shortcutSide {
+        case 0:
+            appKitPoint.x = frame.minX + inset
+        case 1:
+            appKitPoint.x = frame.maxX - inset
+        case 2:
+            appKitPoint.y = frame.minY + inset
+        case 3:
+            appKitPoint.y = frame.maxY - inset
+        default:
+            break
+        }
+        
+        if let event = CGEvent(source: nil) {
+            let currentEventPoint = event.location
+            let currentAppKitPoint = event.unflippedLocation
+            return CGPoint(x: appKitPoint.x + (currentEventPoint.x - currentAppKitPoint.x),
+                           y: (currentEventPoint.y + currentAppKitPoint.y) - appKitPoint.y)
+        }
+        
+        let mainHeight = manager.mainScreenHeight > 0 ? manager.mainScreenHeight : (NSScreen.main?.frame.maxY ?? frame.maxY)
+        return CGPoint(x: appKitPoint.x, y: mainHeight - appKitPoint.y)
+    }
+    
     public func forcePosition(){
         if(removeAccumulate == CGPoint.zero){
             return
