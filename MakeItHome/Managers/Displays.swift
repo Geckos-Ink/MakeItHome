@@ -1198,6 +1198,7 @@ public class Display : Equatable {
     var lastRecorderUpdate : Double = 0
     private var recorderPrewarmWorkItem: DispatchWorkItem?
     private var recorderPrewarmActive = false
+    private var previewRecorderResumeInFlight = false
     private var performanceActivity: NSObjectProtocol?
     
     func windowStillExists(winId : Int, windows: [CFDictionary]) -> Bool {
@@ -1291,7 +1292,8 @@ public class Display : Equatable {
             
             var force = self.appSwitched_noScreenshot || self.aboveByPixels > 0
             
-            if force || self.mouseSpeed_10s > prevMouseSpeed || self.spaceIsChanging || self.frontMostAppSince < 3 {
+            let mouseMovedForPreview = self.mouseSpeed_10s > prevMouseSpeed || self.mouseSpeed > 0
+            if force || mouseMovedForPreview || self.spaceIsChanging || self.frontMostAppSince < 3 {
                 mouseMoveMultiplier = 1
             }
             prevMouseSpeed = self.mouseSpeed_10s
@@ -1351,7 +1353,10 @@ public class Display : Equatable {
                 return
             }
                         
-            if self.checkForScreenshot(forceShot: true) {
+            let screenshotUpdated = self.checkForScreenshot(forceShot: true)
+            self.resumeScreenRecordingForWindowPreviewsIfNeeded(mouseMoved: mouseMovedForPreview || force || self.frontMostAppSince < 3)
+            
+            if screenshotUpdated {
                 self.appSwitched_noScreenshot = false
             }
             else {
@@ -2336,6 +2341,43 @@ public class Display : Equatable {
                 Task{
                     await screenRecorder.stop()
                 }
+            }
+        }
+    }
+
+    private func resumeScreenRecordingForWindowPreviewsIfNeeded(mouseMoved: Bool) {
+        guard mouseMoved, !previewRecorderResumeInFlight else {
+            return
+        }
+        
+        Task { @MainActor in
+            guard self.manager.curDisplay === self,
+                  self.shouldKeepScreenRecorderActive(),
+                  self.mouseIn,
+                  self.aboveByPixels < 1 else {
+                return
+            }
+            
+            guard #available(macOS 12.3, *) else {
+                return
+            }
+            
+            guard let screenRecorder = self.manager.contentView?.store.screenRecorder as? ScreenRecorder else {
+                return
+            }
+            
+            if let scDisplay = self.scDisplay as? SCDisplay,
+               screenRecorder.isRunning,
+               screenRecorder.recordingOnDisplay == scDisplay.displayID {
+                return
+            }
+            
+            self.previewRecorderResumeInFlight = true
+            self.recordingPaused = false
+            self.setRecorderProfile(lowProfile: true)
+            
+            delay(ms: 500) {
+                self.previewRecorderResumeInFlight = false
             }
         }
     }
