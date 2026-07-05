@@ -272,6 +272,9 @@
         }
       }
     },
+    " %@  Enable shortcuts" : {
+
+    },
     "- Retrieve your current desktop background for using it as overscreen background" : {
       "localizations" : {
         "ar" : {
@@ -1858,6 +1861,12 @@
           }
         }
       }
+    },
+    "%@: enable/disable display" : {
+
+    },
+    "%@: open side" : {
+
     },
     "A new update is available" : {
       "localizations" : {

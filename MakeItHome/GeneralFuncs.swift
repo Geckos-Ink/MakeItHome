@@ -249,3 +249,105 @@ final class GlobalShortcutManager {
         return value.utf8.reduce(0) { ($0 << 8) + OSType($1) }
     }
 }
+
+final class ShortcutStatusHUD {
+    static let shared = ShortcutStatusHUD()
+    
+    private var panel: NSPanel?
+    private var closeWorkItem: DispatchWorkItem?
+    
+    private init() {}
+    
+    @MainActor
+    func show(displayName: String, enabled: Bool, on screen: NSScreen) {
+        closeWorkItem?.cancel()
+        
+        let panel = self.panel ?? makePanel()
+        self.panel = panel
+        
+        let contentView = makeContentView(displayName: displayName, enabled: enabled)
+        panel.contentView = contentView
+        panel.setContentSize(NSSize(width: 260, height: 160))
+        
+        let frame = screen.frame
+        panel.setFrameOrigin(NSPoint(x: frame.midX - 130, y: frame.midY - 80))
+        panel.alphaValue = 1
+        panel.orderFrontRegardless()
+        
+        let closeWorkItem = DispatchWorkItem { [weak self, weak panel] in
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.2
+                panel?.animator().alphaValue = 0
+            } completionHandler: {
+                panel?.orderOut(nil)
+                panel?.alphaValue = 1
+                if self?.panel === panel {
+                    self?.panel = nil
+                }
+            }
+        }
+        
+        self.closeWorkItem = closeWorkItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.1, execute: closeWorkItem)
+    }
+    
+    private func makePanel() -> NSPanel {
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 260, height: 160),
+                            styleMask: [.borderless, .nonactivatingPanel],
+                            backing: .buffered,
+                            defer: false)
+        panel.level = .statusBar
+        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
+        panel.ignoresMouseEvents = true
+        return panel
+    }
+    
+    private func makeContentView(displayName: String, enabled: Bool) -> NSView {
+        let visualEffectView = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: 260, height: 160))
+        visualEffectView.material = .hudWindow
+        visualEffectView.blendingMode = .behindWindow
+        visualEffectView.state = .active
+        visualEffectView.wantsLayer = true
+        visualEffectView.layer?.cornerRadius = 18
+        visualEffectView.layer?.masksToBounds = true
+        
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .centerX
+        stack.spacing = 8
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        
+        let image = NSImage(systemSymbolName: enabled ? "display" : "display.trianglebadge.exclamationmark",
+                            accessibilityDescription: nil)
+        let imageView = NSImageView(image: image ?? NSImage())
+        imageView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 42, weight: .regular)
+        imageView.contentTintColor = enabled ? .systemGreen : .systemRed
+        
+        let title = NSTextField(labelWithString: enabled ? "MakeItHome Enabled" : "MakeItHome Disabled")
+        title.font = .systemFont(ofSize: 18, weight: .semibold)
+        title.textColor = .white
+        title.alignment = .center
+        
+        let subtitle = NSTextField(labelWithString: displayName)
+        subtitle.font = .systemFont(ofSize: 13, weight: .regular)
+        subtitle.textColor = .secondaryLabelColor
+        subtitle.alignment = .center
+        
+        stack.addArrangedSubview(imageView)
+        stack.addArrangedSubview(title)
+        stack.addArrangedSubview(subtitle)
+        
+        visualEffectView.addSubview(stack)
+        NSLayoutConstraint.activate([
+            stack.centerXAnchor.constraint(equalTo: visualEffectView.centerXAnchor),
+            stack.centerYAnchor.constraint(equalTo: visualEffectView.centerYAnchor),
+            stack.leadingAnchor.constraint(greaterThanOrEqualTo: visualEffectView.leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: visualEffectView.trailingAnchor, constant: -16)
+        ])
+        
+        return visualEffectView
+    }
+}
