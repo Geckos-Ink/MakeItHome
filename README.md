@@ -1,6 +1,7 @@
 <p align="center">
   <img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/makeithome.png?raw=true" style="width: 40%"/><br>
-  <img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/icon.png?raw=true" style="width: 40%"/>
+  <!-- <img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/icon.png?raw=true" style="width: 40%"/> -->
+  <img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/Assets/vintage-logo.png?raw=true" style="width: 40%"/>
 </p>
 
 <p align="center" >
