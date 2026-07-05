@@ -261,7 +261,7 @@ public class DisplaysManager {
             let scDisplay = screenRecorder.availableDisplays.first { $0.displayID == activeDisplayId }
             
             guard let activeDisplay,
-                  !activeDisplay.disable,
+                  activeDisplay.shouldKeepScreenRecorderActive(),
                   let scDisplay else {
                 await screenRecorder.stop()
                 return
@@ -1196,8 +1196,11 @@ public class Display : Equatable {
     
     var recordingPaused = false
     var lastRecorderUpdate : Double = 0
+    private var shortcutOpenTimer: Timer?
+    private var shortcutAnimationInProgress = false
     private var recorderPrewarmWorkItem: DispatchWorkItem?
     private var recorderPrewarmActive = false
+    private var previewRecorderResumeInFlight = false
     private var performanceActivity: NSObjectProtocol?
     
     func windowStillExists(winId : Int, windows: [CFDictionary]) -> Bool {
@@ -1291,7 +1294,8 @@ public class Display : Equatable {
             
             var force = self.appSwitched_noScreenshot || self.aboveByPixels > 0
             
-            if force || self.mouseSpeed_10s > prevMouseSpeed || self.spaceIsChanging || self.frontMostAppSince < 3 {
+            let mouseMovedForPreview = self.mouseSpeed_10s > prevMouseSpeed || self.mouseSpeed > 0
+            if force || mouseMovedForPreview || self.spaceIsChanging || self.frontMostAppSince < 3 {
                 mouseMoveMultiplier = 1
             }
             prevMouseSpeed = self.mouseSpeed_10s
@@ -1351,7 +1355,10 @@ public class Display : Equatable {
                 return
             }
                         
-            if self.checkForScreenshot(forceShot: true) {
+            let screenshotUpdated = self.checkForScreenshot(forceShot: true)
+            self.resumeScreenRecordingForWindowPreviewsIfNeeded(mouseMoved: mouseMovedForPreview || force || self.frontMostAppSince < 3)
+            
+            if screenshotUpdated {
                 self.appSwitched_noScreenshot = false
             }
             else {
@@ -2291,7 +2298,12 @@ public class Display : Equatable {
     
     func setRecorderProfile(lowProfile: Bool){
         DispatchQueue.main.async{
-            guard self.manager.curDisplay === self, !self.disable else {
+            guard self.manager.curDisplay === self else {
+                return
+            }
+            
+            guard self.shouldKeepScreenRecorderActive() else {
+                self.stopScreenRecordingIfNeeded()
                 return
             }
             
@@ -2332,6 +2344,97 @@ public class Display : Equatable {
                     await screenRecorder.stop()
                 }
             }
+        }
+    }
+
+    private func resumeScreenRecordingForWindowPreviewsIfNeeded(mouseMoved: Bool) {
+        guard mouseMoved, !previewRecorderResumeInFlight else {
+            return
+        }
+        
+        Task { @MainActor in
+            guard self.manager.curDisplay === self,
+                  self.shouldKeepScreenRecorderActive(),
+                  self.mouseIn,
+                  self.aboveByPixels < 1 else {
+                return
+            }
+            
+            guard #available(macOS 12.3, *) else {
+                return
+            }
+            
+            guard let screenRecorder = self.manager.contentView?.store.screenRecorder as? ScreenRecorder else {
+                return
+            }
+            
+            if let scDisplay = self.scDisplay as? SCDisplay,
+               screenRecorder.isRunning,
+               screenRecorder.recordingOnDisplay == scDisplay.displayID {
+                return
+            }
+            
+            self.previewRecorderResumeInFlight = true
+            self.recordingPaused = false
+            self.setRecorderProfile(lowProfile: true)
+            
+            delay(ms: 500) {
+                self.previewRecorderResumeInFlight = false
+            }
+        }
+    }
+
+    func shouldKeepScreenRecorderActive() -> Bool {
+        ready = manager.curDekstop != nil
+        
+        if Static.ScreenRecordingUnauthorized && !Static.debugForceWorking {
+            return false
+        }
+        
+        if Static.ActivationStatus <= 0 || !ready {
+            return false
+        }
+        
+        return !disable && !isFullscreen
+    }
+
+    func stopScreenRecordingIfNeeded() {
+        cancelRecorderPrewarm()
+        recordingPaused = false
+        toBeRecorded = false
+        updatePerformanceActivity()
+        
+        guard #available(macOS 12.3, *) else {
+            return
+        }
+        
+        Task { @MainActor in
+            (self.manager.capturePreview as? CapturePreview)?.captureView.stopRendering()
+            
+            guard let screenRecorder = self.manager.contentView?.store.screenRecorder as? ScreenRecorder else {
+                return
+            }
+            
+            screenRecorder.windowShowing = false
+            
+            guard screenRecorder.isRunning else {
+                return
+            }
+            
+            await screenRecorder.stop()
+        }
+    }
+
+    private func disableOverscreenAndStopRecording() {
+        aboveBy = 0
+        aboveByPixels = 0
+        forceAboveBy = 0
+        sideToClose = -1
+        
+        stopScreenRecordingIfNeeded()
+        
+        if !windowHidden {
+            hideWindow(allowRecorderRestart: false)
         }
     }
 
@@ -2581,7 +2684,7 @@ public class Display : Equatable {
         }
     }
     
-    func hideWindow(){
+    func hideWindow(allowRecorderRestart: Bool = true){
         
         if windowHidden{
             return
@@ -2637,7 +2740,7 @@ public class Display : Equatable {
                     // Forced operation for solving the "screen not updated issue"
                     // it starts automatically screen recording in low profile
                     delay(ms: 500){
-                        if self.aboveByPixels == 0 && self.side == -1 {
+                        if allowRecorderRestart && self.aboveByPixels == 0 && self.side == -1 && self.shouldKeepScreenRecorderActive() {
                             if Static.ReloadScreenRecorderDisplay {
                                 self.manager.screenRecorderSelectDisplay()
                             }
@@ -2652,6 +2755,224 @@ public class Display : Equatable {
                 }
             }
         }
+    }
+    
+    @MainActor public func openSideFromShortcut(side shortcutSide: Int) {
+        guard shortcutSide >= 0 && shortcutSide < activateSide.count else {
+            return
+        }
+        
+        guard !disable, !isFullscreen else {
+            return
+        }
+        
+        let currentSide = sideToClose != -1 ? sideToClose : side
+        if aboveByPixels > 0 && isOppositeShortcutSide(currentSide: currentSide, requestedSide: shortcutSide) {
+            closeSideFromShortcut(side: currentSide)
+            return
+        }
+                
+        Static.mouseInDisplay = self
+        Static.curDisplay = self
+        manager.curDisplay = self
+        mouseIn = true
+        timerHideWindowStarted = false
+        activateNewApp = false
+        checkedDragging = true
+        
+        Static.OverscreenSize = shortcutSide == 3 ? Static.OverscreenSizeTop : Static.OverscreenSizeDefault
+        let targetAboveByPixels = Static.OverscreenSize
+        let startAboveByPixels = side == shortcutSide ? max(0, min(aboveByPixels, targetAboveByPixels)) : 0
+        
+        side = shortcutSide
+        sideToClose = shortcutSide
+        aboveBy = max(0, min(startAboveByPixels / targetAboveByPixels, 1))
+        prevAboveByPixels = startAboveByPixels
+        aboveByPixels = max(1, startAboveByPixels)
+        aboveByTriggeredSince = Date.now.timeIntervalSince1970
+        alongLine = AlongLine()
+        alongLine.aboveBy = activateOnPixelsLimit
+        
+        moveMouse(to: shortcutCursorEventPoint(side: shortcutSide))
+        forceFrameUpdate()
+        cancelRecorderPrewarm()
+        showWindow()
+        setRecorderProfile(lowProfile: false)
+        updatePerformanceActivity()
+        
+        animateShortcutOpen(side: shortcutSide,
+                            from: startAboveByPixels,
+                            to: targetAboveByPixels)
+    }
+    
+    @MainActor public func toggleDisabledFromShortcut() {
+        shortcutOpenTimer?.invalidate()
+        shortcutOpenTimer = nil
+        shortcutAnimationInProgress = false
+        
+        disable.toggle()
+        Static.User.set(disable, forKey: "DisableDisplay_\(screen.localizedName)")
+        
+        if disable {
+            aboveBy = 0
+            aboveByPixels = 0
+            side = -1
+            sideToClose = -1
+            hideWindow()
+            recorderPause()
+        }
+        else {
+            setRecorderProfile(lowProfile: true)
+        }
+        
+        ShortcutStatusHUD.shared.show(displayName: screen.localizedName,
+                                      enabled: !disable,
+                                      on: screen)
+    }
+    
+    private func isOppositeShortcutSide(currentSide: Int, requestedSide: Int) -> Bool {
+        return (currentSide == 0 && requestedSide == 1)
+            || (currentSide == 1 && requestedSide == 0)
+            || (currentSide == 2 && requestedSide == 3)
+            || (currentSide == 3 && requestedSide == 2)
+    }
+    
+    @MainActor private func closeSideFromShortcut(side closingSide: Int) {
+        guard closingSide >= 0 else {
+            return
+        }
+        
+        shortcutOpenTimer?.invalidate()
+        Static.OverscreenSize = closingSide == 3 ? Static.OverscreenSizeTop : Static.OverscreenSizeDefault
+        
+        animateShortcutClose(side: closingSide, from: aboveByPixels)
+    }
+    
+    @MainActor private func animateShortcutOpen(side shortcutSide: Int,
+                                                from startAboveByPixels: CGFloat,
+                                                to targetAboveByPixels: CGFloat) {
+        shortcutOpenTimer?.invalidate()
+        shortcutAnimationInProgress = true
+        
+        let duration: TimeInterval = 0.18
+        let startTime = CACurrentMediaTime()
+        
+        if #available(macOS 12.3, *) {
+            (manager.capturePreview as? CapturePreview)?.captureView.restartRendering()
+        }
+        
+        updateShortcutAboveBy(side: shortcutSide, aboveByPixels: max(1, startAboveByPixels))
+        
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
+            guard let self = self else {
+                timer.invalidate()
+                return
+            }
+            
+            let elapsed = CACurrentMediaTime() - startTime
+            let progress = min(1, max(0, elapsed / duration))
+            let nextAboveByPixels = startAboveByPixels + ((targetAboveByPixels - startAboveByPixels) * progress)
+            
+            self.updateShortcutAboveBy(side: shortcutSide, aboveByPixels: nextAboveByPixels)
+            
+            if progress >= 1 {
+                timer.invalidate()
+                self.shortcutOpenTimer = nil
+                self.shortcutAnimationInProgress = false
+            }
+        }
+        
+        shortcutOpenTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+    
+    @MainActor private func animateShortcutClose(side closingSide: Int, from startAboveByPixels: CGFloat) {
+        shortcutOpenTimer?.invalidate()
+        shortcutAnimationInProgress = true
+        
+        let duration: TimeInterval = 0.16
+        let startTime = CACurrentMediaTime()
+        
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
+            guard let self = self else {
+                timer.invalidate()
+                return
+            }
+            
+            let elapsed = CACurrentMediaTime() - startTime
+            let progress = min(1, max(0, elapsed / duration))
+            let nextAboveByPixels = startAboveByPixels * (1 - progress)
+            
+            self.updateShortcutAboveBy(side: closingSide, aboveByPixels: nextAboveByPixels)
+            
+            if progress >= 1 {
+                timer.invalidate()
+                self.shortcutOpenTimer = nil
+                self.shortcutAnimationInProgress = false
+                self.aboveBy = 0
+                self.aboveByPixels = 0
+                self.side = -1
+                self.sideToClose = -1
+                self.checkedDragging = false
+                self.hideWindow()
+            }
+        }
+        
+        shortcutOpenTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+    
+    @MainActor private func updateShortcutAboveBy(side shortcutSide: Int, aboveByPixels newAboveByPixels: CGFloat) {
+        prevAboveByPixels = aboveByPixels
+        aboveByPixels = min(Static.OverscreenSize, max(0, newAboveByPixels))
+        aboveBy = Static.OverscreenSize > 0 ? aboveByPixels / Static.OverscreenSize : 0
+        
+        if #available(macOS 12.3, *) {
+            (manager.capturePreview as? CapturePreview)?.setCurrentAbove(side: shortcutSide,
+                                                                          aboveBy: aboveByPixels,
+                                                                          display: self)
+        }
+    }
+    
+    private func resetMouseTrackingForShortcutAnimation(mouse: NSPoint) {
+        prevMouse = mouse
+        prevRelMouse = CGPoint.zero
+        mouseScarf = CGPoint.zero
+        accumulatedDelta = CGPoint.zero
+        accumulatedAboveByDiff = 0
+        compensateAboveByCursor = CGPoint.zero
+        removeAccumulate = CGPoint.zero
+        alterMouse = 0
+        lastMouseChanged = false
+        forceAboveBy = 0
+    }
+    
+    private func shortcutCursorEventPoint(side shortcutSide: Int) -> CGPoint {
+        let inset = max(20, min(Static.OverscreenSize * 0.5, min(frame.width, frame.height) * 0.25))
+        var appKitPoint = CGPoint(x: frame.midX, y: frame.midY)
+        
+        switch shortcutSide {
+        case 0:
+            appKitPoint.x = frame.minX + inset
+        case 1:
+            appKitPoint.x = frame.maxX - inset
+        case 2:
+            appKitPoint.y = frame.minY + inset
+        case 3:
+            appKitPoint.y = frame.maxY - inset
+        default:
+            break
+        }
+        
+        if let event = CGEvent(source: nil) {
+            let currentEventPoint = event.location
+            let currentAppKitPoint = event.unflippedLocation
+            return CGPoint(x: appKitPoint.x + (currentEventPoint.x - currentAppKitPoint.x),
+                           y: (currentEventPoint.y + currentAppKitPoint.y) - appKitPoint.y)
+        }
+        
+        let mainHeight = manager.mainScreenHeight > 0 ? manager.mainScreenHeight : (NSScreen.main?.frame.maxY ?? frame.maxY)
+        return CGPoint(x: appKitPoint.x, y: mainHeight - appKitPoint.y)
     }
     
     public func forcePosition(){
@@ -2865,21 +3186,33 @@ public class Display : Equatable {
     //MARK: Active area
     @MainActor func active(mouse: NSPoint, strictSample: StrictMotionSample? = nil){ // was @MainActor
         
-        if(Static.ScreenRecordingUnauthorized && !Static.debugForceWorking){
+        if(Static.ScreenRecordingUnauthorized && !Static.debugForceWorking){            
+            disableOverscreenAndStopRecording()
             return
         }
         
         self.ready = manager.curDekstop != nil
         if(Static.ActivationStatus <= 0 || !ready){
+            disableOverscreenAndStopRecording()
             return
         }
         
         if(!mouseIn || isFullscreen || disable){
+            if isFullscreen || disable {
+                disableOverscreenAndStopRecording()
+                return
+            }
+            
             if !windowHidden{
                 aboveBy = 0
                 hideWindow()
             }
             
+            return
+        }
+        
+        if shortcutAnimationInProgress {
+            resetMouseTrackingForShortcutAnimation(mouse: mouse)
             return
         }
         

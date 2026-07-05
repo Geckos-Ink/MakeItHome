@@ -162,6 +162,16 @@ public class Static {
     public static var EnableDockMouseSlowering = true
     public static var EnableRequiredAcceleration = true
     public static var DisableOnDockSide = false
+    public static var EnableShortcuts : Bool {
+        get {
+            return User.object(forKey: "EnableShortcuts") as? Bool ?? false
+        }
+        
+        set {
+            User.set(newValue, forKey: "EnableShortcuts")
+            GlobalShortcutManager.shared.setEnabled(newValue)
+        }
+    }
     
     public static let MenuBarPopupWidth : CGFloat = 300
     
@@ -306,6 +316,8 @@ public class Static {
         //EnableDockMouseSlowering = User.object(forKey: "EnableDockMouseSlowering") as? Bool ?? EnableDockMouseSlowering
         MaxApps = User.object(forKey: "MaxApps") as? Int ?? MaxApps
         EnableDragDropDetection = User.object(forKey: "EnableDragDropDetection") as? Bool ?? EnableDragDropDetection
+        DisableOnDockSide = User.object(forKey: "DisableOnDockSide") as? Bool ?? DisableOnDockSide
+        GlobalShortcutManager.shared.setEnabled(EnableShortcuts)
         
         /*if let showInDock = User.object(forKey: "ShowInDock") as? Bool {
             Static.ShowInDock = showInDock

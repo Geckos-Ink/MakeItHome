@@ -630,13 +630,13 @@ public struct CapturePreview: NSViewRepresentable {
             //prepareScene()
             
             planeScreen!.geometry.width = (layer.frame.width / layer.frame.height) * planeScreen!.geometry.height
-            planeScreen!.geometry.firstMaterial?.diffuse.contents = captureLayer
             
             if captureLayer != nil{
                 captureLayer?.removeFromSuperlayer()
             }
             
             captureLayer = layer
+            planeScreen!.geometry.firstMaterial?.diffuse.contents = captureLayer
         }
         
         func prepareScene(){

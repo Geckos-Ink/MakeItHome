@@ -135,12 +135,117 @@ $("#clipboard").on('mouseexit', function (e) {
 
 // Get a reference to the iframe element
 var iframeBoard = document.getElementById('app-board-iframe');
+const boardAppUrl = iframeBoard ? (iframeBoard.dataset.src || 'http://127.0.0.1:19494/fuse/index.html') : 'http://127.0.0.1:19494/fuse/index.html';
+const boardAppOrigin = 'http://127.0.0.1:19494';
+const boardIdleTimeoutMs = 2 * 60 * 60 * 1000;
+const boardIdleCheckMs = 60 * 1000;
+
+let boardIsLoaded = false;
+let boardIsLoading = false;
+let boardPendingTarget = null;
+let boardLastUsedAt = 0;
+let boardIdleTimer = null;
+
+function boardMarkUsed() {
+    boardLastUsedAt = Date.now();
+}
+
+function isBoardSectionSelected() {
+    return curApp === 'board-notes' || curApp === 'board-tasks';
+}
+
+function ensureBoardIdleWatcher() {
+    if (boardIdleTimer) return;
+
+    boardIdleTimer = setInterval(() => {
+        maybeUnloadBoard();
+    }, boardIdleCheckMs);
+}
+
+function unloadBoard() {
+    if (!iframeBoard) return;
+
+    boardIsLoaded = false;
+    boardIsLoading = false;
+    boardPendingTarget = null;
+    iframeBoard.src = 'about:blank';
+}
+
+function maybeUnloadBoard() {
+    if (!iframeBoard) return;
+    if (!boardIsLoaded && !boardIsLoading) return;
+    if (isBoardSectionSelected()) return;
+    if (!boardLastUsedAt) return;
+    if ((Date.now() - boardLastUsedAt) < boardIdleTimeoutMs) return;
+
+    unloadBoard();
+}
+
+function attachBoardActivityListeners() {
+    if (!iframeBoard || !iframeBoard.contentWindow) return;
+
+    try {
+        let iframeDocument = iframeBoard.contentWindow.document;
+        if (!iframeDocument || !iframeDocument.body) return;
+        if (iframeDocument.body.dataset.mihBoardActivityBound === '1') return;
+
+        const markUsed = () => {
+            boardMarkUsed();
+        };
+
+        ['pointerdown', 'pointermove', 'keydown', 'wheel', 'scroll'].forEach((eventName) => {
+            iframeDocument.addEventListener(eventName, markUsed, { passive: true });
+        });
+
+        iframeDocument.body.dataset.mihBoardActivityBound = '1';
+    }
+    catch (err) {
+        console.error("iframe activity bind err: ", err);
+    }
+}
+
+function flushBoardPendingNavigation() {
+    if (!boardIsLoaded || !boardPendingTarget) return;
+
+    let target = boardPendingTarget;
+    boardPendingTarget = null;
+    boardSend({ op: 'goTo', to: target });
+}
+
+function ensureBoardLoaded(target = null) {
+    if (!iframeBoard) return;
+
+    if (target) {
+        boardPendingTarget = target;
+    }
+
+    boardMarkUsed();
+    ensureBoardIdleWatcher();
+
+    if (boardIsLoaded) {
+        flushBoardPendingNavigation();
+        return;
+    }
+
+    if (boardIsLoading) return;
+
+    boardIsLoading = true;
+    iframeBoard.src = boardAppUrl;
+}
 
 // Post a message to the iframe
 //iframe.contentWindow.postMessage('Hello from parent!', 'http://127.0.0.1:19494');
 
 // Wait for the iframe to load (optional but recommended)
 iframeBoard.addEventListener("load", function() {
+    let currentSrc = iframeBoard.getAttribute('src') || '';
+
+    if (!currentSrc || currentSrc === 'about:blank') {
+        boardIsLoaded = false;
+        boardIsLoading = false;
+        return;
+    }
+
     try{
         // Access the contentWindow of the iframe
         var iframeWindow = iframeBoard.contentWindow;
@@ -153,40 +258,54 @@ iframeBoard.addEventListener("load", function() {
         var iframeContent = iframeBody.innerHTML;
 
         if(!iframeContent.includes("Fuse logo")){
+            boardIsLoaded = false;
+            boardIsLoading = true;
             iframeBoard.contentWindow.location.reload();
+            return;
         }
+
+        boardIsLoaded = true;
+        boardIsLoading = false;
+        boardMarkUsed();
+        attachBoardActivityListeners();
+        flushBoardPendingNavigation();
 
         console.log("Content of the iframe:", iframeContent);
     }
     catch(err) {
+        boardIsLoaded = false;
+        boardIsLoading = false;
         console.error("iframe err: ", err)
     }
 });
 
 window.addEventListener('message', function(event) {
     // Check the origin of the message for security purposes
-    if (event.origin !== "http://127.0.0.1:19494") {
+    if (event.origin !== boardAppOrigin) {
         return; // Ignore messages from unknown sources
     }
 
+    boardMarkUsed();
     console.log('Message received in parent:', event.data);    
 
     // React to the message
 });
 
 function boardSend(what){
+    if (!iframeBoard || !boardIsLoaded || !iframeBoard.contentWindow) return false;
+
     if(typeof(what) == 'object'){
         what = JSON.stringify(what)
     }
 
-    iframeBoard.contentWindow.postMessage(what, 'http://127.0.0.1:19494');
+    boardMarkUsed();
+    iframeBoard.contentWindow.postMessage(what, boardAppOrigin);
+    return true;
 }
 
 function openBoard(what){
+    ensureBoardLoaded(what);
     openApp('board')
-
-    let req = {op: 'goTo', to: what}
-    boardSend(req)
 
     $(".appItem").removeClass("selected")
     $("#appItem-board-"+what).addClass("selected")
@@ -623,6 +742,10 @@ function openApp(app, animateExit=true){
     try {
         eval("openApp_"+app+"()")
     } catch {}
+}
+
+function openApp_board() {
+    ensureBoardLoaded();
 }
 
 /// Menu
