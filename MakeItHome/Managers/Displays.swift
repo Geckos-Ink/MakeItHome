@@ -1197,6 +1197,7 @@ public class Display : Equatable {
     var recordingPaused = false
     var lastRecorderUpdate : Double = 0
     private var shortcutOpenTimer: Timer?
+    private var shortcutAnimationInProgress = false
     private var recorderPrewarmWorkItem: DispatchWorkItem?
     private var recorderPrewarmActive = false
     private var previewRecorderResumeInFlight = false
@@ -2807,6 +2808,7 @@ public class Display : Equatable {
     @MainActor public func toggleDisabledFromShortcut() {
         shortcutOpenTimer?.invalidate()
         shortcutOpenTimer = nil
+        shortcutAnimationInProgress = false
         
         disable.toggle()
         Static.User.set(disable, forKey: "DisableDisplay_\(screen.localizedName)")
@@ -2850,6 +2852,7 @@ public class Display : Equatable {
                                                 from startAboveByPixels: CGFloat,
                                                 to targetAboveByPixels: CGFloat) {
         shortcutOpenTimer?.invalidate()
+        shortcutAnimationInProgress = true
         
         let duration: TimeInterval = 0.18
         let startTime = CACurrentMediaTime()
@@ -2875,6 +2878,7 @@ public class Display : Equatable {
             if progress >= 1 {
                 timer.invalidate()
                 self.shortcutOpenTimer = nil
+                self.shortcutAnimationInProgress = false
             }
         }
         
@@ -2883,6 +2887,9 @@ public class Display : Equatable {
     }
     
     @MainActor private func animateShortcutClose(side closingSide: Int, from startAboveByPixels: CGFloat) {
+        shortcutOpenTimer?.invalidate()
+        shortcutAnimationInProgress = true
+        
         let duration: TimeInterval = 0.16
         let startTime = CACurrentMediaTime()
         
@@ -2901,6 +2908,7 @@ public class Display : Equatable {
             if progress >= 1 {
                 timer.invalidate()
                 self.shortcutOpenTimer = nil
+                self.shortcutAnimationInProgress = false
                 self.aboveBy = 0
                 self.aboveByPixels = 0
                 self.side = -1
@@ -2924,6 +2932,19 @@ public class Display : Equatable {
                                                                           aboveBy: aboveByPixels,
                                                                           display: self)
         }
+    }
+    
+    private func resetMouseTrackingForShortcutAnimation(mouse: NSPoint) {
+        prevMouse = mouse
+        prevRelMouse = CGPoint.zero
+        mouseScarf = CGPoint.zero
+        accumulatedDelta = CGPoint.zero
+        accumulatedAboveByDiff = 0
+        compensateAboveByCursor = CGPoint.zero
+        removeAccumulate = CGPoint.zero
+        alterMouse = 0
+        lastMouseChanged = false
+        forceAboveBy = 0
     }
     
     private func shortcutCursorEventPoint(side shortcutSide: Int) -> CGPoint {
@@ -3187,6 +3208,11 @@ public class Display : Equatable {
                 hideWindow()
             }
             
+            return
+        }
+        
+        if shortcutAnimationInProgress {
+            resetMouseTrackingForShortcutAnimation(mouse: mouse)
             return
         }
         
