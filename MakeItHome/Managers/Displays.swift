@@ -2764,6 +2764,12 @@ public class Display : Equatable {
         guard !disable, !isFullscreen else {
             return
         }
+        
+        let currentSide = sideToClose != -1 ? sideToClose : side
+        if aboveByPixels > 0 && isOppositeShortcutSide(currentSide: currentSide, requestedSide: shortcutSide) {
+            closeSideFromShortcut(side: currentSide)
+            return
+        }
                 
         Static.mouseInDisplay = self
         Static.curDisplay = self
@@ -2822,6 +2828,24 @@ public class Display : Equatable {
                                       on: screen)
     }
     
+    private func isOppositeShortcutSide(currentSide: Int, requestedSide: Int) -> Bool {
+        return (currentSide == 0 && requestedSide == 1)
+            || (currentSide == 1 && requestedSide == 0)
+            || (currentSide == 2 && requestedSide == 3)
+            || (currentSide == 3 && requestedSide == 2)
+    }
+    
+    @MainActor private func closeSideFromShortcut(side closingSide: Int) {
+        guard closingSide >= 0 else {
+            return
+        }
+        
+        shortcutOpenTimer?.invalidate()
+        Static.OverscreenSize = closingSide == 3 ? Static.OverscreenSizeTop : Static.OverscreenSizeDefault
+        
+        animateShortcutClose(side: closingSide, from: aboveByPixels)
+    }
+    
     @MainActor private func animateShortcutOpen(side shortcutSide: Int,
                                                 from startAboveByPixels: CGFloat,
                                                 to targetAboveByPixels: CGFloat) {
@@ -2851,6 +2875,38 @@ public class Display : Equatable {
             if progress >= 1 {
                 timer.invalidate()
                 self.shortcutOpenTimer = nil
+            }
+        }
+        
+        shortcutOpenTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+    
+    @MainActor private func animateShortcutClose(side closingSide: Int, from startAboveByPixels: CGFloat) {
+        let duration: TimeInterval = 0.16
+        let startTime = CACurrentMediaTime()
+        
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
+            guard let self = self else {
+                timer.invalidate()
+                return
+            }
+            
+            let elapsed = CACurrentMediaTime() - startTime
+            let progress = min(1, max(0, elapsed / duration))
+            let nextAboveByPixels = startAboveByPixels * (1 - progress)
+            
+            self.updateShortcutAboveBy(side: closingSide, aboveByPixels: nextAboveByPixels)
+            
+            if progress >= 1 {
+                timer.invalidate()
+                self.shortcutOpenTimer = nil
+                self.aboveBy = 0
+                self.aboveByPixels = 0
+                self.side = -1
+                self.sideToClose = -1
+                self.checkedDragging = false
+                self.hideWindow()
             }
         }
         
