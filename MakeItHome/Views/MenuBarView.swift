@@ -206,6 +206,7 @@ struct MenuBarView: View {
                     }, label: {
                         Text("\(Image(systemName: "questionmark.circle.fill")) Help").frame(width: 150).padding(2)//.padding(.horizontal ,50)
                     }).background(Color(red: 0.15, green: 0.75, blue: 0.3)).cornerRadius(5).buttonStyle(.bordered)
+                        .padding(.top, 10)
                     
                     /*Button(action: openSafariWebExtensionSettings, label: {
                         Text("\(Image(systemName: "safari.fill")) Safari Extension").frame(width: 150).padding(2)
