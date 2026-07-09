@@ -134,11 +134,17 @@ public struct CapturePreview: NSViewRepresentable {
                 }
                 
                 self.view!.vars.navOverlayOpacity = self.view!.vars.overlayOpacity
-            
-                self.view!.vars.overlaySizeX = display.frame.width
-                self.view!.vars.overlaySizeY = Static.OverscreenSize
-                
-                self.view!.vars.overlayOffsetX = 0
+
+                // These don't depend on aboveBy: avoid re-publishing them on every tick
+                if self.view!.vars.overlaySizeX != display.frame.width {
+                    self.view!.vars.overlaySizeX = display.frame.width
+                }
+                if self.view!.vars.overlaySizeY != Static.OverscreenSize {
+                    self.view!.vars.overlaySizeY = Static.OverscreenSize
+                }
+                if self.view!.vars.overlayOffsetX != 0 {
+                    self.view!.vars.overlayOffsetX = 0
+                }
                 self.view!.vars.overlayOffsetY = ((offYMul * aboveBy) - (display.frame.height))/2
                 
                 if(aboveBy < 0.2){
@@ -149,13 +155,19 @@ public struct CapturePreview: NSViewRepresentable {
         }
         else {
             DispatchQueue.main.async {
-                self.view!.vars.overlayOffsetY = 10000
-                
+                let vars = self.view!.vars
+
+                // Every @Published write fires objectWillChange and re-evaluates the
+                // SwiftUI tree; this closure runs on every mouse tick, so only write
+                // values that actually changed
+                if vars.overlayOffsetY != 10000 {
+                    vars.overlayOffsetY = 10000
+                }
+
                 if Static.OnAppExtensionZone {
-                                    
+
                     var position : CGFloat = (Static.OverscreenSize - (aboveBy-Static.OverscreenSize))
-                    print("AppExtension position", position, display.side, aboveBy)
-                    
+
                     self.view!.vars.appExtOverlayOpacity = (aboveBy-Static.OverscreenSize) / Static.OverscreenSize
                     
                     if display.side == 2 {
@@ -180,10 +192,10 @@ public struct CapturePreview: NSViewRepresentable {
                         self.view!.vars.appExtOverlaySizeY = display.frame.height
                     }
                 }
-                else {
-                    self.view!.vars.appExtOverlayOffsetX = -10000
-                    self.view!.vars.appExtOverlayOffsetY = -10000
-                    self.view!.vars.appExtOverlayOpacity = 0
+                else if vars.appExtOverlayOpacity != 0 || vars.appExtOverlayOffsetX != -10000 || vars.appExtOverlayOffsetY != -10000 {
+                    vars.appExtOverlayOffsetX = -10000
+                    vars.appExtOverlayOffsetY = -10000
+                    vars.appExtOverlayOpacity = 0
                 }
             }
         }
@@ -794,29 +806,39 @@ public struct CapturePreview: NSViewRepresentable {
                 
                 // Check AppExtension
                 self.app.checkAppExtension()
-                if self.app.appExtension != nil { // enable only on supported apps
+                if self.app.appExtension != nil && !auroraBorealisPending { // enable only on supported apps
+                    // setIcon() runs on every setWidth/setHeight pass, so coalesce the
+                    // (expensive) particle systems rebuild into a single delayed call
+                    auroraBorealisPending = true
                     delay(ms: 100){
+                        self.auroraBorealisPending = false
                         self.addAuroraBorealis()
                     }
                 }
             }
-            
+
             var auroraBorealisNode : SCNNode?
             var auroraBorealisParticleSystem : SCNParticleSystem?
-            
+            var auroraBorealisPending = false
+            private var auroraLastOtherSideSize : CGFloat = -1
+
             func addAuroraBorealis(){
+                if auroraBorealisNode != nil && auroraLastOtherSideSize == otherSideSize {
+                    return // already built for this geometry
+                }
+                auroraLastOtherSideSize = otherSideSize
+
                 if auroraBorealisNode != nil {
                     auroraBorealisNode?.removeFromParentNode()
                 }
-                
+
                 // Create a node for the aurora
                 auroraBorealisNode = SCNNode()
-                
+
                 addAuroraBorealisWithBlend(blend: .additive, z:2)
                 addAuroraBorealisWithBlend(blend: .subtract, z:3)
-                
+
                 addAuroraBorealisWithBlend(blend: .additive, z:2, defaultColor: NSColor.green)
-                addAuroraBorealisWithBlend(blend: .additive, z:2, defaultColor: NSColor.purple)
             }
             
             static var auroraBorealisAnimationCache : [NSColor: NSImage] = [:]
@@ -834,16 +856,18 @@ public struct CapturePreview: NSViewRepresentable {
                 let particleSystem = SCNParticleSystem()
                 auroraBorealisParticleSystem = particleSystem
                 
-                let duration : CGFloat = 4.0 // seconds(?)
+                let duration : CGFloat = 3.0 // seconds(?)
                 
-                particleSystem.birthRate = 60
+                particleSystem.birthRate = 30
                 particleSystem.particleLifeSpan = duration
-                particleSystem.particleLifeSpanVariation = duration / 1.5
+                particleSystem.particleLifeSpanVariation = duration * 0.5
                 particleSystem.emissionDuration = duration
                 particleSystem.loops = true
                 particleSystem.blendMode = blend
                 particleSystem.isAffectedByGravity = false
-                particleSystem.isLightingEnabled = true
+                // additive/subtract blended sprites don't benefit from scene lighting,
+                // and per-particle lighting is one of the most expensive SCNParticleSystem options
+                particleSystem.isLightingEnabled = false
                 
                 if isHorizontal{
                     particleSystem.emitterShape = SCNPlane(width: otherSideSize, height: parentView.onePixel)
@@ -868,16 +892,16 @@ public struct CapturePreview: NSViewRepresentable {
                 
                 let accelerationFactor : CGFloat = 0.5
                 
-                particleSystem.particleColorVariation = SCNVector4(0.2, 0.5, 0.5, 0.5)
-                particleSystem.particleSize = self.parentView.onePixel * 30
-                particleSystem.acceleration.y = self.parentView.onePixel * 1 * accelerationFactor
+                particleSystem.particleColorVariation = SCNVector4(0.3, 0.7, 0.7, 0.7)
+                particleSystem.particleSize = self.parentView.onePixel * 40
+                particleSystem.acceleration.y = self.parentView.onePixel * 1.5 * accelerationFactor
                 
                 particleSystem.particleAngularVelocity = self.parentView.onePixel * 10
-                particleSystem.particleVelocity = self.parentView.onePixel * 2 * accelerationFactor
-                particleSystem.particleAngularVelocityVariation = self.parentView.onePixel * 10
-                particleSystem.particleVelocityVariation = self.parentView.onePixel * 2 * accelerationFactor
+                particleSystem.particleVelocity = self.parentView.onePixel * 3.0 * accelerationFactor
+                particleSystem.particleAngularVelocityVariation = self.parentView.onePixel * 20.0
+                particleSystem.particleVelocityVariation = self.parentView.onePixel * 3.0 * accelerationFactor
                 
-                particleSystem.particleSizeVariation = self.parentView.onePixel * 20
+                particleSystem.particleSizeVariation = self.parentView.onePixel * 30.0
                 
                 let animationImg = NSImage(named: "AuroraBorealis")!
                 
@@ -1051,10 +1075,18 @@ public struct CapturePreview: NSViewRepresentable {
             }
             
             public func moveEmissionAlpha(to: CGFloat = 0){
-                DispatchQueue.main.async {
+                let apply = {
                     for win in self.windows{
                         win.setEmissionAlpha(to: to)
                     }
+                }
+
+                // usually already on main (mouseMove): avoid an async hop per app per tick
+                if Thread.isMainThread {
+                    apply()
+                }
+                else {
+                    DispatchQueue.main.async(execute: apply)
                 }
             }
         }
@@ -1097,16 +1129,29 @@ public struct CapturePreview: NSViewRepresentable {
             var minAlpha : CGFloat = 0
             let maxEmissionIntensity = 0.2
             var emissionAlpha : CGFloat = 0
-            
+            private var appliedEmission : CGFloat = -1
+
             func setEmissionAlpha(to: CGFloat){
                 var tto = to
                 if tto == 0 {
                     tto = minAlpha
                 }
-                
-                emissionAlpha = (tto+emissionAlpha) / 2
+
+                // snap when converged, so the material writes below stop repeating on every tick
+                if abs(tto - emissionAlpha) < 0.002 {
+                    emissionAlpha = tto
+                }
+                else {
+                    emissionAlpha = (tto+emissionAlpha) / 2
+                }
+
                 let alpha = emissionAlpha * maxEmissionIntensity * (win.avgLight+0.1)
-                
+
+                if alpha == appliedEmission {
+                    return
+                }
+                appliedEmission = alpha
+
                 geometry.firstMaterial?.emission.intensity = alpha
                 geometry.firstMaterial?.transparency = (1 - alpha)
             }
@@ -1272,27 +1317,35 @@ public struct CapturePreview: NSViewRepresentable {
                 return NSRect(x: x, y: y, width: geometry.width, height: geometry.height)
             }
             
+            private var appliedPreview : CGImage? = nil
+
             public func setMaterial (){
-                
+
                 func addBloom() -> [CIFilter]? {
                     let bloomFilter = CIFilter(name:"CIBloom")!
                     bloomFilter.setValue(1, forKey: "inputIntensity")
                     bloomFilter.setValue(5, forKey: "inputRadius")
-                    
+
                     return [bloomFilter]
                 }
-                
+
                 if win.lastPreview?.width ?? 16384  < 16384 {
-                    
+
                     self.geometry.firstMaterial?.writesToDepthBuffer = false
-                    
-                    self.geometry.firstMaterial?.diffuse.contents = win.lastPreview
-                    
-                    if true { //TODO: check its utility
-                        self.geometry.firstMaterial?.multiply.contents = win.lastPreview
-                        self.geometry.firstMaterial?.multiply.intensity = 0.6
+
+                    // Re-upload the texture only when the preview actually changed:
+                    // this runs for every window on each preview update
+                    if appliedPreview !== win.lastPreview {
+                        appliedPreview = win.lastPreview
+
+                        self.geometry.firstMaterial?.diffuse.contents = win.lastPreview
+
+                        if true { //TODO: check its utility
+                            self.geometry.firstMaterial?.multiply.contents = win.lastPreview
+                            self.geometry.firstMaterial?.multiply.intensity = 0.6
+                        }
                     }
-                    
+
                     if win.inUsing {
                         self.minAlpha = 1
                         self.app?.inUsing = true
@@ -1622,18 +1675,57 @@ public struct CapturePreview: NSViewRepresentable {
                         app.value.setHeight(height: size, display: display)
                     }
                 }
-                
+
                 return setWindowsPosition()
             }
-            
-            
+
+            // Same total space that setWinsSize+setWindowsPosition would produce, but computed
+            // without touching the SceneKit graph: setWidth/setHeight rebuild icons, titles
+            // (SCNText) and materials for every app, which is far too expensive to repeat
+            // on every iteration of the fitting loop below
+            func estimateTotalSpace(size: CGFloat) -> CGFloat {
+                let spaceBetweenApps = pixelsToScene(pixels: 5)
+                var totalSpace : CGFloat = 0
+
+                for app in listApp! {
+                    var spacing : CGFloat = 0
+
+                    for win in app.value.windows {
+                        let maxSide = pixelsToScene(pixels: (sideVertical ? win.win.lastRect?.size.width : win.win.lastRect?.size.height) ?? 1.0)/2.5
+                        let side = min(size, maxSide)
+
+                        var otherSide = side
+                        if !app.value.asIcon {
+                            otherSide = sideVertical ? side / win.win.widthHeightRatio : side * win.win.widthHeightRatio
+                        }
+
+                        if otherSide > spacing {
+                            spacing = otherSide
+                        }
+                    }
+
+                    totalSpace += spaceBetweenApps + spacing
+                }
+
+                return totalSpace
+            }
+
+
             var maxSpace = pixelsToScene(pixels: curDisplay!.frame.height)
             if(!sideVertical){
                 maxSpace = pixelsToScene(pixels: curDisplay!.frame.width)
             }
-            
-            while setWinsSize(size: maxSize) > maxSpace{
-                maxSize -= pixelsToScene(pixels: 15)
+
+            let sizeStep = pixelsToScene(pixels: 15)
+
+            if setWinsSize(size: maxSize) > maxSpace {
+                // The first full pass also created the icon fake windows,
+                // so from here the estimate matches setWinsSize
+                while estimateTotalSpace(size: maxSize) > maxSpace && maxSize > sizeStep {
+                    maxSize -= sizeStep
+                }
+
+                setWinsSize(size: maxSize)
             }
         }
         

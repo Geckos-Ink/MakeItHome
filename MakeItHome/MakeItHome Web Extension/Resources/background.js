@@ -296,6 +296,8 @@ const screenshotPolicy = {
     appShowingCaptureMs: 900,
     activeCaptureMs: 2500,
     idleCaptureMs: 9500,
+    deepIdleAfterMs: 5 * 60 * 1000,
+    deepIdleCaptureMs: 30000,
     tabSyncIntervalMs: 7000,
     statusPollActiveMs: 700,
     statusPollIdleMs: 3200,
@@ -339,10 +341,15 @@ async function focusOnTab(id){
 }
 
 const maxOpenedTabs = 10
-function confirmTabOrder(id){
+// markActive: only real user interactions (tab switch, navigation, click) should
+// refresh lastActiveAt. The capture loop also confirms the order, and if it marked
+// activity too, the loop would keep itself in the fast "active" gear forever
+function confirmTabOrder(id, markActive = true){
     activeTabId = id
-    lastActiveAt = Date.now()
-    
+    if(markActive){
+        lastActiveAt = Date.now()
+    }
+
     let index = orderedTabs.indexOf(id)
     if(index >= 0){
         spliceOrderedTabs(index)
@@ -446,8 +453,13 @@ async function checkOpenTabs(options = {}){
     
     let tabsSignature = tabsIds.join(",")
     if(tabsSignature !== lastConfirmedTabsSignature){
-        lastConfirmedTabsSignature = tabsSignature
-        await sendJsMessage('confirmSafariTabs('+JSON.stringify(tabsIds)+')')
+        // Confirm the signature only on a successful send, so a dropped message
+        // (disconnected, HTTP error) is retried on the next sync instead of the
+        // widget keeping stale slides forever
+        let sent = await sendJsMessage('confirmSafariTabs('+JSON.stringify(tabsIds)+')')
+        if(sent){
+            lastConfirmedTabsSignature = tabsSignature
+        }
     }
     
     if(shouldRefreshPreviews){
@@ -586,9 +598,10 @@ async function waitForStatus() {
             }
         }
         else if(!appIsShowing){
-            // Reset contentHtml every 10 cycles
+            // Reset contentHtml every 10 cycles; skip while deep-idle so we don't
+            // keep messaging MakeItHome when nobody has touched the browser in a while
             cycleStatusForReload++
-            if(cycleStatusForReload > 10){
+            if(cycleStatusForReload > 10 && Date.now() - lastActiveAt < screenshotPolicy.deepIdleAfterMs){
                 cycleStatusForReload = 0
                 resetSwiper()
             }
@@ -611,11 +624,29 @@ function resetSwiper(){
 }
 
 let resetSecret = false
+let connectInFlight = false
 async function connect(){
     if(Date.now() < connectionBlockedUntil){
         return false
     }
 
+    // Only allow a single /connect at a time. Several entry points (startup timer, screenshot
+    // loop, toolbar click, extensionStart message) can call connect() at once; overlapping
+    // requests used to reach the native side with an empty secret while an approval prompt was
+    // open, which made it re-prompt and rotate the secret on every click ("Allow" never stuck).
+    if(connectInFlight){
+        return false
+    }
+    connectInFlight = true
+
+    try {
+        return await runConnect()
+    } finally {
+        connectInFlight = false
+    }
+}
+
+async function runConnect(){
     await storageGet()
     if(!secret && storage.secret){
         setSecret(storage.secret)
@@ -839,12 +870,35 @@ function getCaptureIntervalMs(){
     if(appIsShowing){
         return screenshotPolicy.appShowingCaptureMs
     }
-    
+
     if(Date.now() - lastActiveAt < 15000){
         return screenshotPolicy.activeCaptureMs
     }
-    
+
+    if(Date.now() - lastActiveAt > screenshotPolicy.deepIdleAfterMs){
+        return screenshotPolicy.deepIdleCaptureMs
+    }
+
     return screenshotPolicy.idleCaptureMs
+}
+
+// Capturing a tab forces a repaint + JPEG encode in the browser: avoid it
+// while the browser is in the background and MakeItHome isn't consuming frames
+async function shouldSkipBackgroundCapture(){
+    if(appIsShowing){
+        return false
+    }
+
+    try {
+        let win = await chrome.windows.getLastFocused()
+        if(win && win.focused === false){
+            return true
+        }
+    } catch(err){
+        // chrome.windows may be unavailable: never block captures on errors
+    }
+
+    return false
 }
 
 function scheduleScreenshotLoop(delayMs = getCaptureIntervalMs()){
@@ -859,13 +913,17 @@ async function captureScreenshotAndSend() {
         if(Date.now() - lastCaptureAt < screenshotPolicy.minCaptureGapMs){
             return {changed: false, reason: "throttled"}
         }
-        
+
+        if(await shouldSkipBackgroundCapture()){
+            return {changed: false, reason: "windowUnfocused"}
+        }
+
         const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true })
         if(!activeTab){
             return {changed: false, reason: "noActiveTab"}
         }
         
-        confirmTabOrder(activeTab.id)
+        confirmTabOrder(activeTab.id, false)
         activeTabId = activeTab.id
         
         let tabInfo = normalizeTabInfo(activeTab)
@@ -885,6 +943,9 @@ async function captureScreenshotAndSend() {
             return {changed: false, reason: "sameRawFrame"}
         }
         tabState.lastRawFrameFingerprint = rawFrameFingerprint
+        // The page visibly changed in a focused window: treat it as user activity
+        // so same-tab browsing keeps previews fresh (static pages still wind down to idle)
+        lastActiveAt = Date.now()
         
         let response = await fetch(dataUrl)
         let blob = await response.blob()
@@ -989,7 +1050,14 @@ async function sendAllTabsScreenshot(options = {}){
     ]
     tabIds = tabIds.filter((tabId)=>Number.isFinite(tabId))
     tabIds = [...new Set(tabIds)]
-    tabIds.sort((a, b)=>getTabPriorityScore(b) - getTabPriorityScore(a))
+
+    // Precompute scores: the comparator would otherwise recompute them
+    // (including an orderedTabs.indexOf scan) O(n log n) times
+    let scores = new Map()
+    for(let tabId of tabIds){
+        scores.set(tabId, getTabPriorityScore(tabId))
+    }
+    tabIds.sort((a, b)=>scores.get(b) - scores.get(a))
     
     let sent = 0
     for(let tabId of tabIds){
@@ -1027,7 +1095,8 @@ async function runScreenshotLoop(){
         }
         
         let now = Date.now()
-        if(tabsListDirty || now - lastOpenTabsSyncAt > screenshotPolicy.tabSyncIntervalMs){
+        let deepIdle = !appIsShowing && now - lastActiveAt > screenshotPolicy.deepIdleAfterMs
+        if(tabsListDirty || (!deepIdle && now - lastOpenTabsSyncAt > screenshotPolicy.tabSyncIntervalMs)){
             await checkOpenTabs()
             tabsListDirty = false
             lastOpenTabsSyncAt = Date.now()
@@ -1135,9 +1204,15 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab)=>{
         }
     }
     
-    if(changeInfo.status || changeInfo.url || changeInfo.title || changeInfo.favIconUrl){
+    // Ignore intermediate "loading" events: pages can fire dozens of them,
+    // and title tickers on background tabs must not tighten the capture loop
+    let meaningfulChange = changeInfo.status === "complete" || changeInfo.url || changeInfo.title || changeInfo.favIconUrl
+    if(meaningfulChange){
         tabsListDirty = true
-        scheduleScreenshotLoop(tab && tab.active ? 120 : 450)
+
+        if((tab && tab.active) || appIsShowing){
+            scheduleScreenshotLoop(tab && tab.active ? 120 : 450)
+        }
     }
 })
 
