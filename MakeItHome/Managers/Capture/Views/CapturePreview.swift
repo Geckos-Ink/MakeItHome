@@ -903,6 +903,25 @@ public struct CapturePreview: NSViewRepresentable {
                 
                 particleSystem.particleSizeVariation = self.parentView.onePixel * 30.0
                 
+                let maxParticleLife = duration + particleSystem.particleLifeSpanVariation
+                let fadeOutDuration: CGFloat = 0.5
+                let opacityAnimation = CAKeyframeAnimation(keyPath: "opacity")
+                opacityAnimation.duration = CFTimeInterval(maxParticleLife)
+                opacityAnimation.values = [0.0, 1.0, 1.0]
+                opacityAnimation.keyTimes = [
+                    0.0,
+                    NSNumber(value: Double(fadeOutDuration / maxParticleLife)),
+                    1.0
+                ]
+                opacityAnimation.calculationMode = .linear
+                
+                let opacityController = SCNParticlePropertyController(animation: opacityAnimation)
+                opacityController.inputMode = .overOtherProperty
+                opacityController.inputProperty = .life
+                particleSystem.propertyControllers = [
+                    .opacity: opacityController
+                ]
+                
                 let animationImg = NSImage(named: "AuroraBorealis")!
                 
                 if AppNode.auroraBorealisAnimationCache[particleSystem.particleColor] == nil{
