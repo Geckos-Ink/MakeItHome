@@ -12,7 +12,7 @@
 
 <img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_0.gif?raw=true">
 
-Current release version: 2.0.7
+Current release version: 2.0.8
 
 ## Some messages for new and older users
 

@@ -82,6 +82,10 @@ public class Clipboard {
     
     var totElements : Int = 0
     func checkElementsForSending(){
+        if !captureEnabled {
+            return
+        }
+        
         var num = 1
         for el in history{
             if el.wait || el.sent {

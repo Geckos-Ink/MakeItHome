@@ -319,15 +319,29 @@
 
 <script>
     let onApp = false;
-    function sendMessage(message) {
-        if(!onApp) return;
+    let pendingMessagesBeforeApp = [];
 
+    function sendMessage(message) {
         if(typeof(message) == 'object')
             message = JSON.stringify(message)
+
+        if(!onApp) {
+            pendingMessagesBeforeApp.push(message);
+            return;
+        }
 
         console.log("sending message", message)
         message = encodeURIComponent(message)        
         window.location.href = "myapp://message?text=" + message;
+    }
+
+    function flushPendingMessagesBeforeApp() {
+        const pendingMessages = pendingMessagesBeforeApp;
+        pendingMessagesBeforeApp = [];
+
+        pendingMessages.forEach((message) => {
+            sendMessage(message);
+        });
     }
 
     /// Errors handler

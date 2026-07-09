@@ -432,19 +432,28 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
                 }
                 
                 if json?.type == "setSetting" {
+                    var settingReply = JSMessage()
+                    settingReply.type = "setSetting"
+                    settingReply.setting = json?.setting
                     
                     switch json?.setting {
                     case "detectDragAndDrop":
                         Static.EnableDragDropDetection = json!.valBool!
                         Static.User.set(Static.EnableDragDropDetection, forKey: "EnableDragDropDetection")
+                        settingReply.valBool = Static.EnableDragDropDetection
                         break
                     case "enableClipboardCapture":
                         Static.EnableClipboardCapture = json!.valBool!
+                        settingReply.valBool = Static.EnableClipboardCapture
                         break
                     case .none:
                         break
                     case .some(_):
                         break
+                    }
+
+                    if settingReply.valBool != nil {
+                        self.parent.sendMessage(obj: settingReply)
                     }
                 }
 
