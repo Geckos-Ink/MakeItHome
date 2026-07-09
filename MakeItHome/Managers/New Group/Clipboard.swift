@@ -135,6 +135,34 @@ public class Clipboard {
     var prevRtf : String?
     var prevImage : Data?
     var prevFileUrl : URL?
+
+    func setCaptureEnabled(_ enabled: Bool) {
+        syncCurrentPasteboardAsBaseline()
+
+        if !enabled {
+            history.removeAll()
+            totElements = 0
+            
+            var msg = JSMessage()
+            msg.type = "clearClipboardItems"
+            Static.topBarWebViewRepresentable?.sendMessage(obj: msg)
+        }
+    }
+
+    func syncCurrentPasteboardAsBaseline() {
+        let pasteboard = NSPasteboard.general
+        prevString = pasteboard.string(forType: .string)
+        prevRtf = pasteboard.string(forType: .rtf)
+        prevImage = pasteboard.data(forType: .tiff)
+
+        if let fileURLs = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
+           fileURLs.count == 1 {
+            prevFileUrl = fileURLs.first
+        }
+        else {
+            prevFileUrl = nil
+        }
+    }
     
     func checkClipboard(){
         if !Static.EnableClipboardCapture {

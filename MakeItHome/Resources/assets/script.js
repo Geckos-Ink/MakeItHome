@@ -510,6 +510,10 @@ function receiveMessage(message){
             },50)                                
         }
 
+        if(obj.type == 'clearClipboardItems'){
+            clearClipboard()
+        }
+
         return
     }
 

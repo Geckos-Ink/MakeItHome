@@ -440,6 +440,7 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
                         break
                     case "enableClipboardCapture":
                         Static.EnableClipboardCapture = json!.valBool!
+                        Static.clipboard?.setCaptureEnabled(Static.EnableClipboardCapture)
                         break
                     case .none:
                         break
@@ -797,21 +798,19 @@ public class TopWKWV : WKWebView, NSDraggingSource{
                 delay(ms: 50){
                     Static.topBarWebViewRepresentable?.sendMessage(str: "opening")
                     
-                    if self.firstOpening { // Set settings
-                        self.firstOpening = false
-                        
-                        var jsMessage = JSMessage()
-                        jsMessage.type = "setSetting"
-                        jsMessage.setting = "detectDragAndDrop"
-                        jsMessage.valBool = Static.EnableDragDropDetection
-                        self.sendMessage(obj: jsMessage)
+                    self.firstOpening = false
+                    
+                    var jsMessage = JSMessage()
+                    jsMessage.type = "setSetting"
+                    jsMessage.setting = "detectDragAndDrop"
+                    jsMessage.valBool = Static.EnableDragDropDetection
+                    self.sendMessage(obj: jsMessage)
 
-                        jsMessage = JSMessage()
-                        jsMessage.type = "setSetting"
-                        jsMessage.setting = "enableClipboardCapture"
-                        jsMessage.valBool = Static.EnableClipboardCapture
-                        self.sendMessage(obj: jsMessage)
-                    }
+                    jsMessage = JSMessage()
+                    jsMessage.type = "setSetting"
+                    jsMessage.setting = "enableClipboardCapture"
+                    jsMessage.valBool = Static.EnableClipboardCapture
+                    self.sendMessage(obj: jsMessage)
                 }
                 
                 //NSRunningApplication.current.activate(options: .activateAllWindows)
