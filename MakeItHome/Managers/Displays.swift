@@ -777,14 +777,21 @@ public class Display : Equatable {
         }
         
         func checkAppExtension(){
-            if self.appExtension == nil && Static.appExtensionManager != nil {
-                print("app extension apps: ", Static.appExtensionManager!.apps)
-                for (id, app) in Static.appExtensionManager!.apps {
-                    if app.bundleId == self.bundleId {
-                        appExtension = app
-                        app.link(app: self)
-                    }
+            guard let bundleId = self.bundleId,
+                  let manager = Static.appExtensionManager else {
+                return
+            }
+
+            if let linkedAppExtension = manager.apps[bundleId] {
+                if self.appExtension !== linkedAppExtension {
+                    self.appExtension?.unlink(app: self)
+                    self.appExtension = linkedAppExtension
+                    linkedAppExtension.link(app: self)
                 }
+            }
+            else if self.appExtension != nil {
+                self.appExtension?.unlink(app: self)
+                self.appExtension = nil
             }
         }
         
@@ -803,9 +810,8 @@ public class Display : Equatable {
             
             display.apps.removeValue(forKey: id)
             
-            if self.appExtension != nil {
-                Static.appExtensionManager?.closedApp(bundleId: self.bundleId!)
-            }
+            self.appExtension?.unlink(app: self)
+            self.appExtension = nil
         }
         
         public func hasLockedBy() -> Bool{
@@ -3082,7 +3088,7 @@ public class Display : Equatable {
     
     let useRelativePointer = false
     
-    static let sensivityBaseConstant = 0.0015 // was 0.002
+    static let sensivityBaseConstant = 0.002 // was 0.002
     var scarfWeight : CGFloat = sensivityBaseConstant * Static.Sensivity
     var activateOnPixelsLimit : CGFloat = 35
     var moveOnPixels : CGFloat = 0

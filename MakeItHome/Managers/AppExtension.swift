@@ -886,6 +886,12 @@ class AppExtension {
     func link(app : Display.AppWindows){
         self.app = app
     }
+
+    func unlink(app: Display.AppWindows) {
+        if self.app === app {
+            self.app = nil
+        }
+    }
     
     func addMessage(msg: String){
         statusMessages.append(msg)
