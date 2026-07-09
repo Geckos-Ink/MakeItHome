@@ -611,11 +611,29 @@ function resetSwiper(){
 }
 
 let resetSecret = false
+let connectInFlight = false
 async function connect(){
     if(Date.now() < connectionBlockedUntil){
         return false
     }
 
+    // Only allow a single /connect at a time. Several entry points (startup timer, screenshot
+    // loop, toolbar click, extensionStart message) can call connect() at once; overlapping
+    // requests used to reach the native side with an empty secret while an approval prompt was
+    // open, which made it re-prompt and rotate the secret on every click ("Allow" never stuck).
+    if(connectInFlight){
+        return false
+    }
+    connectInFlight = true
+
+    try {
+        return await runConnect()
+    } finally {
+        connectInFlight = false
+    }
+}
+
+async function runConnect(){
     await storageGet()
     if(!secret && storage.secret){
         setSecret(storage.secret)
