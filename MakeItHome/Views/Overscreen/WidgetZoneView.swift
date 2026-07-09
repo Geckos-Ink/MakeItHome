@@ -438,6 +438,9 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
                         Static.EnableDragDropDetection = json!.valBool!
                         Static.User.set(Static.EnableDragDropDetection, forKey: "EnableDragDropDetection")
                         break
+                    case "enableClipboardCapture":
+                        Static.EnableClipboardCapture = json!.valBool!
+                        break
                     case .none:
                         break
                     case .some(_):
@@ -801,6 +804,12 @@ public class TopWKWV : WKWebView, NSDraggingSource{
                         jsMessage.type = "setSetting"
                         jsMessage.setting = "detectDragAndDrop"
                         jsMessage.valBool = Static.EnableDragDropDetection
+                        self.sendMessage(obj: jsMessage)
+
+                        jsMessage = JSMessage()
+                        jsMessage.type = "setSetting"
+                        jsMessage.setting = "enableClipboardCapture"
+                        jsMessage.valBool = Static.EnableClipboardCapture
                         self.sendMessage(obj: jsMessage)
                     }
                 }

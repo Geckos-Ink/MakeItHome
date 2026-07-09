@@ -137,6 +137,10 @@ public class Clipboard {
     var prevFileUrl : URL?
     
     func checkClipboard(){
+        if !Static.EnableClipboardCapture {
+            return
+        }
+        
         // Set string to clipboard
         let pasteboard = NSPasteboard.general
         //pasteboard.declareTypes([.string, .fileURL, .png, .pdf, .fileContents, .textFinderOptions], owner: nil)

@@ -1548,17 +1548,28 @@ function clearClipboard(){
 ///
 
 let $checkDragAndDropDetect = null
+let $checkEnableClipboardCapture = null
 let $extensionPermissionsList = null
 
 function retrieveSetting(setting, val){
     if(setting == "detectDragAndDrop") 
         $checkDragAndDropDetect.prop('checked', val);
+    if(setting == "enableClipboardCapture")
+        $checkEnableClipboardCapture.prop('checked', val);
 }
 
 function setSettings_dragAndDropDetect(val){
     sendMessage({
         type: 'setSetting',
         setting: 'detectDragAndDrop',
+        valBool: val
+    })
+}
+
+function setSettings_enableClipboardCapture(val){
+    sendMessage({
+        type: 'setSetting',
+        setting: 'enableClipboardCapture',
         valBool: val
     })
 }
@@ -1679,6 +1690,12 @@ $(document).ready(function() {
     $checkDragAndDropDetect.on('change', function() {
         let checked = $(this).is(':checked')
         setSettings_dragAndDropDetect(checked)
+    });
+
+    $checkEnableClipboardCapture = $('#check-enableClipboardCapture')
+    $checkEnableClipboardCapture.on('change', function() {
+        let checked = $(this).is(':checked')
+        setSettings_enableClipboardCapture(checked)
     });
 
     $extensionPermissionsList = $('#extensionPermissionsList')

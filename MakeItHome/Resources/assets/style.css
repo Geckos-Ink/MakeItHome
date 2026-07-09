@@ -668,6 +668,20 @@ input {
   rgba(254,254,254,0.4) 100%); 
 }
 
+.clipboardRight .clipboardCaptureSetting {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 6px 0;
+  color: white;
+  text-shadow: rgba(0, 0, 0, 1) 0px 0 5px;
+  font-size: 13px;
+}
+
+.clipboardRight .clipboardCaptureSetting input {
+  margin: 0;
+}
+
 /*
  * Settings
  */
