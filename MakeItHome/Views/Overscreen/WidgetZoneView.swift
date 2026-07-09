@@ -440,7 +440,6 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
                         break
                     case "enableClipboardCapture":
                         Static.EnableClipboardCapture = json!.valBool!
-                        Static.clipboard?.setCaptureEnabled(Static.EnableClipboardCapture)
                         break
                     case .none:
                         break

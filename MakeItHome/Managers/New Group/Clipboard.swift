@@ -12,8 +12,11 @@ import QuickLookThumbnailing
 
 public class Clipboard {
     var history: [Element] = []    
+    private var captureEnabled = true
     
     init(){
+        captureEnabled = Static.EnableClipboardCapture
+
         if Static.TopBarIsPreview { // for last 1.4.x versions, for the moment
             return
         }               
@@ -137,6 +140,7 @@ public class Clipboard {
     var prevFileUrl : URL?
 
     func setCaptureEnabled(_ enabled: Bool) {
+        captureEnabled = enabled
         syncCurrentPasteboardAsBaseline()
 
         if !enabled {
@@ -165,7 +169,7 @@ public class Clipboard {
     }
     
     func checkClipboard(){
-        if !Static.EnableClipboardCapture {
+        if !captureEnabled {
             return
         }
         

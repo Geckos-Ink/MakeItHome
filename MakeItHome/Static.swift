@@ -227,15 +227,16 @@ public class Static {
     static var _enableClipboardCapture = true
     public static var EnableClipboardCapture : Bool {
         get {
-            _enableClipboardCapture = User.object(forKey: enableClipboardCaptureKey) as? Bool ?? _enableClipboardCapture
+            if User.object(forKey: enableClipboardCaptureKey) != nil {
+                _enableClipboardCapture = User.bool(forKey: enableClipboardCaptureKey)
+            }
             return _enableClipboardCapture
         }
         
         set {
-            if(_enableClipboardCapture != newValue){
-                _enableClipboardCapture = newValue
-                User.set(newValue, forKey: enableClipboardCaptureKey)
-            }
+            _enableClipboardCapture = newValue
+            User.set(newValue, forKey: enableClipboardCaptureKey)
+            clipboard?.setCaptureEnabled(newValue)
         }
     }
     public static let TopBarIsPreview = false
@@ -331,7 +332,7 @@ public class Static {
         //EnableDockMouseSlowering = User.object(forKey: "EnableDockMouseSlowering") as? Bool ?? EnableDockMouseSlowering
         MaxApps = User.object(forKey: "MaxApps") as? Int ?? MaxApps
         EnableDragDropDetection = User.object(forKey: "EnableDragDropDetection") as? Bool ?? EnableDragDropDetection
-        _enableClipboardCapture = User.object(forKey: enableClipboardCaptureKey) as? Bool ?? _enableClipboardCapture
+        EnableClipboardCapture = User.object(forKey: enableClipboardCaptureKey) != nil ? User.bool(forKey: enableClipboardCaptureKey) : _enableClipboardCapture
         DisableOnDockSide = User.object(forKey: "DisableOnDockSide") as? Bool ?? DisableOnDockSide
         GlobalShortcutManager.shared.setEnabled(EnableShortcuts)
         
