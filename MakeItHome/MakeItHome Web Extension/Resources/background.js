@@ -453,8 +453,13 @@ async function checkOpenTabs(options = {}){
     
     let tabsSignature = tabsIds.join(",")
     if(tabsSignature !== lastConfirmedTabsSignature){
-        lastConfirmedTabsSignature = tabsSignature
-        await sendJsMessage('confirmSafariTabs('+JSON.stringify(tabsIds)+')')
+        // Confirm the signature only on a successful send, so a dropped message
+        // (disconnected, HTTP error) is retried on the next sync instead of the
+        // widget keeping stale slides forever
+        let sent = await sendJsMessage('confirmSafariTabs('+JSON.stringify(tabsIds)+')')
+        if(sent){
+            lastConfirmedTabsSignature = tabsSignature
+        }
     }
     
     if(shouldRefreshPreviews){

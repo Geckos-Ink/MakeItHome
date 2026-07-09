@@ -89,6 +89,12 @@
 
 <script>
     vars.safari = vars.safari || {}
+    if(vars.safari.swiper){
+        // A previous injection's Swiper is bound to DOM that setContent just replaced:
+        // keeping it makes instanceSwiper a no-op and new slides land in a detached wrapper
+        try { vars.safari.swiper.destroy(true, true) } catch(err) {}
+        vars.safari.swiper = null
+    }
     vars.safari.slides = []
     vars.safari.tabs = {}
 
@@ -142,10 +148,12 @@
         }, 50)*/
         
         // Runs after jQuery is loaded
-        // Delegate from a stable ancestor (the Swiper container). Fall back to document if needed.
-        const $root = $('.swiper').length ? $('.swiper') : $(document);
+        // Delegate from document: it survives swiper destroy/recreate and setContent
+        // re-injections, and binding once avoids stacking a handler per instanceSwiper call
+        if(vars.safari.clickHandlerBound) return;
+        vars.safari.clickHandlerBound = true;
 
-        $root.on('click', '.swiper-slide', function (e) {
+        $(document).on('click', '#safariTabs .swiper-slide', function (e) {
             console.log("Clicked on .swiper-slide")
           // Read the custom attribute exactly as requested: "tabId"
           // (also tolerate lowercase and data-* variants just in case)
@@ -430,13 +438,19 @@
 
     function removeSafariTab(id){
         let tab = vars.safari.tabs[id]
-        if(tab){
-            let $slide = tab.$slide
-            let islide = vars.safari.slides.indexOf($slide[0])
-            console.log("removing slide", islide)
+        if(!tab)
+            return
+
+        let islide = vars.safari.slides.indexOf(tab.$slide[0])
+        console.log("removing slide", islide)
+        if(islide >= 0)
             vars.safari.slides.splice(islide, 1)
-            delete vars.safari.tabs[id]
-        }
+
+        tab.$slide.remove()
+        delete vars.safari.tabs[id]
+
+        if(vars.safari.swiper)
+            vars.safari.swiper.update()
     }
 
     function animateRemoveSafariTab(id){
@@ -452,21 +466,21 @@
     }
 
     function confirmSafariTabs(ids){
-        if(isShowing)
-            return;
-        
+        // Compare as strings: ids arrive as numbers but object keys are strings,
+        // so a raw indexOf never matched and every tab got removed on each call
+        let openIds = new Set(ids.map(String))
+
         let toRemove = []
         for(let id in vars.safari.tabs){
-            if(ids.indexOf(id)<0)
+            if(!openIds.has(String(id)))
                 toRemove.push(id)
         }
-        
+
+        // Run even while showing: a closed tab must leave the swiper, otherwise its
+        // stale slide sticks around as a duplicate whose click can't focus anything
         for(let id of toRemove){
             removeSafariTab(id)
         }
-        
-        if(toRemove.length > 0)
-            destroySwiper()
     }
 
     // Function to convert a Base64 string to a Blob
