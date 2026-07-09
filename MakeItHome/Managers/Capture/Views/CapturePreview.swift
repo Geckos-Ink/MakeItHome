@@ -856,11 +856,11 @@ public struct CapturePreview: NSViewRepresentable {
                 let particleSystem = SCNParticleSystem()
                 auroraBorealisParticleSystem = particleSystem
                 
-                let duration : CGFloat = 4.0 // seconds(?)
+                let duration : CGFloat = 3.0 // seconds(?)
                 
                 particleSystem.birthRate = 30
                 particleSystem.particleLifeSpan = duration
-                particleSystem.particleLifeSpanVariation = duration / 1.5
+                particleSystem.particleLifeSpanVariation = duration * 0.5
                 particleSystem.emissionDuration = duration
                 particleSystem.loops = true
                 particleSystem.blendMode = blend
@@ -892,16 +892,16 @@ public struct CapturePreview: NSViewRepresentable {
                 
                 let accelerationFactor : CGFloat = 0.5
                 
-                particleSystem.particleColorVariation = SCNVector4(0.2, 0.5, 0.5, 0.5)
-                particleSystem.particleSize = self.parentView.onePixel * 30
-                particleSystem.acceleration.y = self.parentView.onePixel * 1 * accelerationFactor
+                particleSystem.particleColorVariation = SCNVector4(0.3, 0.7, 0.7, 0.7)
+                particleSystem.particleSize = self.parentView.onePixel * 40
+                particleSystem.acceleration.y = self.parentView.onePixel * 1.5 * accelerationFactor
                 
                 particleSystem.particleAngularVelocity = self.parentView.onePixel * 10
-                particleSystem.particleVelocity = self.parentView.onePixel * 2 * accelerationFactor
-                particleSystem.particleAngularVelocityVariation = self.parentView.onePixel * 10
-                particleSystem.particleVelocityVariation = self.parentView.onePixel * 2 * accelerationFactor
+                particleSystem.particleVelocity = self.parentView.onePixel * 3.0 * accelerationFactor
+                particleSystem.particleAngularVelocityVariation = self.parentView.onePixel * 20.0
+                particleSystem.particleVelocityVariation = self.parentView.onePixel * 3.0 * accelerationFactor
                 
-                particleSystem.particleSizeVariation = self.parentView.onePixel * 20
+                particleSystem.particleSizeVariation = self.parentView.onePixel * 30.0
                 
                 let animationImg = NSImage(named: "AuroraBorealis")!
                 
