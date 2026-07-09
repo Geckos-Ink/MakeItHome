@@ -95,11 +95,36 @@
         try { vars.safari.swiper.destroy(true, true) } catch(err) {}
         vars.safari.swiper = null
     }
+    if(vars.safari.swiperRetryTimer){
+        clearTimeout(vars.safari.swiperRetryTimer)
+        vars.safari.swiperRetryTimer = null
+    }
     vars.safari.slides = []
     vars.safari.tabs = {}
 
+    // Swiper may not be evaluated yet when the first screenshots arrive:
+    // retry instead of throwing, so slides queued in vars.safari.slides
+    // get appended once the library is ready
+    function ensureSwiper(){
+        if(vars.safari.swiper) return true
+
+        if(typeof Swiper === 'undefined'){
+            if(!vars.safari.swiperRetryTimer){
+                vars.safari.swiperRetryTimer = setTimeout(()=>{
+                    vars.safari.swiperRetryTimer = null
+                    ensureSwiper()
+                }, 120)
+            }
+            return false
+        }
+
+        instanceSwiper()
+        return !!vars.safari.swiper
+    }
+
     function instanceSwiper(){
         if(vars.safari.swiper) return;
+        if(typeof Swiper === 'undefined') return;
         console.log("instance swiper")
         
         vars.safari.swiperIsHorizontal = isHorizontal
@@ -189,13 +214,19 @@
 
     function resetSwiper(){
         destroySwiper()
-        instanceSwiper()
+        ensureSwiper()
     }
-    
+
     setEvent('show', ()=>{
-        //if(vars.safari.swiperIsHorizontal == isHorizontal) return;
         console.log("showing safari extension", isHorizontal)
-        //resetSwiper(); // moved on extension side
+        if(!vars.safari.swiper || vars.safari.swiperIsHorizontal !== isHorizontal){
+            resetSwiper()
+        }
+        else {
+            // Instanced while the zone was display:none: every size was 0 and the
+            // coverflow transforms never got computed, leaving the tabs "plain"
+            vars.safari.swiper.update()
+        }
     })
 
     vars.safari.blob = ""
@@ -391,31 +422,47 @@
         
         if(createSlide){
             let img = blobToImg(screenshot)
-            
+
             let borderColor = getUniqueColorFromId(tabInfo.id)
-            
+
+            // A stale slide with this id can survive a tabs-map reset:
+            // drop it before creating a fresh one, or the tab shows twice
+            $("#safariTab"+tabInfo.id).remove()
+            vars.safari.slides = vars.safari.slides.filter((el)=>String($(el).attr('tabId')) !== String(tabInfo.id))
+
             let $slide = $('<div id="safariTab'+tabInfo.id+'" class="swiper-slide" style="border-color: borderColor;" tabId="'+tabInfo.id+'" oncontextmenu="return animateRemoveSafariTab('+tabInfo.id+')"></div>')
             $slide.append(img)
-            
+
             tab.$slide = $slide
-            
-            //$("#safariTabs").append($slide)
-            
-            instanceSwiper()
-            
+
             console.log("appending slide", $slide[0])
-            
+
             vars.safari.slides.push($slide[0])
-            vars.safari.swiper.appendSlide($slide[0])
-            
+            if(vars.safari.swiper){
+                vars.safari.swiper.appendSlide($slide[0])
+            }
+            else {
+                ensureSwiper() // appends every pending slide once the library is ready
+            }
+
             setTimeout(()=>{
                 addCircularGradientBackground('#safariTab'+tabInfo.id, borderColor)
             }, 100)
         } else {
-            console.log("accumulated blob:", blob)
             const blobURL = URL.createObjectURL(screenshot);
-            console.log("update img with blobURL", blobURL, tab.$slide.find("img"))
-            tab.$slide.find("img").attr("src", blobURL)
+            let $img = tab.$slide.find("img")
+            let oldURL = $img.attr("src")
+            $img.attr("src", blobURL)
+            if(oldURL && oldURL.startsWith("blob:"))
+                URL.revokeObjectURL(oldURL)
+
+            // Self-heal: a failed append in the past left this slide detached,
+            // making the tab invisible even though screenshots keep arriving
+            if(!document.contains(tab.$slide[0]) && ensureSwiper()){
+                if(vars.safari.slides.indexOf(tab.$slide[0]) < 0)
+                    vars.safari.slides.push(tab.$slide[0])
+                vars.safari.swiper.appendSlide(tab.$slide[0])
+            }
         }
         
         //$(".swiper-wrapper").append($slide)
@@ -438,15 +485,17 @@
 
     function removeSafariTab(id){
         let tab = vars.safari.tabs[id]
-        if(!tab)
-            return
 
-        let islide = vars.safari.slides.indexOf(tab.$slide[0])
-        console.log("removing slide", islide)
-        if(islide >= 0)
-            vars.safari.slides.splice(islide, 1)
+        // Match by attribute too, not just element identity: a ghost slide whose
+        // map entry is gone must still be removable, or resetSwiper resurrects it
+        vars.safari.slides = vars.safari.slides.filter((el)=>{
+            if(tab && tab.$slide && el === tab.$slide[0]) return false
+            return String($(el).attr('tabId')) !== String(id)
+        })
 
-        tab.$slide.remove()
+        $("#safariTab"+id).remove()
+        if(tab && tab.$slide)
+            tab.$slide.remove()
         delete vars.safari.tabs[id]
 
         if(vars.safari.swiper)

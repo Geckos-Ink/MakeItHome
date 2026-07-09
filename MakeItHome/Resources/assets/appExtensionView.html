@@ -83,6 +83,8 @@
             $body.append($ext)
         }
 
+        let settingContentBundleId = null
+
         function setContent(bundleId, content){
             bundleId = bundleId.replaceAll(".", "-")
             let $ext = $('#'+bundleId)
@@ -104,7 +106,17 @@
                     return ""
                 }
             })()
-            $ext.html(decoded)
+
+            // The injected scripts run synchronously inside .html() and may call
+            // setEvent() before this extension was ever shown, when curBundleId
+            // is still empty: expose the injecting bundleId for the duration
+            settingContentBundleId = bundleId
+            try {
+                $ext.html(decoded)
+            }
+            finally {
+                settingContentBundleId = null
+            }
         }
 
         function showAppExtension(bundleId, _isHorizontal=true){
@@ -135,7 +147,8 @@
         }
 
         function setEvent(name, func){
-            vars[curBundleId+'_event_'+name] = func
+            let target = settingContentBundleId || curBundleId
+            vars[target+'_event_'+name] = func
         }
 
         function sendMessage(message) {            
