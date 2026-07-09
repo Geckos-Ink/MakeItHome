@@ -905,19 +905,18 @@ public struct CapturePreview: NSViewRepresentable {
                 
                 let maxParticleLife = duration + particleSystem.particleLifeSpanVariation
                 let fadeOutDuration: CGFloat = 0.5
+                let fadeStart = max(0, (maxParticleLife - fadeOutDuration) / maxParticleLife)
                 let opacityAnimation = CAKeyframeAnimation(keyPath: "opacity")
                 opacityAnimation.duration = CFTimeInterval(maxParticleLife)
-                opacityAnimation.values = [0.0, 1.0, 1.0]
+                opacityAnimation.values = [1.0, 1.0, 0.0]
                 opacityAnimation.keyTimes = [
                     0.0,
-                    NSNumber(value: Double(fadeOutDuration / maxParticleLife)),
+                    NSNumber(value: Double(fadeStart)),
                     1.0
                 ]
                 opacityAnimation.calculationMode = .linear
                 
                 let opacityController = SCNParticlePropertyController(animation: opacityAnimation)
-                opacityController.inputMode = .overOtherProperty
-                opacityController.inputProperty = .life
                 particleSystem.propertyControllers = [
                     .opacity: opacityController
                 ]
