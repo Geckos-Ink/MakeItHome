@@ -134,11 +134,17 @@ public struct CapturePreview: NSViewRepresentable {
                 }
                 
                 self.view!.vars.navOverlayOpacity = self.view!.vars.overlayOpacity
-            
-                self.view!.vars.overlaySizeX = display.frame.width
-                self.view!.vars.overlaySizeY = Static.OverscreenSize
-                
-                self.view!.vars.overlayOffsetX = 0
+
+                // These don't depend on aboveBy: avoid re-publishing them on every tick
+                if self.view!.vars.overlaySizeX != display.frame.width {
+                    self.view!.vars.overlaySizeX = display.frame.width
+                }
+                if self.view!.vars.overlaySizeY != Static.OverscreenSize {
+                    self.view!.vars.overlaySizeY = Static.OverscreenSize
+                }
+                if self.view!.vars.overlayOffsetX != 0 {
+                    self.view!.vars.overlayOffsetX = 0
+                }
                 self.view!.vars.overlayOffsetY = ((offYMul * aboveBy) - (display.frame.height))/2
                 
                 if(aboveBy < 0.2){
@@ -149,13 +155,19 @@ public struct CapturePreview: NSViewRepresentable {
         }
         else {
             DispatchQueue.main.async {
-                self.view!.vars.overlayOffsetY = 10000
-                
+                let vars = self.view!.vars
+
+                // Every @Published write fires objectWillChange and re-evaluates the
+                // SwiftUI tree; this closure runs on every mouse tick, so only write
+                // values that actually changed
+                if vars.overlayOffsetY != 10000 {
+                    vars.overlayOffsetY = 10000
+                }
+
                 if Static.OnAppExtensionZone {
-                                    
+
                     var position : CGFloat = (Static.OverscreenSize - (aboveBy-Static.OverscreenSize))
-                    print("AppExtension position", position, display.side, aboveBy)
-                    
+
                     self.view!.vars.appExtOverlayOpacity = (aboveBy-Static.OverscreenSize) / Static.OverscreenSize
                     
                     if display.side == 2 {
@@ -180,10 +192,10 @@ public struct CapturePreview: NSViewRepresentable {
                         self.view!.vars.appExtOverlaySizeY = display.frame.height
                     }
                 }
-                else {
-                    self.view!.vars.appExtOverlayOffsetX = -10000
-                    self.view!.vars.appExtOverlayOffsetY = -10000
-                    self.view!.vars.appExtOverlayOpacity = 0
+                else if vars.appExtOverlayOpacity != 0 || vars.appExtOverlayOffsetX != -10000 || vars.appExtOverlayOffsetY != -10000 {
+                    vars.appExtOverlayOffsetX = -10000
+                    vars.appExtOverlayOffsetY = -10000
+                    vars.appExtOverlayOpacity = 0
                 }
             }
         }
@@ -794,29 +806,39 @@ public struct CapturePreview: NSViewRepresentable {
                 
                 // Check AppExtension
                 self.app.checkAppExtension()
-                if self.app.appExtension != nil { // enable only on supported apps
+                if self.app.appExtension != nil && !auroraBorealisPending { // enable only on supported apps
+                    // setIcon() runs on every setWidth/setHeight pass, so coalesce the
+                    // (expensive) particle systems rebuild into a single delayed call
+                    auroraBorealisPending = true
                     delay(ms: 100){
+                        self.auroraBorealisPending = false
                         self.addAuroraBorealis()
                     }
                 }
             }
-            
+
             var auroraBorealisNode : SCNNode?
             var auroraBorealisParticleSystem : SCNParticleSystem?
-            
+            var auroraBorealisPending = false
+            private var auroraLastOtherSideSize : CGFloat = -1
+
             func addAuroraBorealis(){
+                if auroraBorealisNode != nil && auroraLastOtherSideSize == otherSideSize {
+                    return // already built for this geometry
+                }
+                auroraLastOtherSideSize = otherSideSize
+
                 if auroraBorealisNode != nil {
                     auroraBorealisNode?.removeFromParentNode()
                 }
-                
+
                 // Create a node for the aurora
                 auroraBorealisNode = SCNNode()
-                
+
                 addAuroraBorealisWithBlend(blend: .additive, z:2)
                 addAuroraBorealisWithBlend(blend: .subtract, z:3)
-                
+
                 addAuroraBorealisWithBlend(blend: .additive, z:2, defaultColor: NSColor.green)
-                addAuroraBorealisWithBlend(blend: .additive, z:2, defaultColor: NSColor.purple)
             }
             
             static var auroraBorealisAnimationCache : [NSColor: NSImage] = [:]
@@ -836,14 +858,16 @@ public struct CapturePreview: NSViewRepresentable {
                 
                 let duration : CGFloat = 4.0 // seconds(?)
                 
-                particleSystem.birthRate = 60
+                particleSystem.birthRate = 30
                 particleSystem.particleLifeSpan = duration
                 particleSystem.particleLifeSpanVariation = duration / 1.5
                 particleSystem.emissionDuration = duration
                 particleSystem.loops = true
                 particleSystem.blendMode = blend
                 particleSystem.isAffectedByGravity = false
-                particleSystem.isLightingEnabled = true
+                // additive/subtract blended sprites don't benefit from scene lighting,
+                // and per-particle lighting is one of the most expensive SCNParticleSystem options
+                particleSystem.isLightingEnabled = false
                 
                 if isHorizontal{
                     particleSystem.emitterShape = SCNPlane(width: otherSideSize, height: parentView.onePixel)

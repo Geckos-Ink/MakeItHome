@@ -20,7 +20,10 @@ struct AppExtensionView: View {
 }
 
 public struct AppExtensionWebView: NSViewRepresentable {
-    public let wkwv = AppExtensionWKWV()
+    // Single shared instance: SwiftUI re-creates this struct on parent body
+    // re-evaluations, and each WKWebView allocation spawns a WebContent process
+    private static let sharedWKWV = AppExtensionWKWV()
+    public var wkwv : AppExtensionWKWV { AppExtensionWebView.sharedWKWV }
     public var lastMsg : String?
     
     
@@ -80,9 +83,13 @@ public class AppExtensionWebViewCoordinator: NSObject, WKNavigationDelegate, Dra
     var parent: AppExtensionWebView
 
     var firstLoad = true
-    
+
     init(parent: AppExtensionWebView) {
         self.parent = parent
+    }
+
+    public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        (webView as? AppExtensionWKWV)?.forceReload()
     }
 
     // Implement WKNavigationDelegate method to allow navigation for dropped items
@@ -203,10 +210,24 @@ public class AppExtensionWKWV : WKWebView{
     ///
     ///
     
+    private var didLoad = false
+
+    func forceReload(){
+        didLoad = false
+        load()
+    }
+
     func load(){
+        // Reloading wipes the app-extension content injected via evaluateJavaScript
+        // and forces the browser extension to resend everything, so load only once
+        if didLoad {
+            return
+        }
+
         if let url = Bundle.main.url(forResource: "assets/appExtensionView", withExtension: "html") {
+            didLoad = true
             self.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
-            
+
             delay(ms: 100){
                 // for some reasons, that seems to not work
                 self.sendCurrentVersion()

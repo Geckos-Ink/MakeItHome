@@ -73,7 +73,16 @@ fileprivate class ViewModel: NSObject, ObservableObject, DropDelegate {
 }
 
 // Sorry, this is ugly
-func loadTopWKWB(webView: WKWebView){
+func loadTopWKWB(webView: WKWebView, force: Bool = false){
+    // updateNSView calls this on every SwiftUI update pass: reloading
+    // widgets.html each time wipes the widgets' state, so load only once
+    if let wkwv = webView as? TopWKWV {
+        if !force && wkwv.didLoadContent {
+            return
+        }
+        wkwv.didLoadContent = true
+    }
+
     if Static.TopBarIsPreview {
         if let url = Bundle.main.url(forResource: "preview", withExtension: "html") {
             webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
@@ -94,7 +103,10 @@ func loadTopWKWB(webView: WKWebView){
 }
 
 public struct TopWebView: NSViewRepresentable {
-    public let wkwv = TopWKWV()
+    // Single shared instance: SwiftUI re-creates this struct on parent body
+    // re-evaluations, and each WKWebView allocation spawns a WebContent process
+    private static let sharedWKWV = TopWKWV()
+    public var wkwv : TopWKWV { TopWebView.sharedWKWV }
     public var lastMsg : String?
     
     
@@ -184,9 +196,13 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
     
     init(parent: TopWebView) {
         self.parent = parent
-    }    
-     
-    
+    }
+
+    public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        (webView as? TopWKWV)?.forceReload()
+    }
+
+
     @objc func startDragging(_ sender: NSDraggingSession) {
         let content = "Content to be written to the file"
         let fileUrl = FileManager.default.temporaryDirectory.appendingPathComponent("example.txt")
@@ -584,9 +600,16 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
 }
 
 public class TopWKWV : WKWebView, NSDraggingSource{
-    
+
     public override var acceptsFirstResponder: Bool { return true }
-    
+
+    var didLoadContent = false
+
+    func forceReload(){
+        didLoadContent = false
+        loadTopWKWB(webView: self, force: true)
+    }
+
     public var httpServer : SimpleHTTPServer?
     
     public func initHttpServer(){
@@ -758,7 +781,8 @@ public class TopWKWV : WKWebView, NSDraggingSource{
             print("start TopWKWB rendering")
             
             // Reload the web view to restart rendering
-            loadTopWKWB(webView: self)
+            // (forced: stopRendering swapped the content for mrWhite.html)
+            loadTopWKWB(webView: self, force: true)
      
             isRendering = true
         }
