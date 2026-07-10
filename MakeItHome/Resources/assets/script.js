@@ -344,11 +344,32 @@ let canDragOut = false
 let dontDrop = false // useless stuff (for the moment)
 
 let $webSearchFrame = $("#webSearchFrame")
+let latestExtensionPermissions = null
 
 let toDoAtOpening = [] // events array
 let settingsState = {
     enableClipboardCapture: true,
 }
+
+registerLocalizations({
+    'widgets.extensions.unknown': 'Unknown',
+    'widgets.extensions.status.trusted': 'Trusted',
+    'widgets.extensions.status.not_trusted': 'Not trusted',
+    'widgets.extensions.status.connected': 'Connected',
+    'widgets.extensions.status.secret_stored': 'Secret stored',
+    'widgets.extensions.status.popup_retry': 'Popup retry in %d s',
+    'widgets.extensions.empty': 'No extension detected yet. Open the extension once, then refresh this list.',
+    'widgets.extensions.unknown_extension': 'Unknown extension',
+    'widgets.extensions.bundle': 'Bundle',
+    'widgets.extensions.client_id': 'Client ID',
+    'widgets.extensions.version': 'Version',
+    'widgets.extensions.last_seen': 'Last seen',
+    'widgets.extensions.request_permission': 'Request Permission',
+    'widgets.extensions.revoke_permission': 'Revoke Permission',
+    'widgets.extensions.permission_allowed': 'Permission allowed.',
+    'widgets.extensions.permission_denied': 'Permission denied.',
+    'widgets.extensions.permission_ignored': 'Popup ignored. MakeItHome will ask again after 30 seconds.',
+});
 
 function applySettingToControls(setting) {
     if(setting == "detectDragAndDrop" && $checkDragAndDropDetect)
@@ -365,6 +386,12 @@ function receiveMessage(message){
         let obj = message
 
         switch(obj.type){
+            case 'localizations':
+                applyLocalizations(obj.localizations)
+                if(latestExtensionPermissions !== null)
+                    renderExtensionPermissionsStatus(latestExtensionPermissions)
+                break;
+
             case 'setSetting':
                 if(obj.valBool !== undefined) retrieveSetting(obj.setting, obj.valBool)
                 break;
@@ -1616,21 +1643,24 @@ function revokeExtensionPermission(identity){
 }
 
 function formatExtensionTimestamp(seconds){
-    if(!seconds) return "Unknown"
+    if(!seconds) return localizedString('widgets.extensions.unknown', 'Unknown')
     let dt = new Date(seconds * 1000)
     return dt.toLocaleString()
 }
 
 function extensionPermissionStatusLabel(permission){
     let statuses = []
-    statuses.push(permission.trusted ? "Trusted" : "Not trusted")
-    if(permission.connected) statuses.push("Connected")
-    if(permission.hasSecret) statuses.push("Secret stored")
+    statuses.push(permission.trusted
+        ? localizedString('widgets.extensions.status.trusted', 'Trusted')
+        : localizedString('widgets.extensions.status.not_trusted', 'Not trusted'))
+    if(permission.connected) statuses.push(localizedString('widgets.extensions.status.connected', 'Connected'))
+    if(permission.hasSecret) statuses.push(localizedString('widgets.extensions.status.secret_stored', 'Secret stored'))
 
     if(permission.ignoredUntil){
         let msLeft = (permission.ignoredUntil * 1000) - Date.now()
         if(msLeft > 0){
-            statuses.push("Popup retry in " + Math.ceil(msLeft / 1000) + "s")
+            statuses.push(localizedString('widgets.extensions.status.popup_retry', 'Popup retry in %d s')
+                .replace('%d', Math.ceil(msLeft / 1000)))
         }
     }
 
@@ -1642,12 +1672,12 @@ function renderExtensionPermissionsStatus(list){
 
     $extensionPermissionsList.html("")
     if(!list || !list.length){
-        $extensionPermissionsList.append('<div class="extensionPermissionCard">No extension detected yet. Open the extension once, then refresh this list.</div>')
+        $extensionPermissionsList.append('<div class="extensionPermissionCard">' + localizedString('widgets.extensions.empty', 'No extension detected yet. Open the extension once, then refresh this list.') + '</div>')
         return
     }
 
     for(let permission of list){
-        let extensionName = antiHtmlInjection(permission.extensionName || permission.bundleId || "Unknown extension")
+        let extensionName = antiHtmlInjection(permission.extensionName || permission.bundleId || localizedString('widgets.extensions.unknown_extension', 'Unknown extension'))
         let bundleId = antiHtmlInjection(permission.bundleId || "unknown.bundle")
         let clientId = permission.clientId ? antiHtmlInjection(permission.clientId) : "-"
         let extensionVersion = permission.extensionVersion ? antiHtmlInjection(permission.extensionVersion) : "-"
@@ -1658,11 +1688,11 @@ function renderExtensionPermissionsStatus(list){
         let html = ''
         html += '<div class="extensionPermissionCard">'
         html += '  <div class="name">' + extensionName + '</div>'
-        html += '  <div class="meta">Bundle: ' + bundleId + '<br>Client ID: ' + clientId + '<br>Version: ' + extensionVersion + '<br>Last seen: ' + lastSeenAt + '</div>'
+        html += '  <div class="meta">' + localizedString('widgets.extensions.bundle', 'Bundle') + ': ' + bundleId + '<br>' + localizedString('widgets.extensions.client_id', 'Client ID') + ': ' + clientId + '<br>' + localizedString('widgets.extensions.version', 'Version') + ': ' + extensionVersion + '<br>' + localizedString('widgets.extensions.last_seen', 'Last seen') + ': ' + lastSeenAt + '</div>'
         html += '  <div class="status">' + status + '</div>'
         html += '  <div class="actions">'
-        html += '    <button class="action request" data-identity="' + identity + '">Request Permission</button>'
-        html += '    <button class="action revoke" data-identity="' + identity + '">Revoke Permission</button>'
+        html += '    <button class="action request" data-identity="' + identity + '">' + localizedString('widgets.extensions.request_permission', 'Request Permission') + '</button>'
+        html += '    <button class="action revoke" data-identity="' + identity + '">' + localizedString('widgets.extensions.revoke_permission', 'Revoke Permission') + '</button>'
         html += '  </div>'
         html += '</div>'
 
@@ -1673,16 +1703,16 @@ function renderExtensionPermissionsStatus(list){
 function notifyPermissionDecision(decision){
     if(!decision) return
 
-    let text = ""
+    var text = ""
     switch(decision){
         case "allow":
-            text = "Permission allowed."
+            text = localizedString('widgets.extensions.permission_allowed', 'Permission allowed.')
             break
         case "deny":
-            text = "Permission denied."
+            text = localizedString('widgets.extensions.permission_denied', 'Permission denied.')
             break
         case "ignored":
-            text = "Popup ignored. MakeItHome will ask again after 30 seconds."
+            text = localizedString('widgets.extensions.permission_ignored', 'Popup ignored. MakeItHome will ask again after 30 seconds.')
             break
     }
 
@@ -1698,7 +1728,8 @@ function notifyPermissionDecision(decision){
 function receiveExtensionPermissionsStatus(obj){
     if(!obj) return
     notifyPermissionDecision(obj.decision)
-    renderExtensionPermissionsStatus(obj.extensionPermissions || [])
+    latestExtensionPermissions = obj.extensionPermissions || []
+    renderExtensionPermissionsStatus(latestExtensionPermissions)
 }
 
 $(document).ready(function() {

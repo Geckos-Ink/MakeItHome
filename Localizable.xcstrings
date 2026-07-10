@@ -1,6 +1,657 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "widgets.navigation.settings": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Settings"
+          }
+        }
+      }
+    },
+    "widgets.navigation.clipboard": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clipboard"
+          }
+        }
+      }
+    },
+    "widgets.navigation.notes": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Notes"
+          }
+        }
+      }
+    },
+    "widgets.navigation.tasks": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tasks"
+          }
+        }
+      }
+    },
+    "widgets.navigation.calendar": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Calendar"
+          }
+        }
+      }
+    },
+    "widgets.clipboard.clear": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Clear clipboard"
+          }
+        }
+      }
+    },
+    "widgets.clipboard.capture.enable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable clipboard capture"
+          }
+        }
+      }
+    },
+    "widgets.settings.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Settings"
+          }
+        }
+      }
+    },
+    "widgets.settings.sections": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sections"
+          }
+        }
+      }
+    },
+    "widgets.settings.general": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "General"
+          }
+        }
+      }
+    },
+    "widgets.settings.my_widgets": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "My Widgets"
+          }
+        }
+      }
+    },
+    "widgets.settings.external_extensions": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "External Extensions"
+          }
+        }
+      }
+    },
+    "widgets.settings.guides": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Guides"
+          }
+        }
+      }
+    },
+    "widgets.settings.introduction": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Introduction"
+          }
+        }
+      }
+    },
+    "widgets.settings.introduction.description": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Welcome in MakeItHome settings. This is a preview of the widgets side which will be implemented in MakeItHome 2."
+          }
+        }
+      }
+    },
+    "widgets.settings.introduction.feedback": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "At this moment are missing many features including widgets' translations, but we appreciate your feedback about your experience."
+          }
+        }
+      }
+    },
+    "widgets.settings.drag_and_drop.enable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable Widgets Zone drag and drop detection"
+          }
+        }
+      }
+    },
+    "widgets.settings.reload.hint": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "In case of emergency, press the button:"
+          }
+        }
+      }
+    },
+    "widgets.settings.reload": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reload Widgets Zone"
+          }
+        }
+      }
+    },
+    "widgets.settings.feedback.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Share your feedback"
+          }
+        }
+      }
+    },
+    "widgets.settings.feedback.messaging": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Soon will be available the messaging system internally in the widgets zone."
+          }
+        }
+      }
+    },
+    "widgets.settings.feedback.contact": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "For the moment, to share your feedback about the product, you can contact"
+          }
+        }
+      }
+    },
+    "widgets.my_widgets.description": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "With My Widgets you can create your own custom widgets that point to your favorite website."
+          }
+        }
+      }
+    },
+    "widgets.my_widgets.cookies": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Websites are shown through an iframe (services like Google used to not work without a proxy) and cookies are not saved through the sessions."
+          }
+        }
+      }
+    },
+    "widgets.my_widgets.default_name": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "My widget name"
+          }
+        }
+      }
+    },
+    "widgets.my_widgets.go_to_website": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Go to website:"
+          }
+        }
+      }
+    },
+    "widgets.extensions.permissions.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "External Extensions Permissions"
+          }
+        }
+      }
+    },
+    "widgets.extensions.permissions.description": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You can review every known extension and grant or revoke access at any time."
+          }
+        }
+      }
+    },
+    "widgets.extensions.permissions.retry": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "If the first popup was ignored, MakeItHome asks again after 30 seconds."
+          }
+        }
+      }
+    },
+    "widgets.extensions.refresh": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Refresh list"
+          }
+        }
+      }
+    },
+    "widgets.extensions.known": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Known Extensions"
+          }
+        }
+      }
+    },
+    "widgets.guides.clipboard.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "How works the Clipboard"
+          }
+        }
+      }
+    },
+    "widgets.guides.clipboard.description": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The clipboard allows you to manage the history of your copied items."
+          }
+        }
+      }
+    },
+    "widgets.guides.clipboard.basics": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The basics concepts are:"
+          }
+        }
+      }
+    },
+    "widgets.guides.clipboard.copy": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "- Click on the element for copying it again on the clipboard"
+          }
+        }
+      }
+    },
+    "widgets.guides.clipboard.drag_out": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "- After you have clicked on the item, if it's red, you can drag it int the app you want"
+          }
+        }
+      }
+    },
+    "widgets.guides.clipboard.drag_in": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "- You can drag an element on the clipboard bringing the file on the top menu bar"
+          }
+        }
+      }
+    },
+    "widgets.guides.clipboard.delete": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "- You can delete an element in the clipboard by clicking it with the right button of the mouse"
+          }
+        }
+      }
+    },
+    "widgets.guides.notifications.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "How to show notifications"
+          }
+        }
+      }
+    },
+    "widgets.guides.notifications.description": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "By default, due to the using of screen recording, the notifications are disabled."
+          }
+        }
+      }
+    },
+    "widgets.guides.notifications.enable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "You can enable it going in Settings > Notification settings and enabling \"Allow notifications when mirroring or sharing the display\"."
+          }
+        }
+      }
+    },
+    "widgets.guides.theme.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "How to change the theme"
+          }
+        }
+      }
+    },
+    "widgets.guides.theme.description": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "For the moment, the theme is strictly related to macOS' background. If the background is not available or not compatible, appears a default blue theme."
+          }
+        }
+      }
+    },
+    "widgets.guides.calendar.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "How the calendar works"
+          }
+        }
+      }
+    },
+    "widgets.guides.calendar.description": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "At this moment, the calendar provides a way to show events, their previews clicking on them or to rapidly edit them with a right click."
+          }
+        }
+      }
+    },
+    "widgets.search.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search"
+          }
+        }
+      }
+    },
+    "widgets.search.voice.title": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search by Voice"
+          }
+        }
+      }
+    },
+    "widgets.my_widgets.url": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "URL"
+          }
+        }
+      }
+    },
+    "widgets.extensions.unknown": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unknown"
+          }
+        }
+      }
+    },
+    "widgets.extensions.status.trusted": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trusted"
+          }
+        }
+      }
+    },
+    "widgets.extensions.status.not_trusted": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not trusted"
+          }
+        }
+      }
+    },
+    "widgets.extensions.status.connected": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connected"
+          }
+        }
+      }
+    },
+    "widgets.extensions.status.secret_stored": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Secret stored"
+          }
+        }
+      }
+    },
+    "widgets.extensions.status.popup_retry": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Popup retry in %d s"
+          }
+        }
+      }
+    },
+    "widgets.extensions.empty": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No extension detected yet. Open the extension once, then refresh this list."
+          }
+        }
+      }
+    },
+    "widgets.extensions.unknown_extension": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unknown extension"
+          }
+        }
+      }
+    },
+    "widgets.extensions.bundle": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bundle"
+          }
+        }
+      }
+    },
+    "widgets.extensions.client_id": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Client ID"
+          }
+        }
+      }
+    },
+    "widgets.extensions.version": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Version"
+          }
+        }
+      }
+    },
+    "widgets.extensions.last_seen": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last seen"
+          }
+        }
+      }
+    },
+    "widgets.extensions.request_permission": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Request Permission"
+          }
+        }
+      }
+    },
+    "widgets.extensions.revoke_permission": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Revoke Permission"
+          }
+        }
+      }
+    },
+    "widgets.extensions.permission_allowed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permission allowed."
+          }
+        }
+      }
+    },
+    "widgets.extensions.permission_denied": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Permission denied."
+          }
+        }
+      }
+    },
+    "widgets.extensions.permission_ignored": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Popup ignored. MakeItHome will ask again after 30 seconds."
+          }
+        }
+      }
+    }
+    ,
     "": {
       "localizations": {
         "fr": {

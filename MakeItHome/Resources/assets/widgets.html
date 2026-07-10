@@ -94,10 +94,10 @@
                 <div class="left">
                     <div class="leftMenu">
                         <div class="appItem" id="appItem-settings" onclick="openApp('settings')">
-                            <div class="img"><!--<img src="./assets/settings.png"/>--><i class="fa fa-cog" aria-hidden="true"></i></div> <div class="text">Settings</div>
+                            <div class="img"><!--<img src="./assets/settings.png"/>--><i class="fa fa-cog" aria-hidden="true"></i></div> <div class="text" data-i18n="widgets.navigation.settings">Settings</div>
                         </div>
                         <div class="appItem selected" id="appItem-clipboard" onclick="openApp('clipboard')">
-                            <div class="img"><!--<img src="./assets/clipboard.png"/>--><i class="fa fa-clipboard" aria-hidden="true"></i></div> <div class="text">Clipboard</div>
+                            <div class="img"><!--<img src="./assets/clipboard.png"/>--><i class="fa fa-clipboard" aria-hidden="true"></i></div> <div class="text" data-i18n="widgets.navigation.clipboard">Clipboard</div>
                         </div>
                         <!--<div class="appItem" id="appItem-todo" onclick="openApp('todo')">
                             <div class="img"><i class="fa fa-list-ul" aria-hidden="true"></i></div> <div class="text">To-do</div>
@@ -105,10 +105,10 @@
 
                         <!-- Board Apps -->
                         <div class="appItem" id="appItem-board-notes" onclick="openApp('board-notes')">
-                            <div class="img"><i class="fa-solid fa-note-sticky"></i></div> <div class="text">Notes</div>
+                            <div class="img"><i class="fa-solid fa-note-sticky"></i></div> <div class="text" data-i18n="widgets.navigation.notes">Notes</div>
                         </div>
                         <div class="appItem" id="appItem-board-tasks" onclick="openApp('board-tasks')">
-                            <div class="img"><i class="fa-solid fa-list-check"></i></div> <div class="text">Tasks</div>
+                            <div class="img"><i class="fa-solid fa-list-check"></i></div> <div class="text" data-i18n="widgets.navigation.tasks">Tasks</div>
                         </div>
                         <!--<div class="appItem" id="appItem-board-scrumboard" onclick="openApp('board-scrumboard')">
                             <div class="img"><i class="fa-solid fa-chess-board"></i></div> <div class="text">Scrumboard</div>
@@ -116,7 +116,7 @@
 
                         <!-- -->
                         <div class="appItem" id="appItem-calendar" onclick="openApp('calendar')">
-                            <div class="img"><i class="fa-regular fa-calendar"></i></div> <div class="text">Calendar</div>
+                            <div class="img"><i class="fa-regular fa-calendar"></i></div> <div class="text" data-i18n="widgets.navigation.calendar">Calendar</div>
                         </div>
                     </div>
 
@@ -132,8 +132,8 @@
 
                     <div id="search">
                         <div class="bar">
-                            <input id="searchbar" class="searchbar" type="text" title="Search" onkeypress="searchPressEnter(event)">
-                            <a href="#"> <img class="voice" src="./search.png" title="Search by Voice"></a>
+                            <input id="searchbar" class="searchbar" type="text" title="Search" data-i18n-title="widgets.search.title" onkeypress="searchPressEnter(event)">
+                            <a href="#"> <img class="voice" src="./search.png" title="Search by Voice" data-i18n-title="widgets.search.voice.title"></a>
                         </div>
                     </div>
                 </div>
@@ -141,10 +141,10 @@
                     <div class="line"></div>
 
                     <div class="clipboardRight">
-                        <div class="rightButton" onclick="clearClipboard()">Clear clipboard</div>
+                        <div class="rightButton" onclick="clearClipboard()" data-i18n="widgets.clipboard.clear">Clear clipboard</div>
                         <label class="clipboardCaptureSetting" for="check-enableClipboardCapture">
                             <input type="checkbox" id="check-enableClipboardCapture" checked>
-                            Enable clipboard capture
+                            <span data-i18n="widgets.clipboard.capture.enable">Enable clipboard capture</span>
                         </label>
                     </div>
                 </div>
@@ -173,15 +173,15 @@
             </div>
 
             <div class="app" id="app-settings">
-                <div class="title">Settings</div>
+                <div class="title" data-i18n="widgets.settings.title">Settings</div>
 
                 <ons-page class="list">                  
                     <ons-list>
-                      <ons-list-header>Sections</ons-list-header>
-                      <ons-list-item modifier="chevron" tappable class="general">General</ons-list-item>
-                      <ons-list-item modifier="chevron" tappable class="myWidgets">My Widgets</ons-list-item>
-                      <ons-list-item modifier="chevron" tappable class="extensions">External Extensions</ons-list-item>
-                      <ons-list-item modifier="chevron" tappable class="guides">Guides</ons-list-item>
+                      <ons-list-header data-i18n="widgets.settings.sections">Sections</ons-list-header>
+                      <ons-list-item modifier="chevron" tappable class="general" data-i18n="widgets.settings.general">General</ons-list-item>
+                      <ons-list-item modifier="chevron" tappable class="myWidgets" data-i18n="widgets.settings.my_widgets">My Widgets</ons-list-item>
+                      <ons-list-item modifier="chevron" tappable class="extensions" data-i18n="widgets.settings.external_extensions">External Extensions</ons-list-item>
+                      <ons-list-item modifier="chevron" tappable class="guides" data-i18n="widgets.settings.guides">Guides</ons-list-item>
                     </ons-list>                  
                 </ons-page>
 
@@ -189,33 +189,33 @@
                     <div class="section general">
                         <div class="paragraphs">
                             <div class="paragraph">
-                                <div class="title">Introduction</div>
-                                Welcome in MakeItHome settings. This is a preview of the widgets side which will be implemented in MakeItHome 2. <br>
-                                At this moment are missing many features including widgets' translations, but we appreciate your feedback about your experience.
+                                <div class="title" data-i18n="widgets.settings.introduction">Introduction</div>
+                                <span data-i18n="widgets.settings.introduction.description">Welcome in MakeItHome settings. This is a preview of the widgets side which will be implemented in MakeItHome 2.</span> <br>
+                                <span data-i18n="widgets.settings.introduction.feedback">At this moment are missing many features including widgets' translations, but we appreciate your feedback about your experience.</span>
                             </div>
 
                             <div class="paragraph">
-                                <div class="title">General</div>
+                                <div class="title" data-i18n="widgets.settings.general">General</div>
                                 <ons-list>
                                     <ons-list-item tappable>
                                         <label class="left">
                                             <ons-checkbox input-id="check-detectDragAndDrop"></ons-checkbox>
                                         </label>
                                         <label for="check-detectDragAndDrop" class="center">
-                                            Enable Widgets Zone drag and drop detection
+                                            <span data-i18n="widgets.settings.drag_and_drop.enable">Enable Widgets Zone drag and drop detection</span>
                                         </label>
                                     </ons-list-item>
                                 </ons-list>
                                 
                                 <br>
-                                In case of emergency, press the button:
-                                <button id="reloadWidgetsZone">Reload Widgets Zone</button>
+                                <span data-i18n="widgets.settings.reload.hint">In case of emergency, press the button:</span>
+                                <button id="reloadWidgetsZone" data-i18n="widgets.settings.reload">Reload Widgets Zone</button>
                             </div>
 
                             <div class="paragraph">
-                                <div class="title">Share your feedback</div>
-                                Soon will be available the messaging system internally in the widgets zone. <br>
-                                For the moment, to share your feedback about the product, you can contact <a href="mailto:makeithome@geckos.ink">makeithome@geckos.ink</a>.
+                                <div class="title" data-i18n="widgets.settings.feedback.title">Share your feedback</div>
+                                <span data-i18n="widgets.settings.feedback.messaging">Soon will be available the messaging system internally in the widgets zone.</span> <br>
+                                <span data-i18n="widgets.settings.feedback.contact">For the moment, to share your feedback about the product, you can contact</span> <a href="mailto:makeithome@geckos.ink">makeithome@geckos.ink</a>.
                             </div>
                         </div>
                     </div>
@@ -223,22 +223,22 @@
                     <div class="section myWidgets">
                         <div class="paragraphs">
                             <div class="paragraph">
-                                <div class="title">Introduction</div>
-                                With My Widgets you can create your own custom widgets that point to your favorite website.<br>
-                                Websites are shown through an iframe (services like Google used to not work without a proxy) and cookies are not saved through the sessions.
+                                <div class="title" data-i18n="widgets.settings.introduction">Introduction</div>
+                                <span data-i18n="widgets.my_widgets.description">With My Widgets you can create your own custom widgets that point to your favorite website.</span><br>
+                                <span data-i18n="widgets.my_widgets.cookies">Websites are shown through an iframe (services like Google used to not work without a proxy) and cookies are not saved through the sessions.</span>
                             </div>
 
                             <div class="paragraph">
-                                <div class="title">My Widgets <ons-button class="add excludeFromTitle" onclick="newWidget()">+</ons-button></div>                                           
+                                <div class="title"><span data-i18n="widgets.settings.my_widgets">My Widgets</span> <ons-button class="add excludeFromTitle" onclick="newWidget()">+</ons-button></div>
                                 <ons-card class="myWidget template">
                                     <span class="notification delete"><i class="fa-regular fa-circle-xmark"></i></span>
                                     <div class="title">
-                                        <div class="colorPicker"></div> <div class="name" contenteditable="true">My widget name</div>
+                                        <div class="colorPicker"></div> <div class="name" contenteditable="true" data-i18n="widgets.my_widgets.default_name">My widget name</div>
                                     </div>
                                     <div class="content">
-                                        Go to website:
+                                        <span data-i18n="widgets.my_widgets.go_to_website">Go to website:</span>
                                         <!--<input class="url" type="text" value="https://geckos.ink/">-->
-                                        <br><ons-input class="url" modifier="underbar" placeholder="URL" float></ons-input>
+                                        <br><ons-input class="url" modifier="underbar" placeholder="URL" data-i18n-placeholder="widgets.my_widgets.url" float></ons-input>
                                     </div>
                                 </ons-card>
                                 <div id="myWidgetsList"></div>                     
@@ -249,16 +249,16 @@
                     <div class="section extensions">
                         <div class="paragraphs">
                             <div class="paragraph">
-                                <div class="title">External Extensions Permissions</div>
-                                You can review every known extension and grant or revoke access at any time.
+                                <div class="title" data-i18n="widgets.extensions.permissions.title">External Extensions Permissions</div>
+                                <span data-i18n="widgets.extensions.permissions.description">You can review every known extension and grant or revoke access at any time.</span>
                                 <br>
-                                If the first popup was ignored, MakeItHome asks again after 30 seconds.
+                                <span data-i18n="widgets.extensions.permissions.retry">If the first popup was ignored, MakeItHome asks again after 30 seconds.</span>
                                 <br><br>
-                                <button id="refreshExtensionPermissions">Refresh list</button>
+                                <button id="refreshExtensionPermissions" data-i18n="widgets.extensions.refresh">Refresh list</button>
                             </div>
 
                             <div class="paragraph">
-                                <div class="title">Known Extensions</div>
+                                <div class="title" data-i18n="widgets.extensions.known">Known Extensions</div>
                                 <div id="extensionPermissionsList" class="extensionPermissionsList"></div>
                             </div>
                         </div>
@@ -267,29 +267,29 @@
                     <div class="section guides">
                         <div class="paragraphs">
                             <div class="paragraph">
-                                <div class="title">How works the Clipboard</div>
-                                The clipboard allows you to manage the history of your copied items. <br>
-                                The basics concepts are: <br>
-                                - Click on the element for copying it again on the clipboard <br>
-                                - After you have clicked on the item, if it's red, you can drag it int the app you want <br>
-                                - You can drag an element on the clipboard bringing the file on the top menu bar <br>
-                                - You can delete an element in the clipboard by clicking it with the right button of the mouse <br>
+                                <div class="title" data-i18n="widgets.guides.clipboard.title">How works the Clipboard</div>
+                                <span data-i18n="widgets.guides.clipboard.description">The clipboard allows you to manage the history of your copied items.</span> <br>
+                                <span data-i18n="widgets.guides.clipboard.basics">The basics concepts are:</span> <br>
+                                <span data-i18n="widgets.guides.clipboard.copy">- Click on the element for copying it again on the clipboard</span> <br>
+                                <span data-i18n="widgets.guides.clipboard.drag_out">- After you have clicked on the item, if it's red, you can drag it int the app you want</span> <br>
+                                <span data-i18n="widgets.guides.clipboard.drag_in">- You can drag an element on the clipboard bringing the file on the top menu bar</span> <br>
+                                <span data-i18n="widgets.guides.clipboard.delete">- You can delete an element in the clipboard by clicking it with the right button of the mouse</span> <br>
                             </div>
 
                             <div class="paragraph">
-                                <div class="title">How to show notifications</div>
-                                By default, due to the using of screen recording, the notifications are disabled. <br>
-                                You can enable it going in Settings > Notification settings and enabling "Allow notifications when mirroring or sharing the display".
+                                <div class="title" data-i18n="widgets.guides.notifications.title">How to show notifications</div>
+                                <span data-i18n="widgets.guides.notifications.description">By default, due to the using of screen recording, the notifications are disabled.</span> <br>
+                                <span data-i18n="widgets.guides.notifications.enable">You can enable it going in Settings > Notification settings and enabling "Allow notifications when mirroring or sharing the display".</span>
                             </div>
 
                             <div class="paragraph">
-                                <div class="title">How to change the theme</div>
-                                For the moment, the theme is strictly related to macOS' background. If the background is not available or not compatible, appears a default blue theme.
+                                <div class="title" data-i18n="widgets.guides.theme.title">How to change the theme</div>
+                                <span data-i18n="widgets.guides.theme.description">For the moment, the theme is strictly related to macOS' background. If the background is not available or not compatible, appears a default blue theme.</span>
                             </div>
 
                             <div class="paragraph">
-                                <div class="title">How the calendar works</div>
-                                At this moment, the calendar provides a way to show events, their previews clicking on them or to rapidly edit them with a right click.
+                                <div class="title" data-i18n="widgets.guides.calendar.title">How the calendar works</div>
+                                <span data-i18n="widgets.guides.calendar.description">At this moment, the calendar provides a way to show events, their previews clicking on them or to rapidly edit them with a right click.</span>
                             </div>
                         </div>
                     </div>
@@ -320,6 +320,52 @@
 <script>
     let onApp = false;
     let pendingMessagesBeforeApp = [];
+    let widgetTranslations = {};
+    let localizationFallbacks = {};
+
+    function registerLocalizations(strings) {
+        Object.assign(localizationFallbacks, strings);
+    }
+
+    function localizedString(key, fallback) {
+        localizationFallbacks[key] = fallback;
+        return widgetTranslations[key] || fallback;
+    }
+
+    function collectLocalizations() {
+        document.querySelectorAll('[data-i18n]').forEach((element) => {
+            localizationFallbacks[element.dataset.i18n] = element.textContent.trim();
+        });
+
+        ['placeholder', 'title'].forEach((attribute) => {
+            document.querySelectorAll(`[data-i18n-${attribute}]`).forEach((element) => {
+                const key = element.dataset[`i18n${attribute[0].toUpperCase()}${attribute.slice(1)}`];
+                localizationFallbacks[key] = element.getAttribute(attribute) || '';
+            });
+        });
+    }
+
+    function applyLocalizations(translations) {
+        widgetTranslations = translations || {};
+
+        document.querySelectorAll('[data-i18n]').forEach((element) => {
+            const translation = widgetTranslations[element.dataset.i18n];
+            if (translation) element.textContent = translation;
+        });
+
+        ['placeholder', 'title'].forEach((attribute) => {
+            document.querySelectorAll(`[data-i18n-${attribute}]`).forEach((element) => {
+                const key = element.dataset[`i18n${attribute[0].toUpperCase()}${attribute.slice(1)}`];
+                const translation = widgetTranslations[key];
+                if (translation) element.setAttribute(attribute, translation);
+            });
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        collectLocalizations();
+        sendMessage({ type: 'localizationRequest', localizations: localizationFallbacks });
+    });
 
     function sendMessage(message) {
         if(typeof(message) == 'object')

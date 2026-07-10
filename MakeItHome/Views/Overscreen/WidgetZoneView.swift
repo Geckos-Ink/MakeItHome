@@ -457,6 +457,26 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
                     }
                 }
 
+                if json?.type == "localizationRequest", let localizations = json?.localizations {
+                    var reply = JSMessage()
+                    reply.type = "localizations"
+                    reply.localizations = Dictionary(
+                        uniqueKeysWithValues: localizations.map { key, fallback in
+                            (
+                                key,
+                                NSLocalizedString(
+                                    key,
+                                    tableName: nil,
+                                    bundle: .main,
+                                    value: fallback,
+                                    comment: "Widget zone web interface"
+                                )
+                            )
+                        }
+                    )
+                    self.parent.sendMessage(obj: reply)
+                }
+
                 if json?.type == "extensionPermissions" {
                     var reply = JSMessage()
                     reply.type = "extensionPermissionsStatus"
@@ -888,6 +908,9 @@ public struct JSMessage: Codable {
     // App extension permissions
     var extensionPermissions: [AppExtensionPermissionStatus]?
     var decision: String?
+
+    // Widget zone localization bridge
+    var localizations: [String: String]?
     
     var x: CGFloat?
     var y: CGFloat?

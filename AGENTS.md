@@ -27,6 +27,11 @@
 - Use `Display.imageProcessingQueue` for CI image processing; update previews and SceneKit materials on main.
 - Avoid overlapping ScreenRecorder start and stop calls; prefer config updates when possible.
 
+## Widget Zone Localization
+- Keep all user-facing text in `MakeItHome/Resources/assets/widgets.html` localizable with a semantic `data-i18n="widgets.…"` key. Use `data-i18n-title` or `data-i18n-placeholder` for those attributes, and keep the English text in the HTML as the fallback.
+- Add every new `widgets.…` key and its English value to `Localizable.xcstrings`. The web page collects its keys and fallbacks, then `WidgetZoneView.swift` sends the localized key/value JSON back through the existing web-view bridge.
+- For strings created dynamically in `script.js`, register the key and English fallback in `registerLocalizations`, and render it with `localizedString(key, fallback)`. This ensures it is included in the localization request before the page opens.
+
 ## Known Hotspots
 - `Displays.swift` aboveBy logic is complex and has unused variables (noted in README).
 - Rendering responsiveness depends on timely ScreenRecorder profile switches and SceneKit rendering state.
