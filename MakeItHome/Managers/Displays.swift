@@ -1631,9 +1631,20 @@ public class Display : Equatable {
             var sameSpaceHolderId : Int = 0
             
             func cycleWindows(windows : [CFDictionary]?){
-                
+
                 winnerRect = NSRect.zero // set to default
-                
+
+                // Recompute the fullscreen state fresh from the current window list on every
+                // pass. isFullscreen is otherwise sticky (its top-of-function reset at the
+                // "//self.isFullscreen = false" line is disabled) and only gets cleared when a
+                // non-fullscreen winner window is found. After leaving a fullscreen app that
+                // clear can fail to happen, leaving isFullscreen stuck true forever: that keeps
+                // shouldKeepScreenRecorderActive() false (the recorder stopped for fullscreen
+                // never restarts) and makes the winner block skip cropping — window screenshots
+                // freeze and newly opened windows never get a preview. The loop below sets it
+                // back to true if a fullscreen-sized window is genuinely still on screen.
+                self.isFullscreen = false
+
                 var aheadRects = [NSRect]()
                 
                 // Menu Bar Height checker
