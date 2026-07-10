@@ -419,6 +419,7 @@ public struct CapturePreview: NSViewRepresentable {
             var previousSpeed: CGFloat = 0
             var smoothedSpeedDelta: CGFloat = 0
             var generatedPointer: CGPoint?
+            var lastRealMovement = CGPoint.zero
         }
 
         private var gravityMouseState = GravityMouseState()
@@ -565,16 +566,27 @@ public struct CapturePreview: NSViewRepresentable {
 
             let delta = CGPoint(x: cursor.x - previousPointer.x, y: cursor.y - previousPointer.y)
             let speed = sqrt((delta.x * delta.x) + (delta.y * delta.y))
+            if speed >= 0.05 {
+                gravityMouseState.lastRealMovement = delta
+            }
             let speedDelta = speed - gravityMouseState.previousSpeed
             gravityMouseState.previousSpeed = speed
             gravityMouseState.smoothedSpeedDelta = ((gravityMouseState.smoothedSpeedDelta * 10) + speedDelta) / 11
 
-            // Gravity engages as the cursor slows, preserving fast traversal between previews.
-            guard speed < 12, gravityMouseState.smoothedSpeedDelta < -0.25 else {
+            // Preserve fast traversal between previews; direction is checked against
+            // the chosen target below so gravity never pulls against user intent.
+            guard speed < 12 else {
                 return nil
             }
 
             let sceneCursor = CGPoint(x: scenePoint.x, y: scenePoint.y)
+            let projectedCursor = projectPoint(scenePoint)
+            let localCursorY = cursor.y - (curDisplay?.frame.minY ?? 0)
+            let projectedCursorY = CGFloat(projectedCursor.y)
+            let usesFlippedProjectionY = abs(projectedCursorY - localCursorY) > abs((bounds.height - projectedCursorY) - localCursorY)
+            let movementAlongStrip = curDisplay?.side == 2
+                ? gravityMouseState.lastRealMovement.x
+                : gravityMouseState.lastRealMovement.y
             var closestPlanet: (target: CGPoint, distanceRatio: CGFloat)?
 
             for app in listApp {
@@ -585,6 +597,20 @@ public struct CapturePreview: NSViewRepresentable {
                     }
 
                     let target = CGPoint(x: previewFrame.midX, y: previewFrame.midY)
+                    let projectedTarget = projectPoint(SCNVector3(target.x, target.y, scenePoint.z))
+                    let targetDirectionAlongStrip: CGFloat
+                    if curDisplay?.side == 2 {
+                        targetDirectionAlongStrip = CGFloat(projectedTarget.x - projectedCursor.x)
+                    }
+                    else {
+                        let projectedTargetYDelta = CGFloat(projectedTarget.y - projectedCursor.y)
+                        targetDirectionAlongStrip = usesFlippedProjectionY ? -projectedTargetYDelta : projectedTargetYDelta
+                    }
+
+                    guard movementAlongStrip * targetDirectionAlongStrip > 0 else {
+                        continue
+                    }
+
                     let distance = sqrt(pow(sceneCursor.x - target.x, 2) + pow(sceneCursor.y - target.y, 2))
                     let planetDistance = (previewFrame.width + previewFrame.height) / 2
                     let distanceRatio = (distance * 0.75) / planetDistance
@@ -614,11 +640,7 @@ public struct CapturePreview: NSViewRepresentable {
                 scenePoint.z
             )
 
-            let projectedCursor = projectPoint(scenePoint)
             let projectedAttractedCursor = projectPoint(attractedScenePoint)
-            let localCursorY = cursor.y - (curDisplay?.frame.minY ?? 0)
-            let projectedCursorY = CGFloat(projectedCursor.y)
-            let usesFlippedProjectionY = abs(projectedCursorY - localCursorY) > abs((bounds.height - projectedCursorY) - localCursorY)
             let projectedYDelta = CGFloat(projectedAttractedCursor.y - projectedCursor.y)
             let projectedXDelta = CGFloat(projectedAttractedCursor.x - projectedCursor.x)
             var attractedCursor = cursor
@@ -634,6 +656,15 @@ public struct CapturePreview: NSViewRepresentable {
             }
 
             let adjustment = CGPoint(x: attractedCursor.x - cursor.x, y: attractedCursor.y - cursor.y)
+            let attractionAlongStrip = curDisplay?.side == 2 ? adjustment.x : adjustment.y
+
+            // A planet can attract only while the pointer is travelling toward it.
+            // Retaining the last real movement lets attraction finish naturally
+            // after the user slows down without treating generated moves as intent.
+            guard movementAlongStrip * attractionAlongStrip > 0 else {
+                return nil
+            }
+
             let quartzAttractedCursor = quartzCursorPoint(fromAppKitPoint: attractedCursor)
             guard sqrt((adjustment.x * adjustment.x) + (adjustment.y * adjustment.y)) >= 0.5,
                   let event = CGEvent(mouseEventSource: nil,
