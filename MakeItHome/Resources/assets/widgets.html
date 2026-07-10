@@ -364,7 +364,13 @@
 
     document.addEventListener('DOMContentLoaded', () => {
         collectLocalizations();
-        sendMessage({ type: 'localizationRequest', localizations: localizationFallbacks });
+
+        const localizationHandler = window.webkit?.messageHandlers?.widgetLocalization;
+        if (localizationHandler) {
+            localizationHandler.postMessage(localizationFallbacks);
+        } else {
+            sendMessage({ type: 'localizationRequest', localizations: localizationFallbacks });
+        }
     });
 
     function sendMessage(message) {

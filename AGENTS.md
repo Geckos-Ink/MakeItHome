@@ -29,7 +29,7 @@
 
 ## Widget Zone Localization
 - Keep all user-facing text in `MakeItHome/Resources/assets/widgets.html` localizable with a semantic `data-i18n="widgets.…"` key. Use `data-i18n-title` or `data-i18n-placeholder` for those attributes, and keep the English text in the HTML as the fallback.
-- Add every new `widgets.…` key and its English value to `Localizable.xcstrings`. The web page collects its keys and fallbacks, then `WidgetZoneView.swift` sends the localized key/value JSON back through the existing web-view bridge.
+- Add every new `widgets.…` key and its English value to `Localizable.xcstrings`. The web page collects its keys and fallbacks, sends them through the `widgetLocalization` WebKit message handler, then `WidgetZoneView.swift` returns the localized key/value JSON. Do not send this potentially large request through the custom URL bridge.
 - For strings created dynamically in `script.js`, register the key and English fallback in `registerLocalizations`, and render it with `localizedString(key, fallback)`. This ensures it is included in the localization request before the page opens.
 
 ## Known Hotspots

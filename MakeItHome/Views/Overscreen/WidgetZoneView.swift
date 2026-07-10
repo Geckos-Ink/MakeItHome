@@ -128,6 +128,8 @@ public struct TopWebView: NSViewRepresentable {
         wkwv.registerForDraggedTypes([.fileURL, .png, .string])
         wkwv.uiDelegate = context.coordinator
         wkwv.navigationDelegate = context.coordinator
+        wkwv.configuration.userContentController.removeScriptMessageHandler(forName: "widgetLocalization")
+        wkwv.configuration.userContentController.add(context.coordinator, name: "widgetLocalization")
         
         //wkwv.configuration.setValue(true, forKey: "_allowUniversalAccessFromFileURLs")
         wkwv.configuration.userInterfaceDirectionPolicy = .system
@@ -189,13 +191,50 @@ public protocol DragDropDelegate {
     func didDrop(files: [URL])
 }
 
-public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate, NSDraggingDestination, DropDelegate, DragDropDelegate {
+public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate, WKScriptMessageHandler, NSDraggingDestination, DropDelegate, DragDropDelegate {
     var parent: TopWebView
 
     var firstLoad = true
     
     init(parent: TopWebView) {
         self.parent = parent
+    }
+
+    private func sendWidgetLocalizations(_ localizations: [String: String]) {
+        var reply = JSMessage()
+        reply.type = "localizations"
+        reply.localizations = Dictionary(
+            uniqueKeysWithValues: localizations.map { key, fallback in
+                (
+                    key,
+                    NSLocalizedString(
+                        key,
+                        tableName: nil,
+                        bundle: .main,
+                        value: fallback,
+                        comment: "Widget zone web interface"
+                    )
+                )
+            }
+        )
+        parent.sendMessage(obj: reply)
+    }
+
+    public func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == "widgetLocalization" else {
+            return
+        }
+
+        let localizations: [String: String]
+        if let strings = message.body as? [String: String] {
+            localizations = strings
+        } else if let values = message.body as? [String: Any] {
+            localizations = values.compactMapValues { $0 as? String }
+        } else {
+            return
+        }
+
+        sendWidgetLocalizations(localizations)
     }
 
     public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
@@ -458,23 +497,7 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
                 }
 
                 if json?.type == "localizationRequest", let localizations = json?.localizations {
-                    var reply = JSMessage()
-                    reply.type = "localizations"
-                    reply.localizations = Dictionary(
-                        uniqueKeysWithValues: localizations.map { key, fallback in
-                            (
-                                key,
-                                NSLocalizedString(
-                                    key,
-                                    tableName: nil,
-                                    bundle: .main,
-                                    value: fallback,
-                                    comment: "Widget zone web interface"
-                                )
-                            )
-                        }
-                    )
-                    self.parent.sendMessage(obj: reply)
+                    sendWidgetLocalizations(localizations)
                 }
 
                 if json?.type == "extensionPermissions" {
