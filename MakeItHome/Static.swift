@@ -155,6 +155,7 @@ public class Static {
     public static let OverscreenAboveLimit : CGFloat = 5
     public static let CompensateAboveByCursor : Double = 0.99
     public static let DivideMaxSpeedBy : Double = 2.5
+    public static var overScreenMouseAxisAcceleration: CGFloat = 1.5
     
     public static let PutAsideInUsingApp = false
     public static let PutAsideInUsingAppBy : CGFloat = 10 // pixels

@@ -3110,6 +3110,7 @@ public class Display : Equatable {
     
     var prevMouse : CGPoint = CGPoint.zero
     var prevRelMouse : CGPoint = CGPoint.zero
+    var lastAcceleratedPointerPosition: CGPoint?
     var prevMouseAboveBy : CGFloat = -1 // setted in init
     var lastMouseChanged = false
     
@@ -3986,49 +3987,38 @@ public class Display : Equatable {
         }
 
         ///
-        /// Accelerate OverScreen axis pointer
+        /// Accelerate the pointer along the active previews strip.
+        /// The top side is the widgets zone, so it is deliberately excluded.
         ///
-        
-        //TODO: implement it effectively in future
-        let accelerateOverscreenEnabled = false // disabled because not working
-        if accelerateOverscreenEnabled && aboveBy == 1 && !onMoreAboveBy && curSide != 3 {
-            let axisCoord = curSide % 2 == 0 ? relMouse.y : relMouse.x
-            let counterAxisCoord = curSide % 2 == 0 ? relMouse.x : relMouse.y
-            
-            let prevAxisCoord = curSide % 2 == 0 ? prevRelMouse.y : prevRelMouse.x
-            let prevCounterAxisCoord = curSide % 2 == 1 ? prevRelMouse.y : prevRelMouse.x
-            
-            let diffAxis = axisCoord - prevAxisCoord
-            let diffCounterAxis = counterAxisCoord - prevCounterAxisCoord
-            
-            print("diffAxis > diffCounterAxis = ", diffAxis, " > ", diffCounterAxis)
-            if abs(diffAxis) > abs(diffCounterAxis) {
-                
-                let accelerateBy : Double = 1.5
-                let diff = diffAxis * accelerateBy
-                
-                var moveTo = relMouse
-                
-                if curSide % 2 == 1 {
-                    moveTo.y += diff
-                }
-                else {
-                    moveTo.x += diff
-                }
-                
-                let relativeSetCursor = true
-                if relativeSetCursor {
-                    CGDisplayMoveCursorToPoint(self.screen.displayID, moveTo)
-                }
-                else {
-                    moveTo.y = frame.height - moveTo.y
-                    moveTo.y += frame.minY
-                    
-                    moveMouse(to: moveTo)
-                }
-                
-                prevRelMouse = moveTo
+        let isInPreviewOverscreen = aboveBy >= 1 && (side == 0 || side == 1 || side == 2)
+        if isInPreviewOverscreen && alterMouse == 0 && compensateAboveByCursor == .zero && !justArrived {
+            let acceleration = max(1, Static.overScreenMouseAxisAcceleration)
+            let pointerDelta: CGPoint
+            if let baseline = lastAcceleratedPointerPosition {
+                pointerDelta = CGPoint(x: mouse.x - baseline.x, y: mouse.y - baseline.y)
             }
+            else {
+                pointerDelta = mouseDelta
+            }
+            var moveTo = mouse
+            
+            if side == 2 { // Bottom previews: accelerate horizontal movement.
+                moveTo.x += pointerDelta.x * (acceleration - 1)
+            }
+            else { // Left and right previews: accelerate vertical movement.
+                moveTo.y += pointerDelta.y * (acceleration - 1)
+            }
+
+            lastAcceleratedPointerPosition = moveTo
+            prevMouse = moveTo
+
+            if moveTo != mouse {
+                moveMouse(to: moveTo)
+            }
+        }
+        else {
+            // Do not treat a cursor move made by another overscreen mechanic as input.
+            lastAcceleratedPointerPosition = nil
         }
         
         //MARK: alterMouse
