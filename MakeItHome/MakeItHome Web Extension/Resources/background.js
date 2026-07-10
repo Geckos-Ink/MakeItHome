@@ -680,6 +680,9 @@ async function runConnect(){
         if(json.description === "connectionIgnored"){
             connectionBlockedUntil = Date.now() + 30000
         }
+        if(json.description === "connectionDeferred"){
+            connectionBlockedUntil = Date.now() + 1000
+        }
 
         if(json.description === "invalidSecret" || json.description === "invalidToken" || json.description === "missingToken"){
             resetSecret = true

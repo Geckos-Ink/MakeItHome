@@ -2470,6 +2470,9 @@ public class Display : Equatable {
     func dismissOverscreenForModalPresentation() {
         precondition(Thread.isMainThread)
 
+        // Never leave the mouse loop in fullscreen mode after the window has disappeared.
+        outFullOverscreenMode()
+
         guard aboveByPixels > 0 || !windowHidden || shortcutAnimationInProgress else {
             return
         }
@@ -2502,6 +2505,12 @@ public class Display : Equatable {
         Static.mainWindowInUsing = false
 
         stopScreenRecordingIfNeeded()
+    }
+
+    /// Permission prompts are queued until this becomes false. Including fullscreen mode is
+    /// important because mouse events can belong to a native child WKWebView at that point.
+    var isOverscreenPresentationInProgress: Bool {
+        Static.mainWindowInUsing || aboveByPixels > 0 || shortcutAnimationInProgress || fullOverscreenMode
     }
 
     private func shouldPrewarmRecorder(side: Int, mouseDelta: CGPoint) -> Bool {
@@ -2788,6 +2797,7 @@ public class Display : Equatable {
                 
                 Static.mainWindowInUsing = false
                 self.windowHidden = true
+                self.outFullOverscreenMode()
                 self.updatePerformanceActivity()
                 
                 if #available(macOS 12.3, *){
@@ -3084,6 +3094,7 @@ public class Display : Equatable {
         if fullOverscreenMode {
             Task.init {
                 await Static.storeView?.view?.vars.navOverlayOffsetY = 10000;
+                await Static.storeView?.view?.vars.overlaySizeY = Static.OverscreenSizeTop
             }
             
             fullOverscreenMode = false

@@ -500,9 +500,7 @@ input {
 
   height: calc(100vh - var(--target-height));
 
-  border: 1px solid silver;
-  border-bottom-left-radius: 10px;
-  border-bottom-right-radius: 10px;
+  border: none;
 
   background-color: transparent;
 }
@@ -777,6 +775,12 @@ ons-list-item label:nth-child(1) {
 
 #app-myWidget-template {
   display: none;
+}
+
+.myWidgetApp {
+  width: 84.5%;
+  padding: 4px;
+  overflow: hidden;
 }
 
 .myWidgetApp .myWidgetWebView {
