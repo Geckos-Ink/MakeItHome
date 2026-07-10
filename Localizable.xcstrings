@@ -8293,6 +8293,84 @@
             "state": "translated",
             "value": "Websites open in native web views, and sign-ins and browsing sessions are kept after MakeItHome restarts."
           }
+        },
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تُفتح مواقع الويب في عروض ويب أصلية، وتُحفظ جلسات تسجيل الدخول والتصفح بعد إعادة تشغيل MakeItHome."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Websites werden in nativen Webansichten geöffnet, und Anmeldungen sowie Browsersitzungen bleiben nach einem Neustart von MakeItHome erhalten."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Los sitios web se abren en vistas web nativas, y los inicios de sesión y las sesiones de navegación se conservan después de reiniciar MakeItHome."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les sites web s’ouvrent dans des vues web natives, et les connexions ainsi que les sessions de navigation sont conservées après le redémarrage de MakeItHome."
+          }
+        },
+        "hi": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "वेबसाइटें मूल वेब व्यू में खुलती हैं, और MakeItHome के पुनः आरंभ होने के बाद भी साइन-इन और ब्राउज़िंग सत्र सुरक्षित रहते हैं।"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "I siti web si aprono in viste web native e gli accessi e le sessioni di navigazione vengono mantenuti anche dopo il riavvio di MakeItHome."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WebサイトはネイティブのWebビューで開かれ、MakeItHomeを再起動した後もサインイン情報と閲覧セッションが保持されます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "웹사이트는 네이티브 웹 보기에서 열리며, MakeItHome을 다시 시작한 후에도 로그인 및 탐색 세션이 유지됩니다."
+          }
+        },
+        "pt-PT": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Os sites abrem em vistas web nativas, e os inícios de sessão e as sessões de navegação são mantidos após reiniciar o MakeItHome."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Веб-сайты открываются во встроенных веб-представлениях, а данные входа и сеансы просмотра сохраняются после перезапуска MakeItHome."
+          }
+        },
+        "uk": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вебсайти відкриваються у вбудованих вебподаннях, а дані входу та сеанси перегляду зберігаються після перезапуску MakeItHome."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网站会在原生网页视图中打开，并且登录状态和浏览会话会在 MakeItHome 重新启动后保留。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "網站會在原生網頁檢視中開啟，且登入狀態與瀏覽工作階段會在 MakeItHome 重新啟動後保留。"
+          }
         }
       }
     },
