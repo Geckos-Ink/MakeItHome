@@ -534,7 +534,7 @@ public struct CapturePreview: NSViewRepresentable {
                   !isPreviewPointerInteractionActive,
                   !Static.isDragginApp,
                   !Static.OnAppExtensionZone,
-                  (curDisplay?.aboveBy ?? 0) > 0,
+                  (curDisplay?.aboveByPixels ?? 0) >= Static.OverscreenSize - 1,
                   curDisplay?.side != 3,
                   let listApp else {
                 resetGravityMouse()
@@ -602,10 +602,22 @@ public struct CapturePreview: NSViewRepresentable {
 
             let projectedCursor = projectPoint(scenePoint)
             let projectedAttractedCursor = projectPoint(attractedScenePoint)
-            let attractedCursor = CGPoint(
-                x: cursor.x + CGFloat(projectedAttractedCursor.x - projectedCursor.x),
-                y: cursor.y + CGFloat(projectedAttractedCursor.y - projectedCursor.y)
-            )
+            let localCursorY = cursor.y - (curDisplay?.frame.minY ?? 0)
+            let projectedCursorY = CGFloat(projectedCursor.y)
+            let usesFlippedProjectionY = abs(projectedCursorY - localCursorY) > abs((bounds.height - projectedCursorY) - localCursorY)
+            let projectedYDelta = CGFloat(projectedAttractedCursor.y - projectedCursor.y)
+            let projectedXDelta = CGFloat(projectedAttractedCursor.x - projectedCursor.x)
+            var attractedCursor = cursor
+
+            // Do not alter the axis used to enter or leave the overscreen. Preview
+            // cards are arranged along the other axis, which is enough for gravity
+            // to make selecting them easier without trapping the cursor.
+            if curDisplay?.side == 2 { // Bottom previews are arranged horizontally.
+                attractedCursor.x += projectedXDelta
+            }
+            else { // Left and right previews are arranged vertically.
+                attractedCursor.y += usesFlippedProjectionY ? -projectedYDelta : projectedYDelta
+            }
 
             let adjustment = CGPoint(x: attractedCursor.x - cursor.x, y: attractedCursor.y - cursor.y)
             guard sqrt((adjustment.x * adjustment.x) + (adjustment.y * adjustment.y)) >= 0.5,
