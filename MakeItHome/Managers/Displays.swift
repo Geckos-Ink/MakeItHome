@@ -1283,8 +1283,16 @@ public class Display : Equatable {
         self.activateSide[3] = Static.User.object(forKey: "DisplayEnableTop_\(self.screen.localizedName)") as? Bool ?? true
     }
     
-    public var isFullscreen : Bool = false
-    
+    /// Pure state machine for the transient preview/recording gate. `isFullscreen` and
+    /// `spaceIsChanging` below are thin facades over it so all the existing call sites keep
+    /// working while the recovery logic lives in one unit-testable place (see PreviewFlowGate).
+    var flowGate = PreviewFlowGate()
+
+    public var isFullscreen : Bool {
+        get { flowGate.isFullscreen }
+        set { flowGate.updateFullscreen(newValue, now: Date().timeIntervalSince1970) }
+    }
+
     public var currentSpaceId : Int = -1
     var currentSpaceIds : [Int] = []
     public var spaces : [Int: SwifterPlaceholder] = [:]
@@ -1383,7 +1391,14 @@ public class Display : Equatable {
             if self.disable || self.manager.curDisplay !== self {
                 return
             }
-            
+
+            // Runs on every tick, ahead of all the early-returns below, so a fullscreen that is
+            // genuinely gone can't stay stuck true (which would keep the recorder off forever)
+            // just because checkForScreenshot keeps bailing out before it re-reads the windows.
+            if self.flowGate.recoverStaleFullscreen(now: Date().timeIntervalSince1970) {
+                print("fullscreen cleared (stale, not re-confirmed) — re-enabling previews")
+            }
+
             // don't capture screenshot immediately after the triggering of above by
             if (Date.now.timeIntervalSince1970 - self.aboveByTriggeredSince) < Static.WaitScreenshotAfterAboveBy {
                 return
@@ -1967,10 +1982,9 @@ public class Display : Equatable {
                 // never fire when the placeholder of the current space is gone (sleep or
                 // fullscreen teardown): samePlaceholderSince is reset on every cycle because
                 // spaceHolderId stays -1, and this guard then blocks screenshots and new
-                // windows forever. A real space change never takes this long.
-                if Date().timeIntervalSince1970 - spaceIsChangingSince > Static.SpaceIsChangingForceResetAfter {
+                // windows forever. The gate's wall-clock safety window force-clears it.
+                if flowGate.recoverStuckSpaceChange(now: Date().timeIntervalSince1970) {
                     print("space no more changing due to wall-clock timeout")
-                    spaceIsChanging = false
                 }
                 else {
                     return false
@@ -2517,16 +2531,12 @@ public class Display : Equatable {
 
     func shouldKeepScreenRecorderActive() -> Bool {
         ready = manager.curDekstop != nil
-        
-        if Static.ScreenRecordingUnauthorized && !Static.debugForceWorking {
-            return false
-        }
-        
-        if Static.ActivationStatus <= 0 || !ready {
-            return false
-        }
-        
-        return !disable && !isFullscreen
+
+        return flowGate.allowsRecorder(
+            authorized: !(Static.ScreenRecordingUnauthorized && !Static.debugForceWorking),
+            activated: Static.ActivationStatus > 0,
+            ready: ready,
+            disabled: disable)
     }
 
     func stopScreenRecordingIfNeeded() {
@@ -3232,13 +3242,9 @@ public class Display : Equatable {
     
     var disable = false
     
-    var spaceIsChangingSince : Double = 0
-    var spaceIsChanging : Bool = false {
-        didSet {
-            if spaceIsChanging && !oldValue {
-                spaceIsChangingSince = Date().timeIntervalSince1970
-            }
-        }
+    var spaceIsChanging : Bool {
+        get { flowGate.spaceIsChanging }
+        set { flowGate.setSpaceChanging(newValue, now: Date().timeIntervalSince1970) }
     }
     var spaceChangedWin : AppWindows.Window?
     
