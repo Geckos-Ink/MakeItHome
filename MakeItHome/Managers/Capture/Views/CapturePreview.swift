@@ -527,6 +527,20 @@ public struct CapturePreview: NSViewRepresentable {
             gravityMouseState = GravityMouseState()
         }
 
+        private func quartzCursorPoint(fromAppKitPoint point: CGPoint) -> CGPoint {
+            if let currentEvent = CGEvent(source: nil) {
+                let currentQuartzPoint = currentEvent.location
+                let currentAppKitPoint = currentEvent.unflippedLocation
+                return CGPoint(
+                    x: point.x + (currentQuartzPoint.x - currentAppKitPoint.x),
+                    y: (currentQuartzPoint.y + currentAppKitPoint.y) - point.y
+                )
+            }
+
+            let mainScreenHeight = NSScreen.screens.first?.frame.height ?? bounds.height
+            return CGPoint(x: point.x, y: mainScreenHeight - point.y)
+        }
+
         /// Applies the GravityMouse attraction curve to the nearest preview. The
         /// original library's "planets" map to the SceneKit window preview frames.
         private func gravityMouseCursor(from cursor: CGPoint, scenePoint: SCNVector3) -> CGPoint? {
@@ -620,10 +634,11 @@ public struct CapturePreview: NSViewRepresentable {
             }
 
             let adjustment = CGPoint(x: attractedCursor.x - cursor.x, y: attractedCursor.y - cursor.y)
+            let quartzAttractedCursor = quartzCursorPoint(fromAppKitPoint: attractedCursor)
             guard sqrt((adjustment.x * adjustment.x) + (adjustment.y * adjustment.y)) >= 0.5,
                   let event = CGEvent(mouseEventSource: nil,
                                       mouseType: .mouseMoved,
-                                      mouseCursorPosition: attractedCursor,
+                                      mouseCursorPosition: quartzAttractedCursor,
                                       mouseButton: .left) else {
                 return nil
             }

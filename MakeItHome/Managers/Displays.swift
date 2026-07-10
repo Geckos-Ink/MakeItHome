@@ -2989,6 +2989,11 @@ public class Display : Equatable {
         default:
             break
         }
+
+        return cursorEventPoint(fromAppKitPoint: appKitPoint)
+    }
+
+    private func cursorEventPoint(fromAppKitPoint appKitPoint: CGPoint) -> CGPoint {
         
         if let event = CGEvent(source: nil) {
             let currentEventPoint = event.location
@@ -4013,7 +4018,7 @@ public class Display : Equatable {
             prevMouse = moveTo
 
             if moveTo != mouse {
-                moveMouse(to: moveTo)
+                moveMouse(to: cursorEventPoint(fromAppKitPoint: moveTo))
             }
         }
         else {
