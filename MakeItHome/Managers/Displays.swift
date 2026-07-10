@@ -2760,13 +2760,20 @@ public class Display : Equatable {
     }
     
     func hideWindow(allowRecorderRestart: Bool = true){
-        
+        // The native search WebView lives below the normal top zone. Moving the pointer into
+        // it must not trigger the regular "left the overscreen" close path.
+        if fullOverscreenMode {
+            return
+        }
+
         if windowHidden{
             return
         }
         
         DispatchQueue.main.async {
             Timer.scheduledTimer(withTimeInterval: 0.1, repeats: false) { timer in
+                // Search may have entered fullscreen after this close was scheduled.
+                guard !self.fullOverscreenMode else { return }
                 
                 // Force it elsewhere
                 //manager.window?.setFrame(NSRect(origin: NSPoint(x:self.screen.frame.minX-5000, y: self.screen.frame.minY-5000), size: NSSize(width: 0, height: 0)), display: false)
@@ -3092,9 +3099,12 @@ public class Display : Equatable {
     
     func outFullOverscreenMode(){
         if fullOverscreenMode {
+            let normalTopOffsetY = (Static.OverscreenSizeTop - self.frame.height) / 2
+
             Task.init {
                 await Static.storeView?.view?.vars.navOverlayOffsetY = 10000;
                 await Static.storeView?.view?.vars.overlaySizeY = Static.OverscreenSizeTop
+                await Static.storeView?.view?.vars.overlayOffsetY = normalTopOffsetY
             }
             
             fullOverscreenMode = false

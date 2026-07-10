@@ -1363,7 +1363,7 @@ function startFullscreenMode(){
     if(!fullscreenMode){
         sendMessage({type: "enterFullscreen"})
         fullscreenMode = true;
-        fullscreenMouseBelow = true;
+        fullscreenMouseBelow = false;
 
         $extension.animate({
             opacity: 1
