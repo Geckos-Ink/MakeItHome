@@ -12,8 +12,11 @@ import QuickLookThumbnailing
 
 public class Clipboard {
     var history: [Element] = []    
+    private var captureEnabled = true
     
     init(){
+        captureEnabled = Static.EnableClipboardCapture
+
         if Static.TopBarIsPreview { // for last 1.4.x versions, for the moment
             return
         }               
@@ -79,6 +82,10 @@ public class Clipboard {
     
     var totElements : Int = 0
     func checkElementsForSending(){
+        if !captureEnabled {
+            return
+        }
+        
         var num = 1
         for el in history{
             if el.wait || el.sent {
@@ -135,8 +142,41 @@ public class Clipboard {
     var prevRtf : String?
     var prevImage : Data?
     var prevFileUrl : URL?
+
+    func setCaptureEnabled(_ enabled: Bool) {
+        captureEnabled = enabled
+        syncCurrentPasteboardAsBaseline()
+
+        if !enabled {
+            history.removeAll()
+            totElements = 0
+            
+            var msg = JSMessage()
+            msg.type = "clearClipboardItems"
+            Static.topBarWebViewRepresentable?.sendMessage(obj: msg)
+        }
+    }
+
+    func syncCurrentPasteboardAsBaseline() {
+        let pasteboard = NSPasteboard.general
+        prevString = pasteboard.string(forType: .string)
+        prevRtf = pasteboard.string(forType: .rtf)
+        prevImage = pasteboard.data(forType: .tiff)
+
+        if let fileURLs = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
+           fileURLs.count == 1 {
+            prevFileUrl = fileURLs.first
+        }
+        else {
+            prevFileUrl = nil
+        }
+    }
     
     func checkClipboard(){
+        if !captureEnabled {
+            return
+        }
+        
         // Set string to clipboard
         let pasteboard = NSPasteboard.general
         //pasteboard.declareTypes([.string, .fileURL, .png, .pdf, .fileContents, .textFinderOptions], owner: nil)

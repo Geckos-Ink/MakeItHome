@@ -43,6 +43,7 @@ public class Static {
     private static let showInstallWebExtensionKey = "ShowInstallWebExtension"
     private static let installedWebExtensionVersionKey = "InstalledWebExtensionVersion"
     private static var showInstallWebExtensionCache: Bool?
+    private static let enableClipboardCaptureKey = "EnableClipboardCapture"
     
     static var _showInDock = false;
     
@@ -223,6 +224,21 @@ public class Static {
     
     ///# TOP BAR
     public static var EnableDragDropDetection : Bool = false
+    static var _enableClipboardCapture = true
+    public static var EnableClipboardCapture : Bool {
+        get {
+            if User.object(forKey: enableClipboardCaptureKey) != nil {
+                _enableClipboardCapture = User.bool(forKey: enableClipboardCaptureKey)
+            }
+            return _enableClipboardCapture
+        }
+        
+        set {
+            _enableClipboardCapture = newValue
+            User.set(newValue, forKey: enableClipboardCaptureKey)
+            clipboard?.setCaptureEnabled(newValue)
+        }
+    }
     public static let TopBarIsPreview = false
     public static var TopBarWebView : TopWKWV? = nil
     public static var topBarWebViewRepresentable : TopWebView? 
@@ -316,6 +332,7 @@ public class Static {
         //EnableDockMouseSlowering = User.object(forKey: "EnableDockMouseSlowering") as? Bool ?? EnableDockMouseSlowering
         MaxApps = User.object(forKey: "MaxApps") as? Int ?? MaxApps
         EnableDragDropDetection = User.object(forKey: "EnableDragDropDetection") as? Bool ?? EnableDragDropDetection
+        EnableClipboardCapture = User.object(forKey: enableClipboardCaptureKey) != nil ? User.bool(forKey: enableClipboardCaptureKey) : _enableClipboardCapture
         DisableOnDockSide = User.object(forKey: "DisableOnDockSide") as? Bool ?? DisableOnDockSide
         GlobalShortcutManager.shared.setEnabled(EnableShortcuts)
         

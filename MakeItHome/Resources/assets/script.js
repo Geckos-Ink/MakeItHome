@@ -346,6 +346,16 @@ let dontDrop = false // useless stuff (for the moment)
 let $webSearchFrame = $("#webSearchFrame")
 
 let toDoAtOpening = [] // events array
+let settingsState = {
+    enableClipboardCapture: true,
+}
+
+function applySettingToControls(setting) {
+    if(setting == "detectDragAndDrop" && $checkDragAndDropDetect)
+        $checkDragAndDropDetect.prop('checked', settingsState.detectDragAndDrop);
+    if(setting == "enableClipboardCapture" && $checkEnableClipboardCapture)
+        $checkEnableClipboardCapture.prop('checked', settingsState.enableClipboardCapture);
+}
 
 function receiveMessage(message){
 
@@ -414,6 +424,9 @@ function receiveMessage(message){
         }
 
         if(obj.type == 'newClipboardItem'){
+            if(settingsState.enableClipboardCapture === false){
+                return
+            }
 
             let item = obj.value
             let format = obj.format
@@ -510,11 +523,16 @@ function receiveMessage(message){
             },50)                                
         }
 
+        if(obj.type == 'clearClipboardItems'){
+            clearClipboard()
+        }
+
         return
     }
 
     if(message == 'opening'){
         onApp = true; // confirm that received a message that send only the app
+        flushPendingMessagesBeforeApp()
 
         pageShown = true
         canDragOut = false                        
@@ -1548,17 +1566,26 @@ function clearClipboard(){
 ///
 
 let $checkDragAndDropDetect = null
+let $checkEnableClipboardCapture = null
 let $extensionPermissionsList = null
 
 function retrieveSetting(setting, val){
-    if(setting == "detectDragAndDrop") 
-        $checkDragAndDropDetect.prop('checked', val);
+    settingsState[setting] = val
+    applySettingToControls(setting)
 }
 
 function setSettings_dragAndDropDetect(val){
     sendMessage({
         type: 'setSetting',
         setting: 'detectDragAndDrop',
+        valBool: val
+    })
+}
+
+function setSettings_enableClipboardCapture(val){
+    sendMessage({
+        type: 'setSetting',
+        setting: 'enableClipboardCapture',
         valBool: val
     })
 }
@@ -1676,9 +1703,19 @@ function receiveExtensionPermissionsStatus(obj){
 
 $(document).ready(function() {
     $checkDragAndDropDetect = $('#check-detectDragAndDrop')
+    applySettingToControls('detectDragAndDrop')
     $checkDragAndDropDetect.on('change', function() {
         let checked = $(this).is(':checked')
+        settingsState.detectDragAndDrop = checked
         setSettings_dragAndDropDetect(checked)
+    });
+
+    $checkEnableClipboardCapture = $('#check-enableClipboardCapture')
+    applySettingToControls('enableClipboardCapture')
+    $checkEnableClipboardCapture.on('change', function() {
+        let checked = $(this).is(':checked')
+        settingsState.enableClipboardCapture = checked
+        setSettings_enableClipboardCapture(checked)
     });
 
     $extensionPermissionsList = $('#extensionPermissionsList')

@@ -777,14 +777,21 @@ public class Display : Equatable {
         }
         
         func checkAppExtension(){
-            if self.appExtension == nil && Static.appExtensionManager != nil {
-                print("app extension apps: ", Static.appExtensionManager!.apps)
-                for (id, app) in Static.appExtensionManager!.apps {
-                    if app.bundleId == self.bundleId {
-                        appExtension = app
-                        app.link(app: self)
-                    }
+            guard let bundleId = self.bundleId,
+                  let manager = Static.appExtensionManager else {
+                return
+            }
+
+            if let linkedAppExtension = manager.apps[bundleId] {
+                if self.appExtension !== linkedAppExtension {
+                    self.appExtension?.unlink(app: self)
+                    self.appExtension = linkedAppExtension
+                    linkedAppExtension.link(app: self)
                 }
+            }
+            else if self.appExtension != nil {
+                self.appExtension?.unlink(app: self)
+                self.appExtension = nil
             }
         }
         
@@ -803,9 +810,8 @@ public class Display : Equatable {
             
             display.apps.removeValue(forKey: id)
             
-            if self.appExtension != nil {
-                Static.appExtensionManager?.closedApp(bundleId: self.bundleId!)
-            }
+            self.appExtension?.unlink(app: self)
+            self.appExtension = nil
         }
         
         public func hasLockedBy() -> Bool{
@@ -979,7 +985,10 @@ public class Display : Equatable {
             public var lastRect : NSRect? = nil
             public var previewsList : [Int : CGImage] = [:]
             
-            public var avgPixel : NSColor = NSColor.black
+            public var avgPixel : NSColor = NSColor.black {
+                didSet { _avgLight = nil }
+            }
+            private var _avgLight : CGFloat? = nil
             public var avgSelect : Double = 0
             public var avgTime : Double = 0 // NSDate().timeIntervalSince1970
             
@@ -1003,10 +1012,16 @@ public class Display : Equatable {
                 if isFakeWin {
                     return 0.5
                 }
-                
+
+                if let cached = _avgLight {
+                    return cached
+                }
+
                 let avgPixel = avgPixel.usingColorSpace(.sRGB) ?? avgPixel
-                
-                return (avgPixel.redComponent + avgPixel.greenComponent + avgPixel.blueComponent)/3
+
+                let light = (avgPixel.redComponent + avgPixel.greenComponent + avgPixel.blueComponent)/3
+                _avgLight = light
+                return light
             }
             
             public func activate(force: Bool = false){
@@ -1127,7 +1142,6 @@ public class Display : Equatable {
                                                blue: CGFloat(bitmap[2]) / 255,
                                                alpha: CGFloat(bitmap[3]) / 255)
                         
-                        display.contextAvgColor.reclaimResources()
                         let shotTime = Date()
                         let sec = Int(shotTime.timeIntervalSince1970)
                         
@@ -1386,6 +1400,10 @@ public class Display : Equatable {
     
     let contextAvgColor : CIContext
     private let imageProcessingQueue = DispatchQueue(label: "ink.makeithome.display.imageProcessing", qos: .userInitiated)
+    private let windowListQueue = DispatchQueue(label: "ink.makeithome.display.windowList", qos: .userInitiated)
+    private var windowListRefreshInFlight = false
+    private var latestWindowList : [CFDictionary]? = nil
+    private var staleWindowsCleanupInFlight = false
     var lastAppWin : AppWindows.Window? = nil
     var winnerRect : NSRect = NSRect.zero
     var prevWinnerRect : NSRect = NSRect.zero
@@ -1413,7 +1431,55 @@ public class Display : Equatable {
         
         return placeholder
     }
- 
+
+    // CGWindowListCopyWindowInfo cost grows with the number of open windows and used to
+    // stall the main thread on every tick: refresh the snapshot on a background queue
+    // and let checkForScreenshot consume the latest one (at most one tick stale).
+    @MainActor private func requestWindowListRefresh(){
+        if windowListRefreshInFlight {
+            return
+        }
+
+        windowListRefreshInFlight = true
+        windowListQueue.async { [weak self] in
+            let windows = CGWindowListCopyWindowInfo([CGWindowListOption.optionOnScreenOnly], kCGNullWindowID) as? [CFDictionary] ?? []
+
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.latestWindowList = windows
+                self.windowListRefreshInFlight = false
+            }
+        }
+    }
+
+    private func removeStaleWindows(){
+        if staleWindowsCleanupInFlight {
+            return
+        }
+
+        staleWindowsCleanupInFlight = true
+        windowListQueue.async { [weak self] in
+            // divided because you can false it easily
+            let allWins = CGWindowListCopyWindowInfo([CGWindowListOption.optionAll], kCGNullWindowID) as? [CFDictionary]
+
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                self.staleWindowsCleanupInFlight = false
+
+                guard let allWins = allWins else { return }
+
+                for app in self.apps{
+                    for win in app.value.windows{
+                        if !win.value.stillExisting && !self.windowStillExists(winId: win.value.id, windows: allWins) {
+                            app.value.windows.removeValue(forKey: win.key)
+                            print("window removed ", win.value.appTitle)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     @MainActor public func checkForScreenshot(forceShot: Bool = false) -> Bool{
         if !mouseIn{ // if mouse is not in display
             return false
@@ -1789,19 +1855,24 @@ public class Display : Equatable {
             }
             
             // used to have .excludeDesktopElements
-            var windows = CGWindowListCopyWindowInfo([CGWindowListOption.optionOnScreenOnly], kCGNullWindowID) as? [CFDictionary]
-            
-            for aWin in lastAllWins{
-                windows?.insert(aWin, at: 0)
+            requestWindowListRefresh()
+
+            guard var windows = latestWindowList else {
+                // no snapshot available yet (first ticks): retry on the next one
+                return false
             }
-            
+
+            for aWin in lastAllWins{
+                windows.insert(aWin, at: 0)
+            }
+
             cycleWindows(windows: windows)
-            
+
             if spaceIsChanging {
                 return false
             }
-            
-            curPlaceholder?.numWindows = windows!.count
+
+            curPlaceholder?.numWindows = windows.count
             
             // If the new frame is bigger, force the shot
             var vForceShot = forceShot
@@ -1829,54 +1900,7 @@ public class Display : Equatable {
             
             // Remove no more existing windows
             if !spaceIsChanging && samePlaceholderSince % 3 == 2 { // disabled, because it delete existing windows (anyway, are saved maximum 2 windows)
-                var allWins = windows
-                
-                // divided because you can false it easily
-                allWins = CGWindowListCopyWindowInfo([CGWindowListOption.optionAll], kCGNullWindowID) as? [CFDictionary]
-                
-                if false {
-                    var newAllWins : [CFDictionary] = []
-                    
-                    var allOwners : [String] = []
-                    for win in allWins!{
-                        let wDict = win as! [String:AnyObject]
-                        let wOwner = wDict["kCGWindowOwnerName"] as? String
-                        let wName = wDict["kCGWindowName"] as? String
-                        
-                        //print(wOwner, wName)
-                        allOwners.append(wOwner ?? "")
-                        
-                        if wOwner == "Control Centre"{
-                            newAllWins.append(win)
-                        }
-                        
-                        if wOwner == "Universal Control"{
-                            newAllWins.append(win)
-                        }
-                        
-                        if false {
-                            if wOwner == "Dock"{
-                                lastAllWins.append(win)
-                            }
-                        }
-                    }
-                    
-                    lastAllWins = newAllWins
-                }
-                
-                if allWins != nil {
-                    for app in self.apps{
-                        for win in app.value.windows{
-                            if !win.value.stillExisting && !windowStillExists(winId: win.value.id, windows: allWins!) {
-                                //win.value.missingFor += 1
-                                if win.value.missingFor > 1 || true { // double check
-                                    app.value.windows.removeValue(forKey: win.key)
-                                    print("window removed ", win.value.appTitle)
-                                }
-                            }
-                        }
-                    }
-                }
+                removeStaleWindows()
             }
             
             
@@ -1921,7 +1945,7 @@ public class Display : Equatable {
                         if noSpaceholderFor > (waitCyclesCoolDown) {
                             print("creating new SwifterPlaceholder")
                             let winHolder = SwifterPlaceholder()
-                            winHolder.numWindows = windows!.count
+                            winHolder.numWindows = windows.count
                             
                             // It cause useless space change after fullscreen
                             // check in case of opening a window in another space
@@ -3064,7 +3088,7 @@ public class Display : Equatable {
     
     let useRelativePointer = false
     
-    static let sensivityBaseConstant = 0.0015 // was 0.002
+    static let sensivityBaseConstant = 0.002 // was 0.002
     var scarfWeight : CGFloat = sensivityBaseConstant * Static.Sensivity
     var activateOnPixelsLimit : CGFloat = 35
     var moveOnPixels : CGFloat = 0

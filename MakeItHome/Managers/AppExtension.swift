@@ -46,6 +46,14 @@ class AppExtensionManager {
     private let pollWhenMessagePendingMs = 160
     private let approvalIgnoreCooldownSeconds: TimeInterval = 30
     private let approvalTimeoutSeconds: TimeInterval = 30
+    // After a connection is approved/established we keep a short grace window per identity.
+    // The browser extension fires several concurrent /connect requests (initial timer,
+    // screenshot loop, toolbar click, extensionStart message) before it has received the
+    // secret. Without this window those racing empty-token reconnects would each re-open an
+    // approval prompt and rotate the secret, so the user could click "Allow" forever without
+    // ever converging. During the window we reuse the existing connection's secret instead.
+    private let approvalGraceSeconds: TimeInterval = 10
+    private var recentlyApprovedUntil: [String: TimeInterval] = [:]
     
     func closedApp(bundleId: String){
         guard let app = apps[bundleId] else { return }
@@ -181,6 +189,25 @@ class AppExtensionManager {
 
                     saveTrustedExtension(identity: identity, extensionName: extensionName, secret: app.secret)
                     clearIgnoredUntil(identity: identity)
+                    markRecentlyApproved(identity: identity)
+                    markInstallCompletedIfNeeded(bundleId: bundleId, extensionName: extensionName)
+
+                    app.syncIfNeeded(force: true)
+                    app.scheduleHealthCheckIfNeeded(force: true)
+                    return reply
+                }
+
+                // A connection was just approved for this identity: converge the extension's
+                // racing reconnects onto the existing secret instead of prompting again and
+                // rotating it (which is what caused the endless "Allow" loop).
+                if isTrustedExtension(identity: identity) && isRecentlyApproved(identity: identity) {
+                    reply.secret = app.secret
+                    reply.description = "appConnected"
+                    reply.status = "ok"
+
+                    saveTrustedExtension(identity: identity, extensionName: extensionName, secret: app.secret)
+                    clearIgnoredUntil(identity: identity)
+                    markRecentlyApproved(identity: identity)
                     markInstallCompletedIfNeeded(bundleId: bundleId, extensionName: extensionName)
 
                     app.syncIfNeeded(force: true)
@@ -207,6 +234,7 @@ class AppExtensionManager {
                 switch decision {
                 case .allow:
                     clearIgnoredUntil(identity: identity)
+                    markRecentlyApproved(identity: identity)
                 case .deny:
                     clearIgnoredUntil(identity: identity)
                     reply.status = "error"
@@ -222,6 +250,7 @@ class AppExtensionManager {
                 let newApp = AppExtension(bundleId: bundleId, identity: identity)
                 apps[bundleId] = newApp
                 saveTrustedExtension(identity: identity, extensionName: extensionName, secret: newApp.secret)
+                markRecentlyApproved(identity: identity)
                 markInstallCompletedIfNeeded(bundleId: bundleId, extensionName: extensionName)
 
                 reply.secret = newApp.secret
@@ -246,8 +275,11 @@ class AppExtensionManager {
                 }
 
                 let canRestoreTrustedSessionWithoutSecret = isTrusted && trustedSecret == nil
+                // A racing reconnect that lands here within the grace window (identity trusted
+                // and just approved) must not re-open a prompt.
+                let withinApprovalGrace = isTrusted && isRecentlyApproved(identity: identity)
 
-                if !isTrusted || (!tokenIsValidForTrustedSecret && !canRestoreTrustedSessionWithoutSecret) || missingClientIdentity {
+                if (!isTrusted || (!tokenIsValidForTrustedSecret && !canRestoreTrustedSessionWithoutSecret) || missingClientIdentity) && !withinApprovalGrace {
                     if shouldDelayApprovalPrompt(identity: identity) {
                         reply.status = "error"
                         reply.description = "connectionIgnored"
@@ -277,6 +309,7 @@ class AppExtensionManager {
                     switch decision {
                     case .allow:
                         clearIgnoredUntil(identity: identity)
+                        markRecentlyApproved(identity: identity)
                     case .deny:
                         clearIgnoredUntil(identity: identity)
                         reply.status = "error"
@@ -294,6 +327,7 @@ class AppExtensionManager {
                 apps[bundleId] = app
                 saveTrustedExtension(identity: identity, extensionName: extensionName, secret: app?.secret)
                 clearIgnoredUntil(identity: identity)
+                markRecentlyApproved(identity: identity)
                 markInstallCompletedIfNeeded(bundleId: bundleId, extensionName: extensionName)
 
                 reply.secret = app?.secret
@@ -587,6 +621,25 @@ class AppExtensionManager {
         return UserDefaults.standard.double(forKey: trustIgnoreUntilKey(identity: identity))
     }
 
+    // Only ever touched from httpRequest / requestExtensionPermission, both of which run
+    // serialized on the main thread (see SimpleHTTPServer.handleRequest), so no locking needed.
+    private func markRecentlyApproved(identity: String) {
+        recentlyApprovedUntil[identity] = Date().timeIntervalSince1970 + approvalGraceSeconds
+    }
+
+    private func isRecentlyApproved(identity: String) -> Bool {
+        guard let until = recentlyApprovedUntil[identity] else {
+            return false
+        }
+
+        if until > Date().timeIntervalSince1970 {
+            return true
+        }
+
+        recentlyApprovedUntil.removeValue(forKey: identity)
+        return false
+    }
+
     private func shouldDelayApprovalPrompt(identity: String) -> Bool {
         guard let ignoredUntil = getIgnoredUntil(identity: identity) else {
             return false
@@ -832,6 +885,12 @@ class AppExtension {
     
     func link(app : Display.AppWindows){
         self.app = app
+    }
+
+    func unlink(app: Display.AppWindows) {
+        if self.app === app {
+            self.app = nil
+        }
     }
     
     func addMessage(msg: String){
