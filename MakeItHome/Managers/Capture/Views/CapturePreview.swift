@@ -412,10 +412,23 @@ public struct CapturePreview: NSViewRepresentable {
         var clickStartedHere = NSPoint.zero
         var clickedOnApp : AppNode? = nil
         var draggedClickedApp : Bool = false
+        var isPreviewPointerInteractionActive = false
+
+        private struct GravityMouseState {
+            var previousPointer: CGPoint?
+            var previousSpeed: CGFloat = 0
+            var smoothedSpeedDelta: CGFloat = 0
+            var generatedPointer: CGPoint?
+        }
+
+        private var gravityMouseState = GravityMouseState()
         
         var leftMouse = true
         
         public override func mouseDown(with evt: NSEvent) {
+            isPreviewPointerInteractionActive = true
+            resetGravityMouse()
+
             if self.curDisplay == nil || self.curDisplay?.aboveBy == 0 {
                 return
             }
@@ -460,10 +473,14 @@ public struct CapturePreview: NSViewRepresentable {
             self.clickStartedHere = CGPoint.zero
             self.clickedOnApp = nil
             Static.isDragginApp = false
+            isPreviewPointerInteractionActive = false
+            resetGravityMouse()
         }
         
         override public func rightMouseDown(with event: NSEvent) {
             self.leftMouse = false
+            isPreviewPointerInteractionActive = true
+            resetGravityMouse()
             
             // Handle right mouse down event here
             super.rightMouseDown(with: event)
@@ -502,6 +519,107 @@ public struct CapturePreview: NSViewRepresentable {
         override public func rightMouseUp(with event: NSEvent) {
             // Handle right mouse up event here
             super.rightMouseUp(with: event)
+            isPreviewPointerInteractionActive = false
+            resetGravityMouse()
+        }
+
+        private func resetGravityMouse() {
+            gravityMouseState = GravityMouseState()
+        }
+
+        /// Applies the GravityMouse attraction curve to the nearest preview. The
+        /// original library's "planets" map to the SceneKit window preview frames.
+        private func gravityMouseCursor(from cursor: CGPoint, scenePoint: SCNVector3) -> CGPoint? {
+            guard Static.enableGravityMouse,
+                  !isPreviewPointerInteractionActive,
+                  !Static.isDragginApp,
+                  !Static.OnAppExtensionZone,
+                  (curDisplay?.aboveBy ?? 0) > 0,
+                  curDisplay?.side != 3,
+                  let listApp else {
+                resetGravityMouse()
+                return nil
+            }
+
+            let previousPointer = gravityMouseState.generatedPointer ?? gravityMouseState.previousPointer
+            gravityMouseState.generatedPointer = nil
+            gravityMouseState.previousPointer = cursor
+
+            guard let previousPointer else {
+                return nil
+            }
+
+            let delta = CGPoint(x: cursor.x - previousPointer.x, y: cursor.y - previousPointer.y)
+            let speed = sqrt((delta.x * delta.x) + (delta.y * delta.y))
+            let speedDelta = speed - gravityMouseState.previousSpeed
+            gravityMouseState.previousSpeed = speed
+            gravityMouseState.smoothedSpeedDelta = ((gravityMouseState.smoothedSpeedDelta * 10) + speedDelta) / 11
+
+            // Gravity engages as the cursor slows, preserving fast traversal between previews.
+            guard speed < 12, gravityMouseState.smoothedSpeedDelta < -0.25 else {
+                return nil
+            }
+
+            let sceneCursor = CGPoint(x: scenePoint.x, y: scenePoint.y)
+            var closestPlanet: (target: CGPoint, distanceRatio: CGFloat)?
+
+            for app in listApp {
+                for window in app.value.windows {
+                    let previewFrame = window.getFrame()
+                    if NSMouseInRect(sceneCursor, previewFrame, false) {
+                        return nil
+                    }
+
+                    let target = CGPoint(x: previewFrame.midX, y: previewFrame.midY)
+                    let distance = sqrt(pow(sceneCursor.x - target.x, 2) + pow(sceneCursor.y - target.y, 2))
+                    let planetDistance = (previewFrame.width + previewFrame.height) / 2
+                    let distanceRatio = (distance * 0.75) / planetDistance
+
+                    guard distanceRatio < 1 else {
+                        continue
+                    }
+
+                    if closestPlanet == nil || distanceRatio < closestPlanet!.distanceRatio {
+                        closestPlanet = (target, distanceRatio)
+                    }
+                }
+            }
+
+            guard let planet = closestPlanet else {
+                return nil
+            }
+
+            // This mirrors GravityMouse's getPointAttracted: the closer the cursor
+            // is to a preview, the more strongly its centre attracts the pointer.
+            let stoppingStrength = min(0.5, max(0.1, -gravityMouseState.smoothedSpeedDelta / 12))
+            let attractionExponent = 0.8 * stoppingStrength
+            let remainingDistance = CGFloat(pow(Double(planet.distanceRatio), Double(attractionExponent)))
+            let attractedScenePoint = SCNVector3(
+                planet.target.x + ((scenePoint.x - planet.target.x) * remainingDistance),
+                planet.target.y + ((scenePoint.y - planet.target.y) * remainingDistance),
+                scenePoint.z
+            )
+
+            let projectedCursor = projectPoint(scenePoint)
+            let projectedAttractedCursor = projectPoint(attractedScenePoint)
+            let attractedCursor = CGPoint(
+                x: cursor.x + CGFloat(projectedAttractedCursor.x - projectedCursor.x),
+                y: cursor.y + CGFloat(projectedAttractedCursor.y - projectedCursor.y)
+            )
+
+            let adjustment = CGPoint(x: attractedCursor.x - cursor.x, y: attractedCursor.y - cursor.y)
+            guard sqrt((adjustment.x * adjustment.x) + (adjustment.y * adjustment.y)) >= 0.5,
+                  let event = CGEvent(mouseEventSource: nil,
+                                      mouseType: .mouseMoved,
+                                      mouseCursorPosition: attractedCursor,
+                                      mouseButton: .left) else {
+                return nil
+            }
+
+            event.post(tap: .cghidEventTap)
+            gravityMouseState.generatedPointer = attractedCursor
+            gravityMouseState.previousPointer = attractedCursor
+            return attractedCursor
         }
         
         /*override func rightMouseDragged(with event: NSEvent) {
@@ -526,9 +644,14 @@ public struct CapturePreview: NSViewRepresentable {
                 }
                 
                 // Check mouse event
-                let cursor = NSEvent.mouseLocation
+                var cursor = NSEvent.mouseLocation
                 
-                let point = self.unprojectPoint(SCNVector3(x: cursor.x-self.curDisplay!.frame.minX, y: cursor.y-self.curDisplay!.frame.minY, z: self.projectPoint(SCNVector3Zero).z+self.windowsZ))
+                var point = self.unprojectPoint(SCNVector3(x: cursor.x-self.curDisplay!.frame.minX, y: cursor.y-self.curDisplay!.frame.minY, z: self.projectPoint(SCNVector3Zero).z+self.windowsZ))
+
+                if let attractedCursor = gravityMouseCursor(from: cursor, scenePoint: point) {
+                    cursor = attractedCursor
+                    point = self.unprojectPoint(SCNVector3(x: cursor.x-self.curDisplay!.frame.minX, y: cursor.y-self.curDisplay!.frame.minY, z: self.projectPoint(SCNVector3Zero).z+self.windowsZ))
+                }
                 
                 var onApp : AppNode? = self.clickedOnApp
                 var mouseOnApp : AppNode? = nil
