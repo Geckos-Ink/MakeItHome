@@ -1470,6 +1470,8 @@ public struct CapturePreview: NSViewRepresentable {
         }
         
         public func removeAppNode(app: AppNode, force: Bool){
+            // Remove the preview from the scene before laying out the remaining ones.
+            app.remove()
             listApp?.removeValue(forKey: app.app.title) //ugly way, but temporary
             
             let id = app.app.runningApp.processIdentifier;
@@ -1478,6 +1480,16 @@ public struct CapturePreview: NSViewRepresentable {
             if(force){
                 curDisplay?.apps.removeValue(forKey: id)
             }
+
+            guard listApp != nil, curDisplay != nil else {
+                return
+            }
+
+            SCNTransaction.begin()
+            SCNTransaction.animationDuration = 0.5
+            SCNTransaction.animationTimingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            setWindowsPosition()
+            SCNTransaction.commit()
         }
         
         func freeListApp(){
