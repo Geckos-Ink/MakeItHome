@@ -384,6 +384,47 @@
         }
     });
 
+    // Outgoing messages travel through the custom "myapp://" URL bridge, which
+    // WebKit intercepts and cancels in the navigation delegate. Two problems make
+    // that channel drop messages when the user is active (e.g. clicking the same
+    // clipboard item repeatedly to re-copy it):
+    //   1. Assigning window.location.href to a URL identical to one already being
+    //      resolved is treated as a duplicate navigation and silently ignored, so
+    //      repeat clicks on the same item (identical JSON -> identical URL) are lost.
+    //   2. Several href assignments in the same run-loop turn coalesce into a single
+    //      navigation, so only the last message of a burst survives.
+    // A monotonic nonce makes every URL unique, and a one-per-turn queue prevents
+    // coalescing. Together they guarantee each message reaches Swift exactly once.
+    let outgoingMessageSequence = 0;
+    let outgoingMessageQueue = [];
+    let flushingOutgoingMessages = false;
+
+    function dispatchOutgoingMessage(message) {
+        outgoingMessageSequence += 1;
+        console.log("sending message", message)
+        window.location.href = "myapp://message?seq=" + outgoingMessageSequence +
+            "&text=" + encodeURIComponent(message);
+    }
+
+    function drainOutgoingMessages() {
+        if (flushingOutgoingMessages) return;
+        flushingOutgoingMessages = true;
+
+        const step = () => {
+            if (outgoingMessageQueue.length === 0) {
+                flushingOutgoingMessages = false;
+                return;
+            }
+
+            dispatchOutgoingMessage(outgoingMessageQueue.shift());
+            // Yield so WebKit dispatches this navigation before the next one is
+            // assigned; otherwise back-to-back assignments coalesce.
+            setTimeout(step, 0);
+        };
+
+        step();
+    }
+
     function sendMessage(message) {
         if(typeof(message) == 'object')
             message = JSON.stringify(message)
@@ -393,9 +434,8 @@
             return;
         }
 
-        console.log("sending message", message)
-        message = encodeURIComponent(message)        
-        window.location.href = "myapp://message?text=" + message;
+        outgoingMessageQueue.push(message);
+        drainOutgoingMessages();
     }
 
     function flushPendingMessagesBeforeApp() {

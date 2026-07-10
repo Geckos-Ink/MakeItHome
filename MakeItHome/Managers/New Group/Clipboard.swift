@@ -37,24 +37,90 @@ public class Clipboard {
     }
     
     var ignoreThisPaste = false
+
+    // Bounds the re-copy retry loop so enforcement never fights the user's own
+    // clipboard activity for more than a fraction of a second.
+    private let clipboardWriteMaxAttempts = 3
+    private let clipboardWriteRetryDelay = 0.08
+    private var pendingClipboardEnforcement: DispatchWorkItem?
+
     func selectElement(id: Int){
-        for el in history{
-            if el.id == id {
-                
-                let pasteboard = NSPasteboard.general
-                pasteboard.clearContents()
+        guard let el = getElement(id: id) else { return }
+        writeElementToPasteboard(el, attempt: 0)
+    }
 
-                // Create a pasteboard item and set the image data
-                let item = el.getItem()
+    /// Writes the element to the OS pasteboard and then verifies the write
+    /// actually landed. WebKit sometimes drops the `selItem` bridge message on
+    /// rapid repeated clicks, and `writeObjects` can occasionally no-op, so we
+    /// confirm the pasteboard reflects the requested item and retry a small,
+    /// bounded number of times. The retry is abandoned the moment someone else
+    /// (typically the user copying directly) touches the pasteboard, so it never
+    /// clobbers an intentional copy.
+    private func writeElementToPasteboard(_ el: Element, attempt: Int){
+        // A fresh selection supersedes any retry still pending for a previous one.
+        pendingClipboardEnforcement?.cancel()
 
-                if item != nil{
-                    // Set the pasteboard item to the pasteboard
-                    pasteboard.writeObjects([item!])
-                    ignoreThisPaste = true
-                }
-            
-                return;
+        guard let item = el.getItem() else { return }
+
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        let written = pasteboard.writeObjects([item])
+        ignoreThisPaste = true
+
+        // Change count captured right after our write. If it still matches when we
+        // verify, nobody has copied over us; if it differs, the user won and we back off.
+        let expectedChangeCount = pasteboard.changeCount
+
+        let verify = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.pendingClipboardEnforcement = nil
+
+            let pasteboard = NSPasteboard.general
+
+            // The user (or another app) copied something after us: leave it alone.
+            if pasteboard.changeCount != expectedChangeCount {
+                return
             }
+
+            if self.pasteboardContains(el) {
+                return
+            }
+
+            if attempt + 1 < self.clipboardWriteMaxAttempts {
+                self.writeElementToPasteboard(el, attempt: attempt + 1)
+            }
+        }
+
+        // If the write itself reported failure there is no point waiting; retry now.
+        if !written && attempt + 1 < clipboardWriteMaxAttempts {
+            writeElementToPasteboard(el, attempt: attempt + 1)
+            return
+        }
+
+        pendingClipboardEnforcement = verify
+        DispatchQueue.main.asyncAfter(deadline: .now() + clipboardWriteRetryDelay, execute: verify)
+    }
+
+    /// Whether the general pasteboard currently holds the given element's content.
+    private func pasteboardContains(_ el: Element) -> Bool {
+        let pasteboard = NSPasteboard.general
+
+        switch el.type {
+        case "str":
+            if let rtf = el.rtf {
+                return pasteboard.string(forType: .rtf) == rtf
+            }
+            return pasteboard.string(forType: .string) == el.str
+        case "img":
+            // TIFF can be re-encoded by the pasteboard, so presence of image data
+            // (with the change count check already confirming it is our write) is
+            // a sufficient and stable signal.
+            return pasteboard.data(forType: .tiff) != nil
+        case "url":
+            let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL]
+            return urls?.first == el.url
+        default:
+            return false
         }
     }
     
@@ -330,11 +396,19 @@ public class Clipboard {
                     break;
                 
                 case "str":
-                    if self.rtf != nil{
-                        item!.setString(self.rtf!, forType: NSPasteboard.PasteboardType.rtf)
+                    // Always provide a plain-text representation so the item can
+                    // be pasted into plain-text targets (terminals, search fields,
+                    // code editors). Rich-text items keep their .rtf flavor too, but
+                    // writing *only* rtf made those items paste as nothing in
+                    // plain-text contexts.
+                    if let plain = self.str {
+                        item!.setString(plain, forType: NSPasteboard.PasteboardType.string)
                     }
-                    else {
-                        item!.setString(self.str!, forType: NSPasteboard.PasteboardType.string)
+                    if let rtf = self.rtf {
+                        item!.setString(rtf, forType: NSPasteboard.PasteboardType.rtf)
+                    }
+                    if self.str == nil && self.rtf == nil {
+                        return nil
                     }
                     break;
                 
