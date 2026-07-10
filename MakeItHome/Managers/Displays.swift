@@ -2019,7 +2019,9 @@ public class Display : Equatable {
                                         
                     if #available(macOS 12.3, *){
                         let screenRecorder = self.manager.contentView!.store.screenRecorder as! ScreenRecorder
-                        if let lf = screenRecorder.lastFrame,
+                        if screenRecorder.isRunning,
+                           screenRecorder.recordingOnDisplay == self.screen.displayID,
+                           let lf = screenRecorder.lastFrame,
                            lf.displayID == self.screen.displayID,
                            let pixelBuffer = lf.pixelBuffer {
                             

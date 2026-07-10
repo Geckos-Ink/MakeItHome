@@ -126,12 +126,17 @@ class ScreenRecorder: ObservableObject {
     let lowProfileFPS = 10
     let lowProfileDepth = 4
     
-    @MainActor public var recordingOnDisplay : CGDirectDisplayID = 94 // -1
+    @MainActor public var recordingOnDisplay : CGDirectDisplayID = 0
+    private var captureRunID: UInt = 0
     
     /// Starts capturing screen content.
     func start(lowProfile: Bool = false, display: SCDisplay? = nil) async {
         if(display != nil){
             selectedDisplay = display
+        }
+        
+        guard let targetDisplayID = selectedDisplay?.displayID else {
+            return
         }
         
         let previousLowPriority = isLowPriority
@@ -147,7 +152,7 @@ class ScreenRecorder: ObservableObject {
         let profileChanged = previousLowPriority != isLowPriority || previousPriorityScale != priorityScale
         let staleFrame = lastFrame.map { Date().timeIntervalSince1970 - $0.captureTime > 1 } ?? false
         
-        if recordingOnDisplay == selectedDisplay?.displayID, isRunning, !staleFrame {
+        if recordingOnDisplay == targetDisplayID, isRunning, !staleFrame {
             if frameRateChanged || profileChanged, let filter = contentFilter {
                 self.priorityFrameRate = p
                 await captureEngine.update(configuration: streamConfiguration, filter: filter)
@@ -183,16 +188,28 @@ class ScreenRecorder: ObservableObject {
             // Update the running state.
             
             // Start the stream and await new video frames.
+            captureRunID &+= 1
+            let runID = captureRunID
+            lastFrame = nil
+            lastFrameTime = 0
+            
             let frames = captureEngine.startCapture(configuration: config, filter: filter!)
             isRunning = true
+            Static.isRecordingScreen = true
+            recordingOnDisplay = targetDisplayID
+            print("recording started! display", targetDisplayID)
+            
             for try await frame in frames {
+                guard runID == captureRunID else {
+                    break
+                }
                 
                 if(Static.debugLastFrame){
                     print("lastFrame", NSDate().timeIntervalSince1970)
                 }
                                 
                 lastFrame = frame
-                lastFrame!.displayID = selectedDisplay?.displayID
+                lastFrame!.displayID = targetDisplayID
                 
                 capturePreview.updateFrame(frame)
                 
@@ -205,22 +222,30 @@ class ScreenRecorder: ObservableObject {
                 }
             }
             
-            Static.isRecordingScreen = true
-            print("recording started! display", selectedDisplay!.displayID)
-            recordingOnDisplay = selectedDisplay!.displayID
+            if runID == captureRunID {
+                Static.isRecordingScreen = false
+                isRunning = false
+                recordingOnDisplay = 0
+            }
         } catch {
             print("ScreenRecorder start error ese \(error.localizedDescription)")
             // Unable to start the stream. Set the running state to false.
             isRunning = false
+            Static.isRecordingScreen = false
+            recordingOnDisplay = 0
+            lastFrame = nil
         }
     }
     
     /// Stops capturing screen content.
     func stop() async {
+        captureRunID &+= 1
         recordingOnDisplay = 0
+        lastFrame = nil
+        lastFrameTime = 0
+        Static.isRecordingScreen = false
         guard isRunning else { return }
         
-        Static.isRecordingScreen = false
         isRunning = false
         await captureEngine.stopCapture()
 
