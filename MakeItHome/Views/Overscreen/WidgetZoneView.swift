@@ -133,7 +133,12 @@ public struct TopWebView: NSViewRepresentable {
         wkwv.configuration.userContentController.add(context.coordinator, name: "widgetLocalization")
         wkwv.configuration.userContentController.removeScriptMessageHandler(forName: "nativeWebView")
         wkwv.configuration.userContentController.add(context.coordinator, name: "nativeWebView")
-        
+        // Reliable, coalescing-free channel for page->native messages (clipboard
+        // selection, settings, etc.). The legacy "myapp://" URL bridge silently
+        // dropped repeated identical navigations; postMessage never does.
+        wkwv.configuration.userContentController.removeScriptMessageHandler(forName: "widgetMessage")
+        wkwv.configuration.userContentController.add(context.coordinator, name: "widgetMessage")
+
         //wkwv.configuration.setValue(true, forKey: "_allowUniversalAccessFromFileURLs")
         wkwv.configuration.userInterfaceDirectionPolicy = .system
      
@@ -223,9 +228,172 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
         parent.sendMessage(obj: reply)
     }
 
+    /// Decodes a `JSMessage` sent through the `widgetMessage` script handler.
+    /// The page posts the already-stringified JSON, but we also accept a plain
+    /// object (dictionary) for robustness.
+    private func decodeJSMessage(from body: Any) -> JSMessage? {
+        let data: Data?
+        if let string = body as? String {
+            data = string.data(using: .utf8)
+        } else if let dictionary = body as? [String: Any] {
+            data = try? JSONSerialization.data(withJSONObject: dictionary)
+        } else {
+            data = nil
+        }
+
+        guard let data else { return nil }
+        return try? JSONDecoder().decode(JSMessage.self, from: data)
+    }
+
+    /// Follows redirects for a proxied frame request and returns the final body
+    /// to the page. Promoted from a local function so both the URL bridge and the
+    /// `widgetMessage` handler can reach it.
+    private func frameOpenUrl(url: URL) {
+        let request = URLRequest(url: url)
+
+        let task = URLSession.shared.dataTask(with: request) { (data, response, error) in
+            if let error = error {
+                print("Error: \(error)")
+            } else if let data = data {
+                if let response = response as? HTTPURLResponse {
+                    let statusCode = response.statusCode
+                    let headers = response.allHeaderFields
+
+                    print("Status Code: \(statusCode)")
+                    print("Headers: \(headers)")
+
+                    if let loc = headers["location"] as? String, let next = URL(string: loc) {
+                        self.frameOpenUrl(url: next)
+                    } else {
+                        var msg = JSMessage()
+                        msg.type = "frameResponse"
+                        msg.data = data
+                        msg.url = url.absoluteURL
+                        self.parent.sendMessage(obj: msg)
+                    }
+                } else {
+                    print("Error: Invalid HTTPURLResponse")
+                }
+            }
+        }
+
+        task.resume()
+    }
+
+    /// Single source of truth for handling a decoded page message, shared by the
+    /// legacy `myapp://` URL bridge and the `widgetMessage` script handler.
+    func handleJSMessage(_ json: JSMessage) {
+        if json.type == "jsError" {
+            print(json.value ?? "")
+        }
+
+        if json.type == "selItem", let id = json.id {
+            Static.clipboard?.selectElement(id: id)
+
+            Static.isDraggingFromPoint = NSEvent.mouseLocation
+            Static.selectedClipboardItemId = id
+            parent.wkwv.dragOutside = true
+            print("DRAGGING OUT MODE")
+        }
+
+        if json.type == "enterFullscreen" {
+            Static.curDisplay?.onFullOverscreenMode()
+        }
+
+        if json.type == "closeFullscreen" {
+            Static.curDisplay?.outFullOverscreenMode()
+        }
+
+        if json.type == "frameOpen", let value = json.value, let url = URL(string: value) {
+            frameOpenUrl(url: url)
+        }
+
+        if json.type == "navUrl", let url = json.url {
+            Static.navWebView?.navigate(url: url)
+        }
+
+        if json.type == "navPos" {
+            Static.storeView?.view?.vars.navOverlayOffsetX = 0 // json.x!
+            Static.storeView?.view?.vars.navOverlayOffsetY = (json.y! / 2)
+            Static.storeView?.view?.vars.navOverlaySizeX = json.width!
+            Static.storeView?.view?.vars.navOverlaySizeY = json.height!
+        }
+
+        if json.type == "setSetting" {
+            var settingReply = JSMessage()
+            settingReply.type = "setSetting"
+            settingReply.setting = json.setting
+
+            switch json.setting {
+            case "detectDragAndDrop":
+                Static.EnableDragDropDetection = json.valBool!
+                Static.User.set(Static.EnableDragDropDetection, forKey: "EnableDragDropDetection")
+                settingReply.valBool = Static.EnableDragDropDetection
+            case "enableClipboardCapture":
+                Static.EnableClipboardCapture = json.valBool!
+                settingReply.valBool = Static.EnableClipboardCapture
+            case .none:
+                break
+            case .some(_):
+                break
+            }
+
+            if settingReply.valBool != nil {
+                self.parent.sendMessage(obj: settingReply)
+            }
+        }
+
+        if json.type == "localizationRequest", let localizations = json.localizations {
+            sendWidgetLocalizations(localizations)
+        }
+
+        if json.type == "extensionPermissions" {
+            var reply = JSMessage()
+            reply.type = "extensionPermissionsStatus"
+
+            if json.op == "revoke", let identity = json.strId, !identity.isEmpty {
+                Static.appExtensionManager?.revokeExtensionPermission(identity: identity)
+            } else if json.op == "request", let identity = json.strId, !identity.isEmpty {
+                let decision = Static.appExtensionManager?.requestExtensionPermission(identity: identity)
+                reply.decision = decision?.rawValue
+            }
+
+            reply.extensionPermissions = Static.appExtensionManager?.extensionPermissionsStatus() ?? []
+            self.parent.sendMessage(obj: reply)
+        }
+
+        if json.type == "calendar" {
+            Static.calendar?.receive(msg: json)
+        }
+
+        if json.type == "haptic" {
+            NSHapticFeedbackManager.defaultPerformer.perform(
+                NSHapticFeedbackManager.FeedbackPattern.generic,
+                performanceTime: NSHapticFeedbackManager.PerformanceTime.now
+            )
+        }
+
+        if json.type == "reload" {
+            if let url = URL(string: "http://127.0.1:19494/widgets.html?height=" + String(format: "%.1f", Static.OverscreenSizeTop)) {
+                let urlReq = URLRequest(url: url)
+                self.parent.wkwv.prepareForContentReload()
+                self.parent.wkwv.load(urlReq)
+            } else {
+                print("Invalid URL")
+            }
+        }
+    }
+
     public func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         if message.name == "nativeWebView" {
             parent.wkwv.syncNativeWebViews(from: message.body)
+            return
+        }
+
+        if message.name == "widgetMessage" {
+            if let json = decodeJSMessage(from: message.body) {
+                handleJSMessage(json)
+            }
             return
         }
 
@@ -303,52 +471,7 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
         }
         
         print("received url ", url)
-        
-        func frameOpenUrl(url : URL){
-            
-            var request = URLRequest(url: url)
-            //request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
-            
-            // Create a URLSession task for making the GET request
-            let task = URLSession.shared.dataTask(with: request) { (data, response, error) in
-              // Handle the response here
-              if let error = error {
-                  print("Error: \(error)")
-              } else if let data = data {
-                  
-                  if let response = response as? HTTPURLResponse {
-                      let statusCode = response.statusCode
-                      let headers = response.allHeaderFields
-                      
-                      // Handle the response here
-                      print("Status Code: \(statusCode)")
-                      print("Headers: \(headers)")
-                      
-                      let loc = headers["location"]
-                      if loc != nil {
-                          frameOpenUrl(url: URL(string: (loc as? String)!)!)
-                      }
-                      else {
-                          // Parse the data if needed
-                          var msg = JSMessage()
-                          msg.type = "frameResponse";
-                          //msg.value = String(data: data, encoding: .ascii);
-                          msg.data = data
-                          msg.url = url.absoluteURL
-                          self.parent.sendMessage(obj: msg)
-                      }
-                      
-                  } else {
-                      // Handle error or unexpected response type
-                      print("Error: Invalid HTTPURLResponse")
-                  }
-              }
-            }
 
-            // Start the task
-            task.resume()
-        }
-        
         let frame = navigationAction.targetFrame
         if !(frame?.isMainFrame ?? true){ // it's an internal frame
                     
@@ -440,116 +563,10 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
                 isJson = false
             }
             
-            if isJson {
-                if json?.type == "jsError"{
-                    print(json?.value);
-                }
-                
-                if json?.type == "selItem"{
-                    let id = json?.id
-                    
-                    Static.clipboard?.selectElement(id: id!)
-                    
-                    Static.isDraggingFromPoint = NSEvent.mouseLocation
-                    Static.selectedClipboardItemId = id!
-                    parent.wkwv.dragOutside = true
-                    print("DRAGGING OUT MODE")
-                }
-                
-                if json?.type == "enterFullscreen" {
-                    Static.curDisplay?.onFullOverscreenMode()
-                }
-                
-                if json?.type == "closeFullscreen" {
-                    Static.curDisplay?.outFullOverscreenMode()
-                }
-                
-                if json?.type == "frameOpen" {
-                    let url = URL(string: json!.value!)
-                    if url != nil{
-                        frameOpenUrl(url: url!)
-                    }
-                }
-                
-                if json?.type == "navUrl" {
-                    Static.navWebView?.navigate(url: json!.url!)
-                }
-                
-                if json?.type == "navPos" {
-                    Static.storeView?.view?.vars.navOverlayOffsetX = 0 // json!.x!
-                    Static.storeView?.view?.vars.navOverlayOffsetY = (json!.y! / 2)
-                    Static.storeView?.view?.vars.navOverlaySizeX = json!.width!
-                    Static.storeView?.view?.vars.navOverlaySizeY = json!.height!
-                }
-                
-                if json?.type == "setSetting" {
-                    var settingReply = JSMessage()
-                    settingReply.type = "setSetting"
-                    settingReply.setting = json?.setting
-                    
-                    switch json?.setting {
-                    case "detectDragAndDrop":
-                        Static.EnableDragDropDetection = json!.valBool!
-                        Static.User.set(Static.EnableDragDropDetection, forKey: "EnableDragDropDetection")
-                        settingReply.valBool = Static.EnableDragDropDetection
-                        break
-                    case "enableClipboardCapture":
-                        Static.EnableClipboardCapture = json!.valBool!
-                        settingReply.valBool = Static.EnableClipboardCapture
-                        break
-                    case .none:
-                        break
-                    case .some(_):
-                        break
-                    }
-
-                    if settingReply.valBool != nil {
-                        self.parent.sendMessage(obj: settingReply)
-                    }
-                }
-
-                if json?.type == "localizationRequest", let localizations = json?.localizations {
-                    sendWidgetLocalizations(localizations)
-                }
-
-                if json?.type == "extensionPermissions" {
-                    var reply = JSMessage()
-                    reply.type = "extensionPermissionsStatus"
-
-                    if json?.op == "revoke", let identity = json?.strId, !identity.isEmpty {
-                        Static.appExtensionManager?.revokeExtensionPermission(identity: identity)
-                    } else if json?.op == "request", let identity = json?.strId, !identity.isEmpty {
-                        let decision = Static.appExtensionManager?.requestExtensionPermission(identity: identity)
-                        reply.decision = decision?.rawValue
-                    }
-
-                    reply.extensionPermissions = Static.appExtensionManager?.extensionPermissionsStatus() ?? []
-                    self.parent.sendMessage(obj: reply)
-                }
-                
-                if json?.type == "calendar" {
-                    Static.calendar?.receive(msg: json!)
-                }
-                
-                if json?.type == "haptic"{
-                    NSHapticFeedbackManager.defaultPerformer.perform(
-                        NSHapticFeedbackManager.FeedbackPattern.generic,
-                        performanceTime: NSHapticFeedbackManager.PerformanceTime.now
-                    )
-                }
-                
-                if json?.type == "reload" {
-                    if let url = URL(string: "http://127.0.1:19494/widgets.html?height="+String(format: "%.1f", Static.OverscreenSizeTop)) {
-                        let urlReq = URLRequest(url: url)
-                        self.parent.wkwv.prepareForContentReload()
-                        self.parent.wkwv.load(urlReq)
-                    } else {
-                        print("Invalid URL")
-                    }
-                }
-                
+            if isJson, let json {
                 //todo: type == "widget", where to redirect the request directly to widget core(?)
-                
+                handleJSMessage(json)
+
                 decisionHandler(.cancel)
                 return
             }

@@ -384,17 +384,24 @@
         }
     });
 
-    // Outgoing messages travel through the custom "myapp://" URL bridge, which
-    // WebKit intercepts and cancels in the navigation delegate. Two problems make
-    // that channel drop messages when the user is active (e.g. clicking the same
-    // clipboard item repeatedly to re-copy it):
+    // Preferred transport: a WebKit script-message handler. postMessage is queued
+    // by WebKit and never coalesced or de-duplicated, so it reliably delivers every
+    // message even on rapid repeated clicks (e.g. re-copying the same clipboard item).
+    function widgetMessageHandler() {
+        return window.webkit && window.webkit.messageHandlers &&
+            window.webkit.messageHandlers.widgetMessage;
+    }
+
+    // Fallback transport: the legacy custom "myapp://" URL bridge, which WebKit
+    // intercepts and cancels in the navigation delegate. It drops messages when the
+    // user is active, because:
     //   1. Assigning window.location.href to a URL identical to one already being
     //      resolved is treated as a duplicate navigation and silently ignored, so
     //      repeat clicks on the same item (identical JSON -> identical URL) are lost.
     //   2. Several href assignments in the same run-loop turn coalesce into a single
     //      navigation, so only the last message of a burst survives.
     // A monotonic nonce makes every URL unique, and a one-per-turn queue prevents
-    // coalescing. Together they guarantee each message reaches Swift exactly once.
+    // coalescing. Together they keep the fallback usable where the handler is absent.
     let outgoingMessageSequence = 0;
     let outgoingMessageQueue = [];
     let flushingOutgoingMessages = false;
@@ -431,6 +438,13 @@
 
         if(!onApp) {
             pendingMessagesBeforeApp.push(message);
+            return;
+        }
+
+        const handler = widgetMessageHandler();
+        if (handler) {
+            console.log("sending message", message)
+            handler.postMessage(message);
             return;
         }
 
