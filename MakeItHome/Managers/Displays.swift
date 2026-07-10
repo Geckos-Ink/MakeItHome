@@ -3156,6 +3156,10 @@ public class Display : Equatable {
     var prevMouse : CGPoint = CGPoint.zero
     var prevRelMouse : CGPoint = CGPoint.zero
     var lastAcceleratedPointerPosition: CGPoint?
+    /// GravityMouse reads this every mouse tick. The axis already accelerated by
+    /// the overscreen keeps only a fraction of GravityMouse's force, preventing
+    /// two cursor-compensation mechanisms from fighting each other.
+    var gravityMouseAxisWeight = CGPoint(x: 1, y: 1)
     var prevMouseAboveBy : CGFloat = -1 // setted in init
     var lastMouseChanged = false
     
@@ -3217,6 +3221,29 @@ public class Display : Equatable {
     }
         
     public var alongLine = AlongLine()
+
+    private func updateGravityMouseAxisWeight() {
+        let isAcceleratingPreviewAxis = aboveBy >= 1
+            && (side == 0 || side == 1 || side == 2)
+            && alterMouse == 0
+            && compensateAboveByCursor == .zero
+            && !justArrived
+
+        guard isAcceleratingPreviewAxis else {
+            gravityMouseAxisWeight = CGPoint(x: 1, y: 1)
+            return
+        }
+
+        // At the default 1.5x strip acceleration, retain 25% of gravity on
+        // that axis. The perpendicular axis remains fully available so gravity
+        // can still guide the pointer into a preview or icon.
+        let acceleration = max(1, Static.overScreenMouseAxisAcceleration)
+        let compensation = min(0.75, (acceleration - 1) * 1.5)
+        let acceleratedAxisWeight = 1 - compensation
+        gravityMouseAxisWeight = side == 2
+            ? CGPoint(x: acceleratedAxisWeight, y: 1)
+            : CGPoint(x: 1, y: acceleratedAxisWeight)
+    }
     
     func reSetDynamicSettings(){
         //self.scarfWeight = sensivityBaseConstant * Static.Sensivity
@@ -3295,6 +3322,7 @@ public class Display : Equatable {
         self.menuHeight = NSApplication.shared.menu!.menuBarHeight
         
         reSetDynamicSettings()
+        updateGravityMouseAxisWeight()
         
         if #available(macOS 12.3, *){
             if !windowHidden {

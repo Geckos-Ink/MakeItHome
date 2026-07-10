@@ -423,6 +423,10 @@ public struct CapturePreview: NSViewRepresentable {
         }
 
         private var gravityMouseState = GravityMouseState()
+        private let gravityMinimumInputSpeed: CGFloat = 1.5
+        private let gravityMaximumInputSpeed: CGFloat = 10
+        private let gravityMinimumDirectionAlignment: CGFloat = 0.4
+        private let gravityLegacyDeltaMultiplier: CGFloat = 1_000
         
         var leftMouse = true
         
@@ -542,8 +546,18 @@ public struct CapturePreview: NSViewRepresentable {
             return CGPoint(x: point.x, y: mainScreenHeight - point.y)
         }
 
-        /// Applies the GravityMouse attraction curve to the nearest preview. The
-        /// original library's "planets" map to the SceneKit window preview frames.
+        /// WindowPlane is also used for icon-only apps: `setIcon()` creates a
+        /// synthetic window plane for their icon. Keeping target discovery here
+        /// makes previews and icons follow exactly the same gravity rules.
+        private func gravityMouseTargetFrames(in apps: OrderedDictionary<String, AppNode>) -> [CGRect] {
+            apps.values.flatMap { app in
+                app.windows.map { $0.getFrame() }
+            }
+        }
+
+        /// Applies the GravityMouse attraction curve to the nearest preview or
+        /// icon. The original library's "planets" map to the SceneKit target
+        /// frames.
         private func gravityMouseCursor(from cursor: CGPoint, scenePoint: SCNVector3) -> CGPoint? {
             guard Static.enableGravityMouse,
                   !isPreviewPointerInteractionActive,
@@ -552,6 +566,18 @@ public struct CapturePreview: NSViewRepresentable {
                   (curDisplay?.aboveByPixels ?? 0) >= Static.OverscreenSize - 1,
                   curDisplay?.side != 3,
                   let listApp else {
+                resetGravityMouse()
+                return nil
+            }
+
+            let sceneCursor = CGPoint(x: scenePoint.x, y: scenePoint.y)
+            let targetFrames = gravityMouseTargetFrames(in: listApp)
+
+            // Do not retain an attraction or synthesize another mouse move once
+            // the cursor has reached any interactive target, including an icon.
+            // Resetting here also prevents a stale generated move from pulling
+            // the cursor again as it leaves the target.
+            guard !targetFrames.contains(where: { NSMouseInRect(sceneCursor, $0, false) }) else {
                 resetGravityMouse()
                 return nil
             }
@@ -566,62 +592,70 @@ public struct CapturePreview: NSViewRepresentable {
 
             let delta = CGPoint(x: cursor.x - previousPointer.x, y: cursor.y - previousPointer.y)
             let speed = sqrt((delta.x * delta.x) + (delta.y * delta.y))
-            if speed >= 0.05 {
+            if speed >= gravityMinimumInputSpeed {
                 gravityMouseState.lastRealMovement = delta
             }
             let speedDelta = speed - gravityMouseState.previousSpeed
             gravityMouseState.previousSpeed = speed
             gravityMouseState.smoothedSpeedDelta = ((gravityMouseState.smoothedSpeedDelta * 10) + speedDelta) / 11
 
-            // Preserve fast traversal between previews; direction is checked against
-            // the chosen target below so gravity never pulls against user intent.
-            guard speed < 12 else {
+            // Keep the original library's behavior: engage only after deliberate
+            // movement is slowing down, and never while traversing targets fast.
+            // DeltaSpeed in GravityMouseLib is the per-tick delta scaled by 1,000.
+            let legacyDeltaSpeed = gravityMouseState.smoothedSpeedDelta * gravityLegacyDeltaMultiplier
+            guard speed >= gravityMinimumInputSpeed,
+                  speed < gravityMaximumInputSpeed,
+                  legacyDeltaSpeed < -50 else {
                 return nil
             }
 
-            let sceneCursor = CGPoint(x: scenePoint.x, y: scenePoint.y)
             let projectedCursor = projectPoint(scenePoint)
             let localCursorY = cursor.y - (curDisplay?.frame.minY ?? 0)
             let projectedCursorY = CGFloat(projectedCursor.y)
             let usesFlippedProjectionY = abs(projectedCursorY - localCursorY) > abs((bounds.height - projectedCursorY) - localCursorY)
-            let movementAlongStrip = curDisplay?.side == 2
-                ? gravityMouseState.lastRealMovement.x
-                : gravityMouseState.lastRealMovement.y
+            let movement = gravityMouseState.lastRealMovement
+            let movementLength = sqrt((movement.x * movement.x) + (movement.y * movement.y))
+            guard movementLength >= gravityMinimumInputSpeed else {
+                return nil
+            }
             var closestPlanet: (target: CGPoint, distanceRatio: CGFloat)?
 
-            for app in listApp {
-                for window in app.value.windows {
-                    let previewFrame = window.getFrame()
-                    if NSMouseInRect(sceneCursor, previewFrame, false) {
-                        return nil
-                    }
+            for targetFrame in targetFrames {
+                let target = CGPoint(x: targetFrame.midX, y: targetFrame.midY)
+                let projectedTarget = projectPoint(SCNVector3(target.x, target.y, scenePoint.z))
+                let targetDirection = CGPoint(
+                    x: CGFloat(projectedTarget.x - projectedCursor.x),
+                    y: usesFlippedProjectionY
+                        ? -CGFloat(projectedTarget.y - projectedCursor.y)
+                        : CGFloat(projectedTarget.y - projectedCursor.y)
+                )
+                let targetDistance = sqrt(
+                    (targetDirection.x * targetDirection.x)
+                    + (targetDirection.y * targetDirection.y)
+                )
+                guard targetDistance > 0 else {
+                    continue
+                }
 
-                    let target = CGPoint(x: previewFrame.midX, y: previewFrame.midY)
-                    let projectedTarget = projectPoint(SCNVector3(target.x, target.y, scenePoint.z))
-                    let targetDirectionAlongStrip: CGFloat
-                    if curDisplay?.side == 2 {
-                        targetDirectionAlongStrip = CGFloat(projectedTarget.x - projectedCursor.x)
-                    }
-                    else {
-                        let projectedTargetYDelta = CGFloat(projectedTarget.y - projectedCursor.y)
-                        targetDirectionAlongStrip = usesFlippedProjectionY ? -projectedTargetYDelta : projectedTargetYDelta
-                    }
+                // Consider only targets genuinely in the direction of travel on
+                // both axes. This avoids a small movement choosing a neighboring
+                // preview merely because it happens to share the strip axis.
+                let directionAlignment = ((movement.x * targetDirection.x) + (movement.y * targetDirection.y))
+                    / (movementLength * targetDistance)
+                guard directionAlignment >= gravityMinimumDirectionAlignment else {
+                    continue
+                }
 
-                    guard movementAlongStrip * targetDirectionAlongStrip > 0 else {
-                        continue
-                    }
+                let distance = sqrt(pow(sceneCursor.x - target.x, 2) + pow(sceneCursor.y - target.y, 2))
+                let planetDistance = (targetFrame.width + targetFrame.height) / 2
+                let distanceRatio = (distance * 0.75) / planetDistance
 
-                    let distance = sqrt(pow(sceneCursor.x - target.x, 2) + pow(sceneCursor.y - target.y, 2))
-                    let planetDistance = (previewFrame.width + previewFrame.height) / 2
-                    let distanceRatio = (distance * 0.75) / planetDistance
+                guard distanceRatio < 1 else {
+                    continue
+                }
 
-                    guard distanceRatio < 1 else {
-                        continue
-                    }
-
-                    if closestPlanet == nil || distanceRatio < closestPlanet!.distanceRatio {
-                        closestPlanet = (target, distanceRatio)
-                    }
+                if closestPlanet == nil || distanceRatio < closestPlanet!.distanceRatio {
+                    closestPlanet = (target, distanceRatio)
                 }
             }
 
@@ -629,9 +663,10 @@ public struct CapturePreview: NSViewRepresentable {
                 return nil
             }
 
-            // This mirrors GravityMouse's getPointAttracted: the closer the cursor
-            // is to a preview, the more strongly its centre attracts the pointer.
-            let stoppingStrength = min(0.5, max(0.1, -gravityMouseState.smoothedSpeedDelta / 12))
+            // This is the original GravityMouse curve: force comes directly from
+            // deceleration and is intentionally tiny. A cap keeps an abrupt stop
+            // from making the cursor feel manipulated.
+            let stoppingStrength = min(0.012, -legacyDeltaSpeed / 10_000)
             let attractionExponent = 0.8 * stoppingStrength
             let remainingDistance = CGFloat(pow(Double(planet.distanceRatio), Double(attractionExponent)))
             let attractedScenePoint = SCNVector3(
@@ -645,23 +680,20 @@ public struct CapturePreview: NSViewRepresentable {
             let projectedXDelta = CGFloat(projectedAttractedCursor.x - projectedCursor.x)
             var attractedCursor = cursor
 
-            // Do not alter the axis used to enter or leave the overscreen. Preview
-            // cards are arranged along the other axis, which is enough for gravity
-            // to make selecting them easier without trapping the cursor.
-            if curDisplay?.side == 2 { // Bottom previews are arranged horizontally.
-                attractedCursor.x += projectedXDelta
-            }
-            else { // Left and right previews are arranged vertically.
-                attractedCursor.y += usesFlippedProjectionY ? -projectedYDelta : projectedYDelta
-            }
+            // Attract on both axes. Displays.swift already accelerates movement
+            // along the previews strip, so reduce only that component in real
+            // time to keep cursor compensation from stacking.
+            let axisWeight = curDisplay?.gravityMouseAxisWeight ?? CGPoint(x: 1, y: 1)
+            attractedCursor.x += projectedXDelta * axisWeight.x
+            attractedCursor.y += (usesFlippedProjectionY ? -projectedYDelta : projectedYDelta) * axisWeight.y
 
             let adjustment = CGPoint(x: attractedCursor.x - cursor.x, y: attractedCursor.y - cursor.y)
-            let attractionAlongStrip = curDisplay?.side == 2 ? adjustment.x : adjustment.y
+            let attractionLength = sqrt((adjustment.x * adjustment.x) + (adjustment.y * adjustment.y))
 
-            // A planet can attract only while the pointer is travelling toward it.
-            // Retaining the last real movement lets attraction finish naturally
-            // after the user slows down without treating generated moves as intent.
-            guard movementAlongStrip * attractionAlongStrip > 0 else {
+            // Retain control if the attenuated, two-axis adjustment would pull
+            // against the user's actual motion.
+            guard attractionLength > 0,
+                  ((movement.x * adjustment.x) + (movement.y * adjustment.y)) > 0 else {
                 return nil
             }
 
