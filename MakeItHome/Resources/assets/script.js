@@ -1359,30 +1359,39 @@ function editTask(event) {
 
 let fullscreenMode = false;
 let searchSelectAll = false;
+const searchWebViewFadeOutDuration = 500;
 function startFullscreenMode(){
     if(!fullscreenMode){
         sendMessage({type: "enterFullscreen"})
         fullscreenMode = true;
         fullscreenMouseBelow = false;
 
-        $extension.animate({
+        $extension.stop(true, false).animate({
             opacity: 1
-        }, 250)
-        scheduleNativeWebViewSync()
+        }, {
+            duration: 250,
+            step: scheduleNativeWebViewSync,
+            complete: scheduleNativeWebViewSync
+        })
     }
 }
 
 function stopFullscreenMode(){
     if(fullscreenMode){
-        sendMessage({type: "closeFullscreen"})
-
-        $extension.animate({
-            opacity: 0
-        }, 250)
-        scheduleNativeWebViewSync()
-
         fullscreenMode = false;
         searchSelectAll = true;
+
+        $extension.stop(true, false).animate({
+            opacity: 0
+        }, {
+            duration: searchWebViewFadeOutDuration,
+            step: scheduleNativeWebViewSync,
+            complete: function() {
+                scheduleNativeWebViewSync()
+                if(!fullscreenMode)
+                    sendMessage({type: "closeFullscreen"})
+            }
+        })
     }
 }
 

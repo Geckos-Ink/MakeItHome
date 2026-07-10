@@ -24,16 +24,66 @@ public struct StrictMotionSample {
     let mouseSpeed: CGFloat
     let mouseSpeed10s: CGFloat
     let avgSpeed: Double
+    let acceleration: Double
     let avgAcceleration: Double
+    let frameDuration: TimeInterval
+    let frameScale: CGFloat
+
+    func merging(with newer: StrictMotionSample) -> StrictMotionSample {
+        let mergedDelta = CGPoint(x: mouseDelta.x + newer.mouseDelta.x,
+                                  y: mouseDelta.y + newer.mouseDelta.y)
+        let mergedFrameScale = max(0.001, frameScale + newer.frameScale)
+        let mergedSpeed = hypot(mergedDelta.x, mergedDelta.y) / mergedFrameScale
+
+        return StrictMotionSample(mouse: newer.mouse,
+                                  mouseDelta: mergedDelta,
+                                  mouseSpeed: mergedSpeed,
+                                  mouseSpeed10s: newer.mouseSpeed10s,
+                                  avgSpeed: newer.avgSpeed,
+                                  acceleration: max(acceleration, newer.acceleration),
+                                  avgAcceleration: newer.avgAcceleration,
+                                  frameDuration: frameDuration + newer.frameDuration,
+                                  frameScale: mergedFrameScale)
+    }
+}
+
+private func effectiveFrameScale(elapsed: TimeInterval, referenceFPS: Double) -> CGFloat {
+    let referenceDuration = 1 / max(1, referenceFPS)
+    // Ignore timer jitter below a quarter-frame and avoid treating a wake from
+    // sleep as hundreds of frames of pointer input.
+    let boundedElapsed = min(max(elapsed, referenceDuration * 0.25), 0.25)
+    return CGFloat(boundedElapsed / referenceDuration)
+}
+
+private func timeAdjustedAverage(current: Double,
+                                 sample: Double,
+                                 referenceWeight: Double,
+                                 frameScale: CGFloat) -> Double {
+    guard referenceWeight > 0 else { return sample }
+    let perFrameRetention = referenceWeight / (referenceWeight + 1)
+    let retention = pow(perFrameRetention, Double(max(0.001, frameScale)))
+    return (current * retention) + (sample * (1 - retention))
+}
+
+private func timeAdjustedAverage(current: CGFloat,
+                                 sample: CGFloat,
+                                 referenceWeight: CGFloat,
+                                 frameScale: CGFloat) -> CGFloat {
+    CGFloat(timeAdjustedAverage(current: Double(current),
+                                sample: Double(sample),
+                                referenceWeight: Double(referenceWeight),
+                                frameScale: frameScale))
 }
 
 public class DisplaysManager {
     private struct StrictMotionState {
         var acceleration: Double = 0
         var prevMouse: CGPoint = .zero
+        var previousSpeed: CGFloat = 0
         var mouseSpeed10s: CGFloat = 0
         var avgSpeed: Double = 1
         var avgAcceleration: Double = 0
+        var lastSampleTime: TimeInterval = 0
     }
     
     private let strictAvgWeight: CGFloat = 60 * 60
@@ -418,14 +468,23 @@ public class DisplaysManager {
                     let sample = self.computeStrictSample(mouse: loc)
                     self.mouseTimerStateQueue.async {
                         self.pendingMouseLoc = loc
-                        self.pendingStrictSample = sample
+                        if let pendingSample = self.pendingStrictSample {
+                            self.pendingStrictSample = pendingSample.merging(with: sample)
+                        }
+                        else {
+                            self.pendingStrictSample = sample
+                        }
                         if self.mouseTickInFlight {
                             return
                         }
                         
                         self.mouseTickInFlight = true
                         Task(priority: .userInteractive) { @MainActor in
-                            let strictSample = self.mouseTimerStateQueue.sync { self.pendingStrictSample }
+                            let strictSample = self.mouseTimerStateQueue.sync {
+                                let sample = self.pendingStrictSample
+                                self.pendingStrictSample = nil
+                                return sample
+                            }
                             let currentLoc = strictSample?.mouse ?? self.mouseTimerStateQueue.sync { self.pendingMouseLoc }
                             self.updateMousePosition(cursor: currentLoc, from: 2, strictSample: strictSample)
                             self.mouseTimerStateQueue.async {
@@ -464,22 +523,37 @@ public class DisplaysManager {
 
     private func computeStrictSample(mouse: CGPoint) -> StrictMotionSample {
         var state = strictMotionState
+        let sampleTime = ProcessInfo.processInfo.systemUptime
+        let nominalDuration = 1 / updateHertz
+        let frameDuration = state.lastSampleTime > 0 ? sampleTime - state.lastSampleTime : nominalDuration
+        let frameScale = effectiveFrameScale(elapsed: frameDuration, referenceFPS: updateHertz)
         let prevMouse = state.prevMouse == .zero ? mouse : state.prevMouse
         let mouseDelta = CGPoint(x: mouse.x - prevMouse.x, y: mouse.y - prevMouse.y)
-        let mouseSpeed = sqrt((pow(mouseDelta.x, 2) + pow(mouseDelta.y, 2)))
+        let mouseSpeed = hypot(mouseDelta.x, mouseDelta.y) / frameScale
         
         let speedWindow = CGFloat(updateHertz * 10)
-        let mouseSpeed10s = ((state.mouseSpeed10s * speedWindow) + mouseSpeed) / (speedWindow + 1)
-        let avgSpeed = ((state.avgSpeed * Double(strictAvgWeight)) + Double(mouseSpeed)) / (Double(strictAvgWeight) + 1)
-        
-        let acceleration = sqrt((pow(mouseDelta.x, 2) + pow(mouseDelta.y, 2)))
-        let avgAcceleration = ((state.avgAcceleration * Double(strictAvgWeight)) + Double(acceleration)) / (Double(strictAvgWeight) + 1)
+        let mouseSpeed10s = timeAdjustedAverage(current: state.mouseSpeed10s,
+                                                sample: mouseSpeed,
+                                                referenceWeight: speedWindow,
+                                                frameScale: frameScale)
+        let avgSpeed = timeAdjustedAverage(current: state.avgSpeed,
+                                           sample: Double(mouseSpeed),
+                                           referenceWeight: Double(strictAvgWeight),
+                                           frameScale: frameScale)
+
+        let acceleration = Double(abs(mouseSpeed - state.previousSpeed) / frameScale)
+        let avgAcceleration = timeAdjustedAverage(current: state.avgAcceleration,
+                                                  sample: acceleration,
+                                                  referenceWeight: Double(strictAvgWeight),
+                                                  frameScale: frameScale)
         
         state.prevMouse = mouse
+        state.previousSpeed = mouseSpeed
         state.mouseSpeed10s = mouseSpeed10s
         state.avgSpeed = avgSpeed
         state.avgAcceleration = avgAcceleration
         state.acceleration = acceleration
+        state.lastSampleTime = sampleTime
         strictMotionState = state
         
         return StrictMotionSample(mouse: mouse,
@@ -487,7 +561,16 @@ public class DisplaysManager {
                                   mouseSpeed: mouseSpeed,
                                   mouseSpeed10s: mouseSpeed10s,
                                   avgSpeed: avgSpeed,
-                                  avgAcceleration: avgAcceleration)
+                                  acceleration: acceleration,
+                                  avgAcceleration: avgAcceleration,
+                                  frameDuration: frameDuration,
+                                  frameScale: frameScale)
+    }
+
+    fileprivate func synchronizeStrictMotionOrigin(to mouse: CGPoint) {
+        strictMotionQueue.async { [weak self] in
+            self?.strictMotionState.prevMouse = mouse
+        }
     }
     
     //TODO: Bring this in Display class
@@ -3176,6 +3259,8 @@ public class Display : Equatable {
     
     var prevMouse : CGPoint = CGPoint.zero
     var prevRelMouse : CGPoint = CGPoint.zero
+    var previousMotionSpeed: CGFloat = 0
+    var lastMotionSampleTime: TimeInterval = 0
     var lastAcceleratedPointerPosition: CGPoint?
     /// GravityMouse reads this every mouse tick. The axis already accelerated by
     /// the overscreen keeps only a fraction of GravityMouse's force, preventing
@@ -3203,6 +3288,7 @@ public class Display : Equatable {
     
     var mouseSpeed : CGFloat = 0
     var mouseSpeed_10s : CGFloat = 0
+    var edgeActivationPressure = [CGFloat](repeating: 0, count: 4)
     
     var compensateAboveByCursor : CGPoint = CGPoint.zero
     
@@ -3302,6 +3388,98 @@ public class Display : Equatable {
     
     var overrideAboveByDiff : CGFloat = 0
     var ignoreMousePositionForAboveBy = 0
+
+    private func zoneCenterWeight(side: Int, point: CGPoint) -> CGFloat {
+        let position: CGFloat
+        if side < 2 {
+            position = point.y / max(1, frame.height)
+        }
+        else {
+            position = point.x / max(1, frame.width)
+        }
+
+        // Zero at corners makes the two adjacent zones intentionally
+        // ambiguous there; the middle of each edge gets the full weight.
+        return max(0, sin(.pi * min(1, max(0, position))))
+    }
+
+    @discardableResult
+    private func applySubtleEdgeResistance(side: Int,
+                                           mouse: CGPoint,
+                                           relativeMouse: inout CGPoint,
+                                           mouseDelta: CGPoint,
+                                           acceleration: Double,
+                                           frameScale: CGFloat) -> CGPoint? {
+        let pressureRetention = CGFloat(pow(0.68, Double(max(0.001, frameScale))))
+        for index in edgeActivationPressure.indices {
+            edgeActivationPressure[index] *= pressureRetention
+            if edgeActivationPressure[index] < 0.01 {
+                edgeActivationPressure[index] = 0
+            }
+        }
+
+        guard side >= 0,
+              side < 3,
+              activateSide[side],
+              aboveByPixels == 0,
+              sideToClose == -1 else {
+            return nil
+        }
+
+        var outsideEdgeProbe = mouse
+        switch side {
+        case 0: outsideEdgeProbe.x = frame.minX - 1
+        case 1: outsideEdgeProbe.x = frame.maxX + 1
+        default: outsideEdgeProbe.y = frame.minY - 1
+        }
+        if let adjacentDisplay = manager.getPointerDisplay(cursor: outsideEdgeProbe, justGet: true),
+           adjacentDisplay != self {
+            return nil
+        }
+
+        let distanceFromEdge = calcAboveBy(side: side, point: relativeMouse)
+        guard distanceFromEdge >= 0, distanceFromEdge < activateOnPixelsLimit else {
+            return nil
+        }
+
+        let outwardDelta: CGFloat
+        switch side {
+        case 0: outwardDelta = -mouseDelta.x
+        case 1: outwardDelta = mouseDelta.x
+        default: outwardDelta = -mouseDelta.y
+        }
+        guard outwardDelta > 0 else { return nil }
+
+        let centerWeight = zoneCenterWeight(side: side, point: relativeMouse)
+        let proximity = 1 - (distanceFromEdge / activateOnPixelsLimit)
+        // The menu-bar resistance can remove roughly half a movement. Other
+        // edges peak at 16%, and ramp in only near the physical edge.
+        let resistanceWeight = 0.16 * pow(proximity, 2) * centerWeight
+        let resistedDistance = min(activateOnPixelsLimit * 0.2,
+                                   outwardDelta * resistanceWeight)
+        guard resistedDistance >= 0.05 else { return nil }
+
+        let accelerationBaseline = max(0.1, avgAcceleration)
+        let accelerationLift = min(1, max(0, (acceleration - accelerationBaseline) / accelerationBaseline))
+        edgeActivationPressure[side] = min(activateOnPixelsLimit,
+                                           edgeActivationPressure[side]
+                                           + resistedDistance * CGFloat(1 + (0.5 * accelerationLift)))
+
+        var resistedMouse = mouse
+        switch side {
+        case 0:
+            resistedMouse.x += resistedDistance
+            relativeMouse.x += resistedDistance
+        case 1:
+            resistedMouse.x -= resistedDistance
+            relativeMouse.x -= resistedDistance
+        default:
+            resistedMouse.y += resistedDistance
+            relativeMouse.y += resistedDistance
+        }
+
+        return resistedMouse
+    }
     
     //MARK: Active area
     @MainActor func active(mouse: NSPoint, strictSample: StrictMotionSample? = nil){ // was @MainActor
@@ -3355,23 +3533,41 @@ public class Display : Equatable {
         
         let mouseDelta: CGPoint
         let acceleration: Double
+        let frameScale: CGFloat
         if let sample = strictSample {
             mouseDelta = sample.mouseDelta
             mouseSpeed = sample.mouseSpeed
             mouseSpeed_10s = sample.mouseSpeed10s
             avgSpeed = sample.avgSpeed
             avgAcceleration = sample.avgAcceleration
-            acceleration = Double(sample.mouseSpeed)
+            acceleration = sample.acceleration
+            frameScale = sample.frameScale
         }
         else {
-            mouseDelta = CGPoint(x: mouse.x - prevMouse.x, y: mouse.y - prevMouse.y)
-            
-            mouseSpeed = sqrt((pow(mouseDelta.x,2)+pow(mouseDelta.y,2)))
-            mouseSpeed_10s = ((mouseSpeed_10s*(Static.MouseHertz * 10))+mouseSpeed)/((Static.MouseHertz * 10)+1)
-            avgSpeed = ((avgSpeed*avgWeight)+mouseSpeed)/(avgWeight+1)
-            
-            acceleration = sqrt(pow((mouse.x - prevMouse.x),2)+pow((mouse.y - prevMouse.y),2))
-            avgAcceleration = ((avgAcceleration*avgWeight)+acceleration)/(avgWeight+1)
+            let sampleTime = ProcessInfo.processInfo.systemUptime
+            let nominalDuration = 1 / Static.MouseHertz
+            let frameDuration = lastMotionSampleTime > 0 ? sampleTime - lastMotionSampleTime : nominalDuration
+            frameScale = effectiveFrameScale(elapsed: frameDuration, referenceFPS: Static.MouseHertz)
+            let previousMouse = prevMouse == .zero ? mouse : prevMouse
+            mouseDelta = CGPoint(x: mouse.x - previousMouse.x, y: mouse.y - previousMouse.y)
+
+            mouseSpeed = hypot(mouseDelta.x, mouseDelta.y) / frameScale
+            mouseSpeed_10s = timeAdjustedAverage(current: mouseSpeed_10s,
+                                                 sample: mouseSpeed,
+                                                 referenceWeight: CGFloat(Static.MouseHertz * 10),
+                                                 frameScale: frameScale)
+            avgSpeed = timeAdjustedAverage(current: avgSpeed,
+                                           sample: Double(mouseSpeed),
+                                           referenceWeight: Double(avgWeight),
+                                           frameScale: frameScale)
+
+            acceleration = Double(abs(mouseSpeed - previousMotionSpeed) / frameScale)
+            avgAcceleration = timeAdjustedAverage(current: avgAcceleration,
+                                                  sample: acceleration,
+                                                  referenceWeight: Double(avgWeight),
+                                                  frameScale: frameScale)
+            previousMotionSpeed = mouseSpeed
+            lastMotionSampleTime = sampleTime
         }
         
         let s = abs((mouseDelta.x+mouseDelta.y)/2)
@@ -3403,6 +3599,7 @@ public class Display : Equatable {
         //
         
         var accMouse = mouse.clone
+        var mousePositionForNextSample = mouse.clone
         /*accMouse.x += accMouseMove.x
         accMouse.y += accMouseMove.y*/
         accMouseMove = CGPoint.zero
@@ -3441,6 +3638,18 @@ public class Display : Equatable {
         
         var curSide = checkSide(point: relMouse)
         prewarmRecorderIfNeeded(side: curSide, mouseDelta: mouseDelta)
+
+        if let resistedMouse = applySubtleEdgeResistance(side: curSide,
+                                                         mouse: accMouse,
+                                                         relativeMouse: &relMouse,
+                                                         mouseDelta: mouseDelta,
+                                                         acceleration: acceleration,
+                                                         frameScale: frameScale) {
+            accMouse = resistedMouse
+            mousePositionForNextSample = resistedMouse
+            manager.synchronizeStrictMotionOrigin(to: resistedMouse)
+            moveMouse(to: cursorEventPoint(fromAppKitPoint: resistedMouse))
+        }
         
         if recordingPaused && curSide == -1 {
             return
@@ -3477,14 +3686,20 @@ public class Display : Equatable {
         ///
 
         if(maxSpeed < avgSpeed){
-            maxSpeed = (maxSpeed + avgSpeed) / 2
+            maxSpeed = timeAdjustedAverage(current: maxSpeed,
+                                           sample: CGFloat(avgSpeed),
+                                           referenceWeight: 1,
+                                           frameScale: frameScale)
             
             weight *= 0.5 * (curSide == 3 ? 0.5 : 1.0)
         }
         else {
             if avgSpeed > 1 {
                 let scarfMaxSpeed = scarfWeight * 0.01
-                maxSpeed = (maxSpeed + (avgSpeed*scarfMaxSpeed))/(1+scarfMaxSpeed)
+                maxSpeed = timeAdjustedAverage(current: maxSpeed,
+                                               sample: CGFloat(avgSpeed),
+                                               referenceWeight: 1 / max(0.0001, scarfMaxSpeed),
+                                               frameScale: frameScale)
             }
         }
         
@@ -3492,8 +3707,14 @@ public class Display : Equatable {
         accDelta = mouseDelta.clone
         
         let scarfWeight = curSide == 3 ? scarfWeight * 0.25 : scarfWeight
-        mouseScarf.x = ((mouseScarf.x*scarfWeight)+relMouse.x)/(scarfWeight+1);
-        mouseScarf.y = ((mouseScarf.y*scarfWeight)+relMouse.y)/(scarfWeight+1);
+        mouseScarf.x = timeAdjustedAverage(current: mouseScarf.x,
+                                           sample: relMouse.x,
+                                           referenceWeight: scarfWeight,
+                                           frameScale: frameScale)
+        mouseScarf.y = timeAdjustedAverage(current: mouseScarf.y,
+                                           sample: relMouse.y,
+                                           referenceWeight: scarfWeight,
+                                           frameScale: frameScale)
         
         let mouseForecast = self.pointForecast(from: mouseScarf, to: relMouse, weight: weight)
         let absForecastMouse = NSPoint(x: mouseForecast.x + frame.origin.x, y: mouseForecast.y + frame.origin.y)
@@ -3709,6 +3930,12 @@ public class Display : Equatable {
             //let compMouse = self.getPointAccumulated(point: accMouse)
             var mouseAboveLimitBy = self.calcAboveBy(side: self.side, point: relMouse)
             var forecastAboveLimitBy = self.calcAboveBy(side: self.side, point: mouseForecast)
+            if self.side < 3 && aboveByPixels == 0 {
+                // Motion removed by the subtle resistance is still evidence of
+                // an outward push. Feeding it back into the forecast preserves
+                // acceleration intent after the cursor reaches a hard edge.
+                forecastAboveLimitBy -= edgeActivationPressure[self.side]
+            }
             
             if(aboveBy > 0.8){
                 forecastAboveLimitBy = mouseAboveLimitBy
@@ -3751,7 +3978,9 @@ public class Display : Equatable {
             var aboveAvgSpeed = mouseSpeed > (maxSpeed / Static.DivideMaxSpeedBy)
             
             if(Static.EnableRequiredAcceleration){
-                aboveAvgSpeed = aboveAvgSpeed && acceleration > avgAcceleration
+                let inferredEdgeAcceleration = self.side < 3
+                    && edgeActivationPressure[self.side] > Static.OverscreenAboveLimit * 0.3
+                aboveAvgSpeed = aboveAvgSpeed && (acceleration > avgAcceleration || inferredEdgeAcceleration)
             }
             
             let recordingAvailable = true
@@ -3948,7 +4177,7 @@ public class Display : Equatable {
             
             if(sideToClose != -1){
                 let s = sideToClose
-                aboveBy *= decelerateAboveBy
+                aboveBy *= CGFloat(pow(Double(decelerateAboveBy), Double(max(0.001, frameScale))))
             }
             else {
                 aboveBy = 0
@@ -3961,17 +4190,23 @@ public class Display : Equatable {
         
         if(forceAboveBy > 0 && aboveBy < 1 && sideToClose == -1){
             self.sideToClose = curSide
-            aboveBy = (prevAboveBy + forceAboveBy) / 2
+            aboveBy = timeAdjustedAverage(current: prevAboveBy,
+                                          sample: forceAboveBy,
+                                          referenceWeight: 1,
+                                          frameScale: frameScale)
             print("force aboveBy")
         }
         
-        prevMouse = mouse //move this on top(?)
+        prevMouse = mousePositionForNextSample //move this on top(?)
         
         //MARK: Update aboveByPixels
         prevAboveByPixels = aboveByPixels
         
         if ignoreMousePositionForAboveBy == 0 {
-            aboveByPixels = ((aboveBy * Static.OverscreenSize)+prevAboveByPixels)/2
+            aboveByPixels = timeAdjustedAverage(current: prevAboveByPixels,
+                                                sample: aboveBy * Static.OverscreenSize,
+                                                referenceWeight: 1,
+                                                frameScale: frameScale)
         }
         else {
             ignoreMousePositionForAboveBy -= 1
@@ -3993,7 +4228,7 @@ public class Display : Equatable {
         }
         
         if(prevAboveByPixels > aboveByPixels){ // why?
-            aboveByPixels -= 1 // force closing
+            aboveByPixels -= frameScale // force closing at the same pixels/second
         }
         
         if(prevAboveByPixels == 0 && aboveByPixels > 0){
