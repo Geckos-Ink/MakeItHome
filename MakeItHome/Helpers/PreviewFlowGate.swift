@@ -49,6 +49,16 @@ struct PreviewFlowGate {
     /// Wall-clock timestamp (seconds since 1970) of the false→true `spaceIsChanging` edge.
     private(set) var spaceIsChangingSince: TimeInterval = 0
 
+    /// How long two-or-more on-screen placeholder panels must persist before they are treated
+    /// as stale duplicates to be collapsed. A genuine space swipe shows two placeholders only
+    /// briefly (<1s); anything longer is a leftover placeholder from a previous space (typically
+    /// after a fullscreen app tears down), which otherwise makes the window scan read a
+    /// *permanent* "space changing" and freezes previews.
+    static let stalePlaceholdersAfter: TimeInterval = 1.5
+
+    /// Wall-clock time the current run of duplicate placeholders started (0 when not duplicated).
+    private(set) var duplicatePlaceholdersSince: TimeInterval = 0
+
     // MARK: - Transitions
 
     /// Applies the per-pass fullscreen state derived from the current window list, stamping the
@@ -99,6 +109,26 @@ struct PreviewFlowGate {
         }
         spaceIsChanging = false
         return true
+    }
+
+    /// Feeds the number of on-screen "makeithome" placeholder panels seen on this pass and
+    /// returns `true` exactly once, when duplicates have persisted past `stalePlaceholdersAfter`
+    /// — the caller should then collapse them to a single placeholder. Resets as soon as the
+    /// count drops back below two, so real (transient) space swipes never trip it.
+    mutating func notePlaceholderCount(_ count: Int, now: TimeInterval) -> Bool {
+        guard count >= 2 else {
+            duplicatePlaceholdersSince = 0
+            return false
+        }
+        if duplicatePlaceholdersSince == 0 {
+            duplicatePlaceholdersSince = now
+            return false
+        }
+        if now - duplicatePlaceholdersSince > Self.stalePlaceholdersAfter {
+            duplicatePlaceholdersSince = 0   // one-shot: re-arm for the next run
+            return true
+        }
+        return false
     }
 
     // MARK: - Queries

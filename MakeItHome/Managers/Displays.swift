@@ -1323,7 +1323,37 @@ public class Display : Equatable {
     }
     
     var placeholders : [SwifterPlaceholder] = []
-    
+
+    /// Collapses multiple simultaneously on-screen placeholder panels down to a single one.
+    /// Only ever touches `SwifterPlaceholder`s we own that are actually on screen (never the
+    /// main overscreen window — it carries the differently-cased "MakeItHome" title). Returns
+    /// true when it closed at least one duplicate, at which point the caller can stop: the next
+    /// window scan will see one unambiguous placeholder and previews resume.
+    @MainActor
+    @discardableResult
+    func resolveStalePlaceholders(onScreenIds : [Int]) -> Bool {
+        let ownedOnScreen = placeholders.filter { onScreenIds.contains($0.windowNumber) && $0.stillValid() }
+        guard ownedOnScreen.count >= 2 else {
+            return false
+        }
+
+        // Prefer to keep the one we already consider current; otherwise keep the first.
+        let keep = ownedOnScreen.first { $0 === curPlaceholder } ?? ownedOnScreen[0]
+        for placeholder in ownedOnScreen where placeholder !== keep {
+            placeholder.close()
+        }
+        placeholders.removeAll { ph in ph !== keep && ownedOnScreen.contains { $0 === ph } }
+
+        curPlaceholder = keep
+        currentSpaceId = keep.windowNumber
+        if !currentSpaceIds.contains(keep.windowNumber) {
+            currentSpaceIds.append(keep.windowNumber)
+        }
+        spaceIsChanging = false
+        print("resolved stale duplicate placeholders, kept", keep.windowNumber)
+        return true
+    }
+
     func removeDuplicatePlaceholder(idNew : Int, idOld : Int){
         var pos = -1
         for i in 0 ... placeholders.count - 1 {
@@ -1671,7 +1701,11 @@ public class Display : Equatable {
                 }
                 
                 var spaceHolderFound = -1
-                
+
+                // Every on-screen placeholder panel seen this pass. More than one means stale
+                // duplicates (see PreviewFlowGate.notePlaceholderCount / resolveStalePlaceholders).
+                var scannedHolderIds : [Int] = []
+
                 func sortWinByLayer(_ w1: CFDictionary, _ w2: CFDictionary) -> Bool {
                     let dw1 = w1 as? [String: AnyObject]
                     let dw2 = w2 as? [String: AnyObject]
@@ -1741,7 +1775,11 @@ public class Display : Equatable {
                         if winTitle == lowerTitle && winOnScreen == 1 && rectOnCurrentDisplay {
                             // found placeholder panel
                             spaceHolderId = winId
-                            
+
+                            if !scannedHolderIds.contains(winId) {
+                                scannedHolderIds.append(winId)
+                            }
+
                             if self.currentSpaceId == winId {
                                 // ...
                             }
@@ -1839,10 +1877,24 @@ public class Display : Equatable {
                 ///#
                 ///# spaceHolder managent
                 ///#
+                let holdersOnScreen = scannedHolderIds
                 DispatchQueue.main.async { // done on main thread
                     //MARK: spaceHolder MGMT
                     self.samePlaceholderSince += 1
-                    
+
+                    // Collapse persistently-duplicated placeholders before anything else. Two
+                    // panels on one display is only ever a transient swipe; when it lasts (a
+                    // stale placeholder left behind by a fullscreen app's space) the scan reads
+                    // it as a permanent "space changing" and freezes previews. This is the case
+                    // in the "space holder found A B … space no more changing due to timeout"
+                    // log loop — the dedup below at 'removeDuplicatePlaceholder' can't help
+                    // because it is gated off while spaceIsChanging is (perpetually) true.
+                    if self.flowGate.notePlaceholderCount(holdersOnScreen.count,
+                                                          now: Date().timeIntervalSince1970),
+                       self.resolveStalePlaceholders(onScreenIds: holdersOnScreen) {
+                        return // next scan will see a single, unambiguous placeholder
+                    }
+
                     if (spaceHolderId == -1 || spaceHolderFound > -1 || spaceHolderFound == -2) {
                         
                         if true && (!self.spaceIsChanging && !self.activateNewApp) && spaceHolderId >= 0 && spaceHolderId != self.currentSpaceId && self.curPlaceholder?.stillValid() ?? false {

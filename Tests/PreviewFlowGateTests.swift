@@ -169,6 +169,47 @@ enum PreviewFlowGateTests {
         Check.expect(!rec(), "off while a fullscreen app owns the display")
     }
 
+    static func testDuplicatePlaceholdersCollapseOnlyWhenPersistent() {
+        Check.section("duplicate placeholders: collapse only after they persist")
+        var gate = PreviewFlowGate()
+        let t0: TimeInterval = 2000
+
+        // A single placeholder is normal — never a collapse signal.
+        Check.expect(!gate.notePlaceholderCount(1, now: t0), "one placeholder never signals a collapse")
+
+        // A brief two-placeholder blip (real space swipe) resolves before the window elapses.
+        Check.expect(!gate.notePlaceholderCount(2, now: t0), "first pass with duplicates just starts the timer")
+        Check.expect(!gate.notePlaceholderCount(2, now: t0 + 0.5), "still within the window — no collapse yet")
+        Check.expect(!gate.notePlaceholderCount(1, now: t0 + 0.7), "duplicates gone → reset, no collapse")
+        Check.expect(!gate.notePlaceholderCount(2, now: t0 + 1.0), "a fresh run restarts the timer from here")
+        Check.expect(!gate.notePlaceholderCount(2, now: t0 + 1.2), "brief swipe never trips the collapse")
+    }
+
+    static func testPersistentDuplicatePlaceholdersSignalCollapseOnce() {
+        Check.section("REGRESSION: the log loop — two placeholders forever must self-heal")
+        var gate = PreviewFlowGate()
+        let start: TimeInterval = 5000
+
+        // Reproduce the reported loop: every scan sees two "makeithome" panels (e.g. 6840 & 6804).
+        var collapseSignals = 0
+        var firstSignalAt: TimeInterval? = nil
+        var now = start
+        for _ in 0..<20 { // 20 * 0.25s = 5s of the stuck loop
+            if gate.notePlaceholderCount(2, now: now) {
+                collapseSignals += 1
+                if firstSignalAt == nil { firstSignalAt = now }
+            }
+            now += 0.25
+        }
+        Check.expect(collapseSignals >= 1, "persistent duplicates eventually signal a collapse (instead of freezing forever)")
+        if let at = firstSignalAt {
+            Check.expect(at - start <= PreviewFlowGate.stalePlaceholdersAfter + 0.5,
+                         "collapse is signalled promptly (~stale window), not after minutes")
+        }
+        // The signal is one-shot per run: it does not fire on every single pass.
+        Check.expect(collapseSignals < 20, "collapse signal is one-shot, re-armed — not spamming every pass")
+    }
+
     // --- Flow simulations reproducing the reported bug ---------------------------------------
 
     static func testIdleBaselineNeverBlocks() {
@@ -268,6 +309,8 @@ enum PreviewFlowGateTests {
         testStaleFullscreenIsCleared()
         testSpaceChangeTimestampMeasuresWholeTransition()
         testStuckSpaceChangeIsForceCleared()
+        testDuplicatePlaceholdersCollapseOnlyWhenPersistent()
+        testPersistentDuplicatePlaceholdersSignalCollapseOnce()
         testRecorderGate()
         testIdleBaselineNeverBlocks()
         testFullscreenThenBackRecovers()
