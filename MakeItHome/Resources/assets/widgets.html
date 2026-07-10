@@ -229,7 +229,7 @@
                             <div class="paragraph">
                                 <div class="title" data-i18n="widgets.settings.introduction">Introduction</div>
                                 <span data-i18n="widgets.my_widgets.description">With My Widgets you can create your own custom widgets that point to your favorite website.</span><br>
-                                <span data-i18n="widgets.my_widgets.cookies">Websites are shown through an iframe (services like Google used to not work without a proxy) and cookies are not saved through the sessions.</span>
+                                <span data-i18n="widgets.my_widgets.sessions">Websites open in native web views, and sign-ins and browsing sessions are kept after MakeItHome restarts.</span>
                             </div>
 
                             <div class="paragraph">
@@ -301,16 +301,23 @@
 
             </div>
 
-            <div class="app" id="app-myWidget-template" class="myWidgetApp">
-                <button class="reload"><i class="fa-solid fa-rotate-right"></i></button>
-                <iframe src=""></iframe>
+            <div class="app myWidgetApp" id="app-myWidget-template">
+                <div class="nativeWebViewPlaceholder myWidgetWebView"
+                     data-native-webview-id=""
+                     data-native-url=""
+                     data-native-restores-session="true"
+                     data-native-controls="reload"></div>
             </div>
             
         </div>
 
         <div class="extension">
             <div class="webSearch">
-                <iframe id="webSearchFrame" src=""></iframe>
+                <div id="webSearchWebView"
+                     class="nativeWebViewPlaceholder"
+                     data-native-webview-id="web-search"
+                     data-native-url=""
+                     data-native-restores-session="true"></div>
             </div>
         </div>
 

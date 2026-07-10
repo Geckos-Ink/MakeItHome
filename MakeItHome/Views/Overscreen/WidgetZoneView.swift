@@ -81,6 +81,7 @@ func loadTopWKWB(webView: WKWebView, force: Bool = false){
             return
         }
         wkwv.didLoadContent = true
+        wkwv.prepareForContentReload()
     }
 
     if Static.TopBarIsPreview {
@@ -130,6 +131,8 @@ public struct TopWebView: NSViewRepresentable {
         wkwv.navigationDelegate = context.coordinator
         wkwv.configuration.userContentController.removeScriptMessageHandler(forName: "widgetLocalization")
         wkwv.configuration.userContentController.add(context.coordinator, name: "widgetLocalization")
+        wkwv.configuration.userContentController.removeScriptMessageHandler(forName: "nativeWebView")
+        wkwv.configuration.userContentController.add(context.coordinator, name: "nativeWebView")
         
         //wkwv.configuration.setValue(true, forKey: "_allowUniversalAccessFromFileURLs")
         wkwv.configuration.userInterfaceDirectionPolicy = .system
@@ -221,6 +224,11 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
     }
 
     public func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        if message.name == "nativeWebView" {
+            parent.wkwv.syncNativeWebViews(from: message.body)
+            return
+        }
+
         guard message.name == "widgetLocalization" else {
             return
         }
@@ -239,6 +247,10 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
 
     public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         (webView as? TopWKWV)?.forceReload()
+    }
+
+    public func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        (webView as? TopWKWV)?.prepareForContentReload()
     }
 
 
@@ -529,6 +541,7 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
                 if json?.type == "reload" {
                     if let url = URL(string: "http://127.0.1:19494/widgets.html?height="+String(format: "%.1f", Static.OverscreenSizeTop)) {
                         let urlReq = URLRequest(url: url)
+                        self.parent.wkwv.prepareForContentReload()
                         self.parent.wkwv.load(urlReq)
                     } else {
                         print("Invalid URL")
@@ -654,11 +667,308 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
     }
 }
 
+private struct NativeWebViewSavedState: Codable {
+    var configuredURL: String
+    var currentURL: String
+}
+
+private final class NativeWebViewStateStore {
+    static let shared = NativeWebViewStateStore()
+
+    private let defaultsKey = "NativeWebViewSavedStates"
+    private var states: [String: NativeWebViewSavedState]
+
+    private init() {
+        if let data = UserDefaults.standard.data(forKey: defaultsKey),
+           let decoded = try? JSONDecoder().decode([String: NativeWebViewSavedState].self, from: data) {
+            states = decoded
+        } else {
+            states = [:]
+        }
+    }
+
+    func state(for identifier: String) -> NativeWebViewSavedState? {
+        states[identifier]
+    }
+
+    func save(identifier: String, configuredURL: String, currentURL: String) {
+        states[identifier] = NativeWebViewSavedState(
+            configuredURL: configuredURL,
+            currentURL: currentURL
+        )
+
+        if let data = try? JSONEncoder().encode(states) {
+            UserDefaults.standard.set(data, forKey: defaultsKey)
+        }
+    }
+}
+
+private final class NativeWebViewOverlay: NSView {
+    override var isFlipped: Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hitView = super.hitTest(point)
+        return hitView === self ? nil : hitView
+    }
+}
+
+private final class PersistentNativeWebViewHost: NSView, WKNavigationDelegate, WKUIDelegate {
+    let webViewIdentifier: String
+    let webView: WKWebView
+
+    private let reloadButton = NSButton()
+    private var configuredURL: String?
+    private var reloadToken = ""
+    private var restoresSession = true
+
+    override var isFlipped: Bool { true }
+
+    init(identifier: String) {
+        self.webViewIdentifier = identifier
+
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .default()
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
+
+        webView = WKWebView(frame: .zero, configuration: configuration)
+        super.init(frame: .zero)
+
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+
+        webView.setValue(false, forKey: "drawsBackground")
+        if #available(macOS 12.0, *) {
+            webView.underPageBackgroundColor = .clear
+        }
+        webView.allowsBackForwardNavigationGestures = true
+        webView.navigationDelegate = self
+        webView.uiDelegate = self
+        webView.autoresizingMask = [.width, .height]
+        addSubview(webView)
+
+        reloadButton.bezelStyle = .circular
+        reloadButton.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Reload")
+        reloadButton.imagePosition = .imageOnly
+        reloadButton.toolTip = "Reload"
+        reloadButton.target = self
+        reloadButton.action = #selector(reloadPage)
+        reloadButton.translatesAutoresizingMaskIntoConstraints = false
+        reloadButton.isHidden = true
+        addSubview(reloadButton, positioned: .above, relativeTo: webView)
+
+        NSLayoutConstraint.activate([
+            reloadButton.topAnchor.constraint(equalTo: topAnchor, constant: 10),
+            reloadButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
+            reloadButton.widthAnchor.constraint(equalToConstant: 36),
+            reloadButton.heightAnchor.constraint(equalToConstant: 36)
+        ])
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func layout() {
+        super.layout()
+        webView.frame = bounds
+    }
+
+    func update(url rawURL: String, restoresSession: Bool, controls: String, reloadToken: String) {
+        self.restoresSession = restoresSession
+        reloadButton.isHidden = controls != "reload"
+
+        if self.reloadToken != reloadToken {
+            if !self.reloadToken.isEmpty {
+                webView.reload()
+            }
+            self.reloadToken = reloadToken
+        }
+
+        let requestedURL = normalizedURL(from: rawURL)?.absoluteString
+        let savedState = NativeWebViewStateStore.shared.state(for: webViewIdentifier)
+
+        if let requestedURL {
+            guard requestedURL != configuredURL else { return }
+
+            configuredURL = requestedURL
+            let restoredURL: String?
+            if restoresSession && savedState?.configuredURL == requestedURL {
+                restoredURL = savedState?.currentURL
+            } else {
+                restoredURL = nil
+            }
+
+            load(urlString: restoredURL ?? requestedURL)
+            return
+        }
+
+        guard configuredURL == nil,
+              restoresSession,
+              let savedState,
+              normalizedURL(from: savedState.currentURL) != nil else {
+            return
+        }
+
+        configuredURL = savedState.configuredURL
+        load(urlString: savedState.currentURL)
+    }
+
+    @objc private func reloadPage() {
+        if webView.url == nil, let configuredURL {
+            load(urlString: configuredURL)
+        } else {
+            webView.reload()
+        }
+    }
+
+    private func load(urlString: String) {
+        guard let url = normalizedURL(from: urlString) else { return }
+        webView.load(URLRequest(url: url))
+    }
+
+    private func normalizedURL(from value: String) -> URL? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if let url = URL(string: trimmed), url.scheme != nil {
+            return url
+        }
+        return URL(string: "https://" + trimmed)
+    }
+
+    private func saveNavigationState() {
+        guard restoresSession,
+              let configuredURL,
+              let currentURL = webView.url?.absoluteString,
+              !currentURL.isEmpty,
+              currentURL != "about:blank" else {
+            return
+        }
+
+        NativeWebViewStateStore.shared.save(
+            identifier: webViewIdentifier,
+            configuredURL: configuredURL,
+            currentURL: currentURL
+        )
+    }
+
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        saveNavigationState()
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        saveNavigationState()
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        webView.reload()
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        createWebViewWith configuration: WKWebViewConfiguration,
+        for navigationAction: WKNavigationAction,
+        windowFeatures: WKWindowFeatures
+    ) -> WKWebView? {
+        if navigationAction.targetFrame == nil {
+            webView.load(navigationAction.request)
+        }
+        return nil
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction,
+        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+    ) {
+        guard let url = navigationAction.request.url else {
+            decisionHandler(.cancel)
+            return
+        }
+
+        let webSchemes = ["http", "https", "about", "file"]
+        if let scheme = url.scheme?.lowercased(), !webSchemes.contains(scheme) {
+            NSWorkspace.shared.open(url)
+            decisionHandler(.cancel)
+            return
+        }
+
+        decisionHandler(.allow)
+    }
+}
+
 public class TopWKWV : WKWebView, NSDraggingSource{
 
     public override var acceptsFirstResponder: Bool { return true }
 
     var didLoadContent = false
+
+    private let nativeWebViewOverlay = NativeWebViewOverlay(frame: .zero)
+    private var nativeWebViews: [String: PersistentNativeWebViewHost] = [:]
+
+    public override func layout() {
+        super.layout()
+
+        if nativeWebViewOverlay.superview != nil {
+            nativeWebViewOverlay.frame = bounds
+        }
+    }
+
+    func prepareForContentReload() {
+        nativeWebViews.values.forEach { $0.isHidden = true }
+    }
+
+    func syncNativeWebViews(from messageBody: Any) {
+        guard let body = messageBody as? [String: Any],
+              let rawViews = body["views"] as? [[String: Any]] else {
+            return
+        }
+
+        if nativeWebViewOverlay.superview == nil {
+            nativeWebViewOverlay.frame = bounds
+            nativeWebViewOverlay.autoresizingMask = [.width, .height]
+            addSubview(nativeWebViewOverlay, positioned: .above, relativeTo: nil)
+        }
+
+        var seenIdentifiers = Set<String>()
+
+        for rawView in rawViews {
+            guard let identifier = rawView["id"] as? String, !identifier.isEmpty else { continue }
+
+            seenIdentifiers.insert(identifier)
+            let host: PersistentNativeWebViewHost
+            if let existingHost = nativeWebViews[identifier] {
+                host = existingHost
+            } else {
+                host = PersistentNativeWebViewHost(identifier: identifier)
+                nativeWebViews[identifier] = host
+                nativeWebViewOverlay.addSubview(host)
+            }
+
+            let x = (rawView["x"] as? NSNumber)?.doubleValue ?? 0
+            let y = (rawView["y"] as? NSNumber)?.doubleValue ?? 0
+            let width = (rawView["width"] as? NSNumber)?.doubleValue ?? 0
+            let height = (rawView["height"] as? NSNumber)?.doubleValue ?? 0
+            let opacity = (rawView["opacity"] as? NSNumber)?.doubleValue ?? 1
+            let visible = rawView["visible"] as? Bool ?? false
+
+            host.frame = NSRect(x: x, y: y, width: width, height: height)
+            host.alphaValue = max(0, min(1, opacity))
+            host.isHidden = !visible || width <= 0 || height <= 0
+            host.update(
+                url: rawView["url"] as? String ?? "",
+                restoresSession: rawView["restoresSession"] as? Bool ?? true,
+                controls: rawView["controls"] as? String ?? "",
+                reloadToken: rawView["reloadToken"] as? String ?? ""
+            )
+        }
+
+        let staleIdentifiers = Set(nativeWebViews.keys).subtracting(seenIdentifiers)
+        for identifier in staleIdentifiers {
+            nativeWebViews[identifier]?.removeFromSuperview()
+            nativeWebViews.removeValue(forKey: identifier)
+        }
+    }
 
     func forceReload(){
         didLoadContent = false

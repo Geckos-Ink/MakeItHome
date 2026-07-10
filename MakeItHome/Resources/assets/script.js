@@ -343,13 +343,100 @@ let selEl = null
 let canDragOut = false
 let dontDrop = false // useless stuff (for the moment)
 
-let $webSearchFrame = $("#webSearchFrame")
+let $webSearchWebView = $("#webSearchWebView")
 let latestExtensionPermissions = null
 
 let toDoAtOpening = [] // events array
 let settingsState = {
     enableClipboardCapture: true,
 }
+
+///
+/// Native web views
+///
+
+const nativeWebViewSelector = '[data-native-webview-id]'
+let nativeWebViewSyncScheduled = false
+let observedNativeWebViews = new WeakSet()
+const nativeWebViewResizeObserver = new ResizeObserver(() => scheduleNativeWebViewSync())
+
+function nativeWebViewPresentation(element) {
+    let opacity = 1
+    let current = element
+
+    while(current && current.nodeType === Node.ELEMENT_NODE) {
+        const style = window.getComputedStyle(current)
+        if(style.display === 'none' || style.visibility === 'hidden')
+            return { visible: false, opacity: 0 }
+
+        const currentOpacity = Number.parseFloat(style.opacity)
+        if(Number.isFinite(currentOpacity)) opacity *= currentOpacity
+        current = current.parentElement
+    }
+
+    const rect = element.getBoundingClientRect()
+    const visible = opacity > 0.001 && rect.width > 0 && rect.height > 0 &&
+        rect.right > 0 && rect.bottom > 0 && rect.left < window.innerWidth && rect.top < window.innerHeight
+
+    return { visible: visible, opacity: opacity }
+}
+
+function syncNativeWebViews() {
+    nativeWebViewSyncScheduled = false
+
+    const handler = window.webkit?.messageHandlers?.nativeWebView
+    if(!handler) return
+
+    const views = []
+    document.querySelectorAll(nativeWebViewSelector).forEach((element) => {
+        const id = (element.dataset.nativeWebviewId || '').trim()
+        if(!id) return
+
+        if(!observedNativeWebViews.has(element)) {
+            observedNativeWebViews.add(element)
+            nativeWebViewResizeObserver.observe(element)
+        }
+
+        const rect = element.getBoundingClientRect()
+        const presentation = nativeWebViewPresentation(element)
+        views.push({
+            id: id,
+            url: element.dataset.nativeUrl || '',
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+            visible: presentation.visible,
+            opacity: presentation.opacity,
+            restoresSession: element.dataset.nativeRestoresSession === 'true',
+            controls: element.dataset.nativeControls || '',
+            reloadToken: element.dataset.nativeReloadToken || ''
+        })
+    })
+
+    handler.postMessage({ views: views })
+}
+
+function scheduleNativeWebViewSync() {
+    if(nativeWebViewSyncScheduled) return
+    nativeWebViewSyncScheduled = true
+    window.requestAnimationFrame(syncNativeWebViews)
+}
+
+const nativeWebViewMutationObserver = new MutationObserver(() => scheduleNativeWebViewSync())
+nativeWebViewMutationObserver.observe(document.body, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: [
+        'class', 'hidden', 'style', 'data-native-webview-id', 'data-native-url',
+        'data-native-restores-session', 'data-native-controls', 'data-native-reload-token'
+    ]
+})
+
+window.addEventListener('resize', scheduleNativeWebViewSync)
+window.addEventListener('scroll', scheduleNativeWebViewSync, true)
+scheduleNativeWebViewSync()
 
 registerLocalizations({
     'widgets.extensions.unknown': 'Unknown',
@@ -428,26 +515,6 @@ function receiveMessage(message){
                     $e.remove()
                 }
             })
-        }
-
-        if(obj.type == 'frameResponse'){
-            let url = obj.url;
-                        
-            if(url.includes('/url?q=')){
-                url = getQueryParameters(url)['q'];
-                $webSearchFrame[0].src = bridgeUrl(url);
-            }
-
-            if(!obj.data){
-                $webSearchFrame[0].src = bridgeUrl(url);
-                return;
-            }            
-
-            let html = fromBinary(obj.data)
-            //html = obj.value;
-            //html = decodeURIComponent(html);
-            html = convertRelativeUrlsToAbsolute(html, url)
-            $webSearchFrame[0].contentWindow.postMessage(html, "*");
         }
 
         if(obj.type == 'newClipboardItem'){
@@ -569,6 +636,7 @@ function receiveMessage(message){
         clearOnScrollable()
 
         stopFullscreenMode();   
+        scheduleNativeWebViewSync()
         
         for (let cbk of toDoAtOpening) {
             cbk()
@@ -1295,10 +1363,12 @@ function startFullscreenMode(){
     if(!fullscreenMode){
         sendMessage({type: "enterFullscreen"})
         fullscreenMode = true;
+        fullscreenMouseBelow = true;
 
         $extension.animate({
             opacity: 1
         }, 250)
+        scheduleNativeWebViewSync()
     }
 }
 
@@ -1309,6 +1379,7 @@ function stopFullscreenMode(){
         $extension.animate({
             opacity: 0
         }, 250)
+        scheduleNativeWebViewSync()
 
         fullscreenMode = false;
         searchSelectAll = true;
@@ -1336,59 +1407,21 @@ function searchPressEnter(e) {
         startFullscreenMode();
 
         let url = "https://www.google.com/search?hl=en&q="+encodeURIComponent($searchBar.val());
+        $webSearchWebView.attr('data-native-url', url)
+        scheduleNativeWebViewSync()
         
         setTimeout(()=>{
 
             $webSearch.show();
 
-            sendMessage({type: 'navUrl', url: url})
-
             $webSearch.animate({
                 opacity: 1
-            }, 250, ()=>{
-                var rect = $webSearchFrame[0].getBoundingClientRect();
-                sendMessage({type: "navPos", x: rect.x, y: rect.y, width: $webSearchFrame[0].offsetWidth, height: $webSearchFrame[0].offsetHeight})
-            });
+            }, 250);
 
         }, 100);
 
-        return;
-
-        //url = "https://duckduckgo.com/?q="+encodeURIComponent($searchBar.val().replaceAll(' ', '+'));
-        url = bridgeUrl(url)
-
-        //$webSearchFrame.attr('src', 'mrWhite.html')
-
-        $webSearchFrame.attr('src', url)
-
-        $webSearch.animate({
-            opacity: 1
-        }, 250);
     }
 }
-
-/*$webSearchFrame.click((e)=>{
-    
-})*/
-
-$webSearch.click((e)=>{
-    alert("click")
-    stopFullscreenMode();
-})
-
-window.addEventListener('message', function(event) {
-    // Used for communication with iframe, could receive invalid data
-    if(!event.data) return; 
-
-    console.log("Message received from the child: " + event.data); // Message received from child
-
-    $webSearchFrame[0].src = "mrWhite.html";
-
-    let url = event.data.replace("file:///", "")
-    //url = "https://geckos.ink/api/proxy.php?url="+encodeURIComponent(url)
-
-    sendMessage({type:"frameOpen", value: url });
-});
 
 ///
 /// Selection manager
@@ -1863,6 +1896,17 @@ let pickers = []
 let myWidgetsListLoad = []
 
 let firstMyWidgetsLoad = true
+function createMyWidgetId() {
+    if(window.crypto?.randomUUID) return window.crypto.randomUUID()
+    return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2)
+}
+
+function normalizedWidgetURL(url) {
+    const value = (url || '').trim()
+    if(!value || /^[a-z][a-z0-9+.-]*:/i.test(value)) return value
+    return 'https://' + value
+}
+
 function loadMyWidgets() {
     let _myWidgets = localStorage.getItem("myWidgets")
     if (_myWidgets) {
@@ -1873,7 +1917,12 @@ function loadMyWidgets() {
     }
 
     myWidgetsListLoad = []
+    let migratedWidgetIds = false
     for (let widget of _myWidgets) {
+        if(!widget.id) {
+            widget.id = createMyWidgetId()
+            migratedWidgetIds = true
+        }
         console.log("loading", widget)
         let res = newWidget(widget)        
 
@@ -1892,6 +1941,7 @@ function loadMyWidgets() {
     }
 
     firstMyWidgetsLoad = false
+    if(migratedWidgetIds) saveMyWidgets()
 }
 
 $('ons-list-item.myWidgets').on('click', (e) => {
@@ -1951,6 +2001,7 @@ function newWidget(widget=null) {
     console.log("wiget num", num)
 
     widget = widget || { title: "My widget", color: "#0000ff" }
+    widget.id = widget.id || createMyWidgetId()
     myWidgets.push(widget)
 
     let id = 'myWidget' + num
@@ -1966,7 +2017,9 @@ function newWidget(widget=null) {
     let $app = $("#app-myWidget-template").clone()
     $app.addClass('myWidgetApp')
     $app.attr('id', 'app-myWidget' + num)
-    $app.find('iframe').attr('src', widget.url)
+    let $nativeWebView = $app.find('.myWidgetWebView')
+    $nativeWebView.attr('data-native-webview-id', 'my-widget-' + widget.id)
+    $nativeWebView.attr('data-native-url', normalizedWidgetURL(widget.url))
 
     $widget.find('.colorPicker').attr('id','myWidgetColorPicker' + num)
     let picker = initColorPicker('myWidgetColorPicker' + num)
@@ -1997,6 +2050,7 @@ function newWidget(widget=null) {
 
     console.log('inputs', $widget.find('input'))
 
+    let navigationUpdate = null
     $widget.find('input, .name').on('keyup', (e) => { 
         console.log("input keydown", e)
         widget.title = $widget.find('.name').html()
@@ -2004,17 +2058,16 @@ function newWidget(widget=null) {
         checkMyWidgetTitle($leftMenu)
 
         let newUrl = $widget.find('.url').val()
-        if (newUrl != widget.url)
-            $app.find('iframe').attr('src', newUrl)
-
         widget.url = newUrl
+
+        clearTimeout(navigationUpdate)
+        navigationUpdate = setTimeout(() => {
+            $nativeWebView.attr('data-native-url', normalizedWidgetURL(widget.url))
+            scheduleNativeWebViewSync()
+        }, 400)
 
         saveMyWidgets()
     })   
-    
-    $app.find('.reload').on('click', (e) => {
-        $app.find('iframe').attr('src', widget.url)
-    })
 
     // Create app
     $('.leftMenu').append($leftMenu)
@@ -2031,6 +2084,9 @@ function newWidget(widget=null) {
 
     $widget.find('.name').html(widget.title)
     $widget.find('.url').val(widget.url)
+
+    if(!firstMyWidgetsLoad) saveMyWidgets()
+    scheduleNativeWebViewSync()
 
     return [widget, $widget, picker]
 }

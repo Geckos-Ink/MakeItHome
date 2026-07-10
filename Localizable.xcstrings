@@ -8285,6 +8285,17 @@
         }
       }
     },
+    "widgets.my_widgets.sessions": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Websites open in native web views, and sign-ins and browsing sessions are kept after MakeItHome restarts."
+          }
+        }
+      }
+    },
     "widgets.my_widgets.cookies": {
       "extractionState": "stale",
       "localizations": {
