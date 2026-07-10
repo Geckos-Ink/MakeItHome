@@ -2464,6 +2464,46 @@ public class Display : Equatable {
         }
     }
 
+    /// Immediately removes the overscreen from the window server before a blocking modal
+    /// alert is displayed. Unlike `hideWindow`, this intentionally does not deactivate the
+    /// app or restore the previous app: the modal alert needs to remain the active UI.
+    func dismissOverscreenForModalPresentation() {
+        precondition(Thread.isMainThread)
+
+        guard aboveByPixels > 0 || !windowHidden || shortcutAnimationInProgress else {
+            return
+        }
+
+        let previousSide = side
+        shortcutOpenTimer?.invalidate()
+        shortcutOpenTimer = nil
+        shortcutAnimationInProgress = false
+
+        aboveBy = 0
+        aboveByPixels = 0
+        prevAboveByPixels = 0
+        forceAboveBy = 0
+        side = -1
+        sideToClose = -1
+        activateNewApp = false
+        checkedDragging = false
+        onMoreAboveBy = false
+        lastAcceleratedPointerPosition = nil
+        Static.isDraggingInside = false
+
+        if #available(macOS 12.3, *), previousSide != 3 {
+            (manager.capturePreview as? CapturePreview)?.captureView.unset()
+        }
+
+        manager.window?.orderOut(nil)
+        manager.window?.isOpaque = false
+        manager.window?.alphaValue = 0
+        windowHidden = true
+        Static.mainWindowInUsing = false
+
+        stopScreenRecordingIfNeeded()
+    }
+
     private func shouldPrewarmRecorder(side: Int, mouseDelta: CGPoint) -> Bool {
         if side < 0 || side >= activateSide.count {
             return false
@@ -3217,7 +3257,11 @@ public class Display : Equatable {
     
     //MARK: Active area
     @MainActor func active(mouse: NSPoint, strictSample: StrictMotionSample? = nil){ // was @MainActor
-        
+        if Static.isExtensionApprovalPromptShowing {
+            dismissOverscreenForModalPresentation()
+            return
+        }
+
         if(Static.ScreenRecordingUnauthorized && !Static.debugForceWorking){            
             disableOverscreenAndStopRecording()
             return

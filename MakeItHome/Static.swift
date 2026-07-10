@@ -445,6 +445,9 @@ public class Static {
     public static var isDraggingFromPoint : NSPoint?
     
     public static var screenWake = false
+    // A blocking extension-approval alert must never compete with the overscreen window.
+    // Display.active uses this to keep every display dismissed for the alert's lifetime.
+    public static var isExtensionApprovalPromptShowing = false
     
     public static var navWebView : NavigateWebView?
     

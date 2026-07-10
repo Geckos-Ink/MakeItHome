@@ -720,6 +720,16 @@ class AppExtensionManager {
 
     private func requestConnectionApproval(bundleId: String, clientId: String?, extensionName: String?, extensionVersion: String?, isReplacingConnection: Bool, reason: String) -> ConnectionApprovalDecision {
         let action: () -> ConnectionApprovalDecision = {
+            // NSAlert.runModal runs a nested main run loop. If the overscreen stays visible,
+            // its SceneKit window can continue to own interaction and leave the app stuck
+            // behind the alert. Dismiss it synchronously and suppress re-entry until the
+            // alert has been answered or timed out.
+            Static.isExtensionApprovalPromptShowing = true
+            Static.curDisplay?.dismissOverscreenForModalPresentation()
+            defer {
+                Static.isExtensionApprovalPromptShowing = false
+            }
+
             let extensionDisplayName = self.extensionDisplayName(bundleId: bundleId, clientId: clientId, extensionName: extensionName)
             let alert = NSAlert()
             alert.alertStyle = .warning
