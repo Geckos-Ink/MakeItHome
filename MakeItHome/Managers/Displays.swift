@@ -1952,7 +1952,18 @@ public class Display : Equatable {
             cycleWindows(windows: windows)
 
             if spaceIsChanging {
-                return false
+                // The tick-based timeout (samePlaceholderSince > WaitAfterSpaceChange) can
+                // never fire when the placeholder of the current space is gone (sleep or
+                // fullscreen teardown): samePlaceholderSince is reset on every cycle because
+                // spaceHolderId stays -1, and this guard then blocks screenshots and new
+                // windows forever. A real space change never takes this long.
+                if Date().timeIntervalSince1970 - spaceIsChangingSince > Static.SpaceIsChangingForceResetAfter {
+                    print("space no more changing due to wall-clock timeout")
+                    spaceIsChanging = false
+                }
+                else {
+                    return false
+                }
             }
 
             curPlaceholder?.numWindows = windows.count
@@ -3210,7 +3221,14 @@ public class Display : Equatable {
     
     var disable = false
     
-    var spaceIsChanging : Bool = false
+    var spaceIsChangingSince : Double = 0
+    var spaceIsChanging : Bool = false {
+        didSet {
+            if spaceIsChanging && !oldValue {
+                spaceIsChangingSince = Date().timeIntervalSince1970
+            }
+        }
+    }
     var spaceChangedWin : AppWindows.Window?
     
     func spaceDidChange(){

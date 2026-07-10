@@ -220,6 +220,9 @@ public class Static {
     
     // Space Change
     public static let WaitAfterSpaceChange = 3 // ticks
+    // Wall-clock safety net: spaceIsChanging must never survive longer than this,
+    // whatever happens to the space holders (see checkForScreenshot)
+    public static let SpaceIsChangingForceResetAfter : Double = 5.0 // seconds
     
     // Clipboard
     public static let ClipboardForgetElementsOlderThan = 30 // ergo: maximum clipboard items
