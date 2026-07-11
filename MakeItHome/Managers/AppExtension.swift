@@ -67,6 +67,12 @@ class AppExtensionManager {
     private var recentlyApprovedUntil: [String: TimeInterval] = [:]
     private var deferredApprovals: [String: DeferredConnectionApproval] = [:]
     private var deferredApprovalTimer: Timer?
+
+    func webViewDidFinishLoading() {
+        for app in apps.values {
+            app.webViewDidFinishLoading()
+        }
+    }
     
     func closedApp(bundleId: String){
         guard let app = apps[bundleId] else { return }
@@ -1027,12 +1033,24 @@ class AppExtension {
         statusMessages = []
         hasStatusUpdate = false
     }
+
+    func webViewDidFinishLoading() {
+        // A navigation replaces the entire JavaScript context, including every
+        // extension container previously injected into it.
+        updateWebViewIdentityIfNeeded()
+        markNeedsContainer()
+        syncIfNeeded(force: true)
+    }
     
     func syncIfNeeded(force: Bool = false) {
         updateWebViewIdentityIfNeeded()
         
         guard !syncInFlight else { return }
-        guard Static.AppExtensionWebView != nil else { return }
+        guard let webView = Static.AppExtensionWebView else { return }
+        // evaluateJavaScript during the initial file navigation races the host
+        // functions declared in appExtensionView.html. didFinish restarts the
+        // sync once that JavaScript context is ready.
+        guard !webView.isLoading else { return }
         
         let now = Date.now.timeIntervalSince1970
         if !force && (now - lastSyncAttemptAt) < syncThrottle {

@@ -85,6 +85,12 @@
 
         let settingContentBundleId = null
 
+        function decodeContent(content){
+            let binary = atob(content)
+            let bytes = Uint8Array.from(binary, character => character.charCodeAt(0))
+            return new TextDecoder('utf-8').decode(bytes)
+        }
+
         function setContent(bundleId, content){
             bundleId = bundleId.replaceAll(".", "-")
             let $ext = $('#'+bundleId)
@@ -99,7 +105,7 @@
 
             let decoded = (()=>{
                 try {
-                    return atob(content)
+                    return decodeContent(content)
                 }
                 catch(err){
                     console.error("setContent decode error", err)
@@ -116,6 +122,24 @@
             }
             finally {
                 settingContentBundleId = null
+            }
+
+            // The overscreen can be opened before the browser extension has
+            // finished sending its HTML. In that case showAppExtension() ran
+            // before the injected code could register its `show` callback.
+            // Replay that callback now that the content (and its libraries) is
+            // installed, otherwise components such as Swiper stay uninitialised
+            // until the overscreen is closed and opened a second time.
+            if(isShowing && curBundleId === bundleId){
+                let appEvent = vars[bundleId+'_event_show']
+                if(appEvent){
+                    try {
+                        appEvent()
+                    }
+                    catch(err){
+                        console.error("Extension show event after content load failed", err)
+                    }
+                }
             }
         }
 
