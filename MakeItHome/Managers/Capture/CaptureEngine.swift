@@ -72,6 +72,11 @@ struct CapturedFrame {
     }
     
     func stopCapture() async {
+        defer {
+            continuation = nil
+            streamOutput = nil
+            stream = nil
+        }
         do {
             try await stream?.stopCapture()
             continuation?.finish()
