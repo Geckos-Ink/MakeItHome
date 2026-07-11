@@ -128,9 +128,15 @@ class ScreenRecorder: ObservableObject {
     
     @MainActor public var recordingOnDisplay : CGDirectDisplayID = 0
     private var captureRunID: UInt = 0
+    private var captureIntentID: UInt = 0
+    private var stopOperationID: UInt = 0
+    private var captureStopTask: Task<Void, Never>?
     
     /// Starts capturing screen content.
     func start(lowProfile: Bool = false, display: SCDisplay? = nil) async {
+        captureIntentID &+= 1
+        let intentID = captureIntentID
+
         if(display != nil){
             selectedDisplay = display
         }
@@ -162,13 +168,19 @@ class ScreenRecorder: ObservableObject {
         
         self.priorityFrameRate = p
         
-        if isRunning {
-            await stop()
+        if isRunning || captureStopTask != nil {
+            await stopCaptureEngine()
+            guard intentID == captureIntentID else {
+                return
+            }
         }
         
         if !isSetup {
             // Starting polling for available screen content.
             await monitorAvailableContent()
+            guard intentID == captureIntentID else {
+                return
+            }
             isSetup = true
         }
         
@@ -177,11 +189,12 @@ class ScreenRecorder: ObservableObject {
             startAudioMetering()
         }
         
+        var startingRunID: UInt?
         do {
             let config = streamConfiguration
             let filter = contentFilter
 
-            if(filter == nil){
+            if filter == nil || intentID != captureIntentID {
                 return
             }
             
@@ -190,6 +203,7 @@ class ScreenRecorder: ObservableObject {
             // Start the stream and await new video frames.
             captureRunID &+= 1
             let runID = captureRunID
+            startingRunID = runID
             lastFrame = nil
             lastFrameTime = 0
             
@@ -228,6 +242,9 @@ class ScreenRecorder: ObservableObject {
                 recordingOnDisplay = 0
             }
         } catch {
+            guard startingRunID == captureRunID else {
+                return
+            }
             print("ScreenRecorder start error ese \(error.localizedDescription)")
             // Unable to start the stream. Set the running state to false.
             isRunning = false
@@ -239,16 +256,44 @@ class ScreenRecorder: ObservableObject {
     
     /// Stops capturing screen content.
     func stop() async {
+        captureIntentID &+= 1
+        await stopCaptureEngine()
+    }
+
+    /// Serializes the suspending SCStream stop. A newer start waits for this exact operation;
+    /// an older start that resumes afterwards is rejected by `captureIntentID`.
+    private func stopCaptureEngine() async {
+        let needsEngineStop = isRunning || recordingOnDisplay != 0
         captureRunID &+= 1
         recordingOnDisplay = 0
         lastFrame = nil
         lastFrameTime = 0
         Static.isRecordingScreen = false
-        guard isRunning else { return }
-        
         isRunning = false
-        await captureEngine.stopCapture()
 
+        if let captureStopTask {
+            await captureStopTask.value
+            return
+        }
+
+        guard needsEngineStop else {
+            stopAudioMetering()
+            return
+        }
+
+        stopOperationID &+= 1
+        let operationID = stopOperationID
+        let stopTask = Task { [captureEngine] in
+            await captureEngine.stopCapture()
+        }
+        captureStopTask = stopTask
+
+        await stopTask.value
+
+        if operationID == stopOperationID {
+            captureStopTask = nil
+        }
+        isRunning = false
         stopAudioMetering()
     }
     

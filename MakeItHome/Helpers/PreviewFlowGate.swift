@@ -13,10 +13,13 @@
 //  window server, ScreenCaptureKit, or screen-recording permission.
 //
 //  Invariants this type guarantees:
-//   1. `isFullscreen` is *recomputed fresh from the window list every pass* — never sticky.
-//      Leaving fullscreen re-opens the gate on the very next pass.
+//   1. `isFullscreen` is derived from the window list every pass, with a short exit debounce so
+//      a single incomplete WindowServer snapshot during a fullscreen animation cannot restart
+//      ScreenCaptureKit while the fullscreen Space is still being assembled.
 //   2. `spaceIsChanging` may block updates, but only up to a wall-clock safety window. A real
 //      space switch settles in ~1s; anything longer is treated as stuck and force-cleared.
+//   3. Missing placeholders are repairable only after a stable, non-fullscreen interval. A
+//      fullscreen Space legitimately has no placeholder and must never trigger auto-repair.
 //
 
 import Foundation
@@ -36,12 +39,28 @@ struct PreviewFlowGate {
     /// that catches every such path — the space-change safety window's twin for fullscreen.
     static let fullscreenStaleAfter: TimeInterval = 3.0
 
+    /// WindowServer can briefly omit the fullscreen window while entering/exiting fullscreen.
+    /// Hold the confirmed state across that gap to avoid stop/start/stop recorder churn.
+    static let fullscreenExitSettleAfter: TimeInterval = 1.0
+
+    /// A single placeholder must remain the only observed topology for this long before a Space
+    /// transition is considered complete. This prevents an animation's first partial snapshot
+    /// from being committed as the final Space.
+    static let spaceTopologySettleAfter: TimeInterval = 0.75
+
+    /// A normal (non-fullscreen, non-transitioning) Space may be repaired only after its
+    /// placeholder has continuously been absent for this long.
+    static let missingPlaceholderRepairAfter: TimeInterval = 2.0
+
     /// True while a macOS fullscreen (or fullscreen-sized) window owns the display.
     /// Recomputed fresh from the current window list on every pass — never left sticky.
     private(set) var isFullscreen = false
 
     /// Wall-clock time (seconds since 1970) fullscreen was last *confirmed* true.
     private(set) var lastFullscreenConfirmed: TimeInterval = 0
+
+    /// Start of a continuous run of snapshots without a fullscreen window.
+    private(set) var fullscreenAbsentSince: TimeInterval = 0
 
     /// True while the active Space is mid-transition.
     private(set) var spaceIsChanging = false
@@ -54,23 +73,53 @@ struct PreviewFlowGate {
     /// briefly (<1s); anything longer is a leftover placeholder from a previous space (typically
     /// after a fullscreen app tears down), which otherwise makes the window scan read a
     /// *permanent* "space changing" and freezes previews.
-    static let stalePlaceholdersAfter: TimeInterval = 1.5
+    static let stalePlaceholdersAfter: TimeInterval = 3.0
 
     /// Wall-clock time the current run of duplicate placeholders started (0 when not duplicated).
     private(set) var duplicatePlaceholdersSince: TimeInterval = 0
+
+    /// Exact IDs in the current duplicate run. A changing set is animation, not stale state.
+    private(set) var duplicatePlaceholderSignature: [Int] = []
+
+    /// Normalized IDs from the most recent placeholder topology observation.
+    private(set) var placeholderSignature: [Int] = []
+
+    /// Time at which `placeholderSignature` last changed.
+    private(set) var placeholderSignatureSince: TimeInterval = 0
+
+    /// Start of the current continuous run with no placeholder on screen.
+    private(set) var missingPlaceholderSince: TimeInterval = 0
+
+    /// Last time a transition was explicitly settled. Repairs get a fresh grace period from it.
+    private(set) var lastSpaceTransitionFinished: TimeInterval = 0
 
     // MARK: - Transitions
 
     /// Applies the per-pass fullscreen state derived from the current window list, stamping the
     /// confirmation time whenever fullscreen is genuinely present.
     ///
-    /// Passing `false` here is what breaks the historical deadlock: when no fullscreen-sized
-    /// window is on screen anymore, the gate opens immediately instead of waiting for a
-    /// specific "winner" window to be re-detected.
+    /// Passing `false` starts/continues the bounded exit settle period. The gate opens after a
+    /// continuous absence instead of trusting one possibly incomplete animation snapshot.
     mutating func updateFullscreen(_ present: Bool, now: TimeInterval) {
-        isFullscreen = present
         if present {
+            isFullscreen = true
             lastFullscreenConfirmed = now
+            fullscreenAbsentSince = 0
+            return
+        }
+
+        guard isFullscreen else {
+            fullscreenAbsentSince = 0
+            return
+        }
+
+        if fullscreenAbsentSince == 0 {
+            fullscreenAbsentSince = now
+        }
+
+        if now - fullscreenAbsentSince >= Self.fullscreenExitSettleAfter {
+            isFullscreen = false
+            fullscreenAbsentSince = 0
         }
     }
 
@@ -85,7 +134,83 @@ struct PreviewFlowGate {
             return false
         }
         isFullscreen = false
+        fullscreenAbsentSince = 0
         return true
+    }
+
+    /// Marks receipt of the global active-Space notification. The notification can arrive while
+    /// the fullscreen animation is incomplete, so callers must preserve their last known
+    /// placeholder and let `observePlaceholderTopology` commit the new stable topology.
+    mutating func beginSpaceTransition(now: TimeInterval) {
+        setSpaceChanging(true, now: now)
+        placeholderSignature = []
+        placeholderSignatureSince = now
+        missingPlaceholderSince = 0
+        duplicatePlaceholdersSince = 0
+        duplicatePlaceholderSignature = []
+    }
+
+    /// Fullscreen is itself a Space topology, but one without a MakeItHome placeholder. Accept it
+    /// without starting missing-placeholder repair and without retaining a space-change lock.
+    mutating func acceptFullscreenTopology(now: TimeInterval) {
+        setSpaceChanging(false, now: now)
+        placeholderSignature = []
+        placeholderSignatureSince = now
+        missingPlaceholderSince = 0
+        duplicatePlaceholdersSince = 0
+        duplicatePlaceholderSignature = []
+        lastSpaceTransitionFinished = now
+    }
+
+    /// Records the complete set of on-screen placeholder IDs. Returns true only when exactly one
+    /// ID has remained stable long enough to be safely committed as the current Space.
+    @discardableResult
+    mutating func observePlaceholderTopology(_ ids: [Int], now: TimeInterval) -> Bool {
+        let normalized = Array(Set(ids.filter { $0 > 0 })).sorted()
+
+        if normalized != placeholderSignature {
+            placeholderSignature = normalized
+            placeholderSignatureSince = now
+            missingPlaceholderSince = normalized.isEmpty ? now : 0
+            if normalized.count >= 2 {
+                setSpaceChanging(true, now: now)
+            }
+            return false
+        }
+
+        if normalized.isEmpty {
+            if missingPlaceholderSince == 0 {
+                missingPlaceholderSince = now
+            }
+            return false
+        }
+
+        missingPlaceholderSince = 0
+
+        guard normalized.count == 1 else {
+            setSpaceChanging(true, now: now)
+            return false
+        }
+
+        guard now - placeholderSignatureSince >= Self.spaceTopologySettleAfter else {
+            return false
+        }
+
+        if spaceIsChanging {
+            setSpaceChanging(false, now: now)
+            lastSpaceTransitionFinished = now
+        }
+        return true
+    }
+
+    /// Prevents a newly created placeholder from being duplicated while the asynchronous window
+    /// list catches up and begins reporting it.
+    mutating func notePlaceholderCreated(id: Int, now: TimeInterval) {
+        placeholderSignature = id > 0 ? [id] : []
+        placeholderSignatureSince = now
+        missingPlaceholderSince = 0
+        setSpaceChanging(false, now: now)
+        lastSpaceTransitionFinished = now
     }
 
     /// Sets the space-changing flag, stamping the start time only on the false→true edge so
@@ -108,27 +233,53 @@ struct PreviewFlowGate {
             return false
         }
         spaceIsChanging = false
+        lastSpaceTransitionFinished = now
+        // A timeout is not proof that an already-running missing interval is safe to repair.
+        // Restart that grace window instead of immediately creating a placeholder.
+        if placeholderSignature.isEmpty {
+            missingPlaceholderSince = now
+        }
         return true
     }
 
-    /// Feeds the number of on-screen "makeithome" placeholder panels seen on this pass and
-    /// returns `true` exactly once, when duplicates have persisted past `stalePlaceholdersAfter`
-    /// — the caller should then collapse them to a single placeholder. Resets as soon as the
-    /// count drops back below two, so real (transient) space swipes never trip it.
-    mutating func notePlaceholderCount(_ count: Int, now: TimeInterval) -> Bool {
-        guard count >= 2 else {
+    /// Feeds the exact on-screen "makeithome" placeholder IDs and returns `true` exactly once
+    /// when the same duplicate set persists past `stalePlaceholdersAfter`. A Space animation can
+    /// show two holders for a while, but its ID set changes; that restarts the timer instead of
+    /// closing a valid panel mid-animation.
+    mutating func noteDuplicatePlaceholderIDs(_ ids: [Int], now: TimeInterval) -> Bool {
+        let normalized = Array(Set(ids.filter { $0 > 0 })).sorted()
+        guard normalized.count >= 2 else {
             duplicatePlaceholdersSince = 0
+            duplicatePlaceholderSignature = []
             return false
         }
-        if duplicatePlaceholdersSince == 0 {
+
+        if duplicatePlaceholdersSince == 0 || duplicatePlaceholderSignature != normalized {
+            duplicatePlaceholderSignature = normalized
             duplicatePlaceholdersSince = now
             return false
         }
         if now - duplicatePlaceholdersSince > Self.stalePlaceholdersAfter {
             duplicatePlaceholdersSince = 0   // one-shot: re-arm for the next run
+            duplicatePlaceholderSignature = normalized
             return true
         }
         return false
+    }
+
+    /// True only for a continuously missing placeholder on a topology that is known not to be
+    /// fullscreen or in transition. This is the guard for the destructive auto-repair path.
+    func shouldRepairMissingPlaceholder(now: TimeInterval) -> Bool {
+        guard !isFullscreen,
+              !spaceIsChanging,
+              placeholderSignature.isEmpty,
+              missingPlaceholderSince > 0,
+              now - missingPlaceholderSince >= Self.missingPlaceholderRepairAfter,
+              lastSpaceTransitionFinished == 0 ||
+                now - lastSpaceTransitionFinished >= Self.missingPlaceholderRepairAfter else {
+            return false
+        }
+        return true
     }
 
     // MARK: - Queries

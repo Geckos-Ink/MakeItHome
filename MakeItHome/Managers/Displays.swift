@@ -216,12 +216,13 @@ public class DisplaysManager {
         print("space did change")
         
         updateFrontmostApp()
-        //screenRecorderSelectDisplay()
-        
-        curDisplay?.spaceDidChange()
-        
-        // force to false (this could glitch the overscreen activation in the short term(?))
-        curDisplay?.spaceIsChanging = false
+
+        // The notification is global and may be caused by a fullscreen Space on any display.
+        // Protect every display until its own window topology settles; immediately clearing the
+        // flag here let an animation snapshot create/close placeholders on the wrong Space.
+        for display in displays {
+            display.spaceDidChange()
+        }
     }
     
     func getDisplayFromNSScreen(screen : NSScreen) -> Display? {
@@ -305,6 +306,10 @@ public class DisplaysManager {
             }
             
             await screenRecorder.refreshAvailableContent()
+
+            guard !Task.isCancelled else {
+                return
+            }
             
             let activeDisplay = self.curDisplay
             let activeDisplayId = activeDisplay?.screen.displayID
@@ -313,6 +318,7 @@ public class DisplaysManager {
             guard let activeDisplay,
                   activeDisplay.shouldKeepScreenRecorderActive(),
                   let scDisplay else {
+                guard !Task.isCancelled else { return }
                 await screenRecorder.stop()
                 return
             }
@@ -320,6 +326,7 @@ public class DisplaysManager {
             print("starting recording on display", scDisplay.displayID)
             activeDisplay.scDisplay = scDisplay
             screenRecorder.capturePreview.currentDisplay(display: activeDisplay)
+            guard !Task.isCancelled else { return }
             await screenRecorder.start(lowProfile: true, display: scDisplay)
         }
     }
@@ -1294,7 +1301,6 @@ public class Display : Equatable {
     }
 
     public var currentSpaceId : Int = -1
-    var currentSpaceIds : [Int] = []
     public var spaces : [Int: SwifterPlaceholder] = [:]
     var curPlaceholder : SwifterPlaceholder? = nil
     var samePlaceholderSince : Int64 = 0
@@ -1341,46 +1347,17 @@ public class Display : Equatable {
         let keep = ownedOnScreen.first { $0 === curPlaceholder } ?? ownedOnScreen[0]
         for placeholder in ownedOnScreen where placeholder !== keep {
             placeholder.close()
+            spaces = spaces.filter { $0.value !== placeholder }
         }
         placeholders.removeAll { ph in ph !== keep && ownedOnScreen.contains { $0 === ph } }
 
+        // Keep a safe owned reference, but let the next single-holder observations commit its
+        // Space ID after the topology settle interval. Do not force-clear the transition here.
         curPlaceholder = keep
-        currentSpaceId = keep.windowNumber
-        if !currentSpaceIds.contains(keep.windowNumber) {
-            currentSpaceIds.append(keep.windowNumber)
-        }
-        spaceIsChanging = false
         print("resolved stale duplicate placeholders, kept", keep.windowNumber)
         return true
     }
 
-    func removeDuplicatePlaceholder(idNew : Int, idOld : Int){
-        var pos = -1
-        for i in 0 ... placeholders.count - 1 {
-            let pid = placeholders[i].id
-            if pid == idNew || pid == -1 {
-                placeholders[i].close()
-                pos = i
-                
-                if pid != -1{
-                    break
-                }
-            }
-        }
-        
-        if pos >= 0 {
-            placeholders.remove(at: pos)
-        }
-        
-        for app in apps {
-            for win in app.value.windows {
-                if win.value.spaceId == idNew {
-                    win.value.spaceId = idOld
-                }
-            }
-        }
-    }
-    
     var aboveByTriggeredSince : TimeInterval = 0
     
     //MARK: Display init
@@ -1543,11 +1520,10 @@ public class Display : Equatable {
     public var frontMostAppSince : Int64 = 0
     
     var exitedFromFullscreen = 0 // how many cycles passed after exiting fullscreen mode
-    var noSpaceholderFor = 0 // how many cycles passed without a found space holder
     let waitCyclesCoolDown = 10 // how many checkForScreenshot cycles needed to unlock a checking
     
-    let placeholdersQueue = DispatchQueue(label: "ink.makeithome.placeholdersQueue")
-        
+    // Placeholder windows and their collections are AppKit state and are main-thread confined.
+
     func getPlaceholderById(_ id: Int) -> SwifterPlaceholder? {
         var placeholder : SwifterPlaceholder?
         for ph in self.placeholders {
@@ -1660,7 +1636,6 @@ public class Display : Equatable {
             }
             
             var winner : [String: AnyObject]? = nil
-            var winnerLayer = -1
             var winnerBehindSomething = false
             
             func rectContainsWinnerRect(rect : CGRect) -> Bool {
@@ -1671,24 +1646,10 @@ public class Display : Equatable {
                 return contains
             }
             
-            //var spaceHolder : [String: AnyObject]? = nil
-            var spaceHolderId = -1
-            var sameSpaceHolderId : Int = 0
-            
             func cycleWindows(windows : [CFDictionary]?){
 
                 winnerRect = NSRect.zero // set to default
-
-                // Recompute the fullscreen state fresh from the current window list on every
-                // pass. isFullscreen is otherwise sticky (its top-of-function reset at the
-                // "//self.isFullscreen = false" line is disabled) and only gets cleared when a
-                // non-fullscreen winner window is found. After leaving a fullscreen app that
-                // clear can fail to happen, leaving isFullscreen stuck true forever: that keeps
-                // shouldKeepScreenRecorderActive() false (the recorder stopped for fullscreen
-                // never restarts) and makes the winner block skip cropping — window screenshots
-                // freeze and newly opened windows never get a preview. The loop below sets it
-                // back to true if a fullscreen-sized window is genuinely still on screen.
-                self.isFullscreen = false
+                var fullscreenDetected = false
 
                 var aheadRects = [NSRect]()
                 
@@ -1700,10 +1661,8 @@ public class Display : Equatable {
                     removeMenuHeight = menuHeight
                 }
                 
-                var spaceHolderFound = -1
-
                 // Every on-screen placeholder panel seen this pass. More than one means stale
-                // duplicates (see PreviewFlowGate.notePlaceholderCount / resolveStalePlaceholders).
+                // duplicates (see PreviewFlowGate.noteDuplicatePlaceholderIDs).
                 var scannedHolderIds : [Int] = []
 
                 func sortWinByLayer(_ w1: CFDictionary, _ w2: CFDictionary) -> Bool {
@@ -1719,7 +1678,6 @@ public class Display : Equatable {
                 let orderedWindows = windows //windows?.sorted(by: sortWinByLayer)
                 
                 var winnerTitle = ""
-                var _curSpaceholder : SwifterPlaceholder?
                 
                 for win in orderedWindows!{
                     if let dict = win as? [String: AnyObject] {
@@ -1761,12 +1719,12 @@ public class Display : Equatable {
                         appWin?.missingFor = 0
                         appWin?.appearsInThiSpace = !spaceIsChanging
                         
-                        let winOwnerChecked = (winOwnerName == name || pid == winPid!)
+                        let winOwnerChecked = winOwnerName == name || (winPid.map { $0 == pid } ?? false)
                         
                         if winLayer == 0 && rectOnCurrentDisplay && !excludedApps.contains(winOwnerName ?? "") {
                             // In case of emergency break the glass: https://developer.apple.com/documentation/appkit/nswindowwillenterfullscreennotification (seems not working for other apps)
                             if rect.height >= (screen.frame.height-removeMenuHeight) && rect.width >= screen.frame.width {
-                                self.isFullscreen = true
+                                fullscreenDetected = true
                             }
                         }
                         
@@ -1774,27 +1732,9 @@ public class Display : Equatable {
                         
                         if winTitle == lowerTitle && winOnScreen == 1 && rectOnCurrentDisplay {
                             // found placeholder panel
-                            spaceHolderId = winId
-
                             if !scannedHolderIds.contains(winId) {
                                 scannedHolderIds.append(winId)
-                            }
-
-                            if self.currentSpaceId == winId {
-                                // ...
-                            }
-                            else {
-                                print("space holder found ", spaceHolderFound, winId)
-                                
-                                if spaceHolderFound == -1 {
-                                    spaceHolderFound = winId
-                                }
-                                else {
-                                    spaceHolderFound = -2
-                                    self.spaceIsChanging = true
-                                }
-                                
-                                self.currentSpaceId = spaceHolderFound
+                                print("space holder observed", winId)
                             }
                         }
                         else if (winner == nil || thisTimeHasTitle) && (winOnScreen == 1 && rectOnCurrentDisplay && !excludedApps.contains(winOwnerName ?? "") && winOwnerChecked && (rect.width+rect.height)/2 > 150)/* window must be enough big */{
@@ -1846,13 +1786,14 @@ public class Display : Equatable {
                             
                             
                             winner = dict
-                            winnerLayer = winLayer
                             winnerRect = rect
                             
                             winnerTitle = winTitle ?? ""
                             //appWin?.lastRect = rect
                             
-                            isFullscreen = winnerRect.size.width >= self.frame.width && winnerRect.size.height >= self.frame.height - self.menuHeight
+                            fullscreenDetected = fullscreenDetected ||
+                                (winnerRect.size.width >= self.frame.width &&
+                                 winnerRect.size.height >= self.frame.height - self.menuHeight)
                         }
                         else if !winOwnerChecked && winner == nil{
                             if rect != self.screen.frame{
@@ -1862,8 +1803,17 @@ public class Display : Equatable {
                     }
                 }
                 
-                // replicated belows, if this works remove it
+                let topologyNow = Date().timeIntervalSince1970
+                let wasFullscreen = isFullscreen
+                flowGate.updateFullscreen(fullscreenDetected, now: topologyNow)
+
+                // A fullscreen Space has no placeholder by design. Accept that topology and do
+                // not run duplicate/missing repair while entering, inside, or leaving fullscreen.
                 if isFullscreen {
+                    flowGate.acceptFullscreenTopology(now: topologyNow)
+                    if !wasFullscreen {
+                        stopScreenRecordingIfNeeded()
+                    }
                     exitedFromFullscreen = 0
                     return
                 }
@@ -1878,121 +1828,56 @@ public class Display : Equatable {
                 ///# spaceHolder managent
                 ///#
                 let holdersOnScreen = scannedHolderIds
-                DispatchQueue.main.async { // done on main thread
-                    //MARK: spaceHolder MGMT
-                    self.samePlaceholderSince += 1
+                let wasChangingSpace = self.spaceIsChanging
+                let topologySettled = self.flowGate.observePlaceholderTopology(
+                    holdersOnScreen,
+                    now: topologyNow)
 
-                    // Collapse persistently-duplicated placeholders before anything else. Two
-                    // panels on one display is only ever a transient swipe; when it lasts (a
-                    // stale placeholder left behind by a fullscreen app's space) the scan reads
-                    // it as a permanent "space changing" and freezes previews. This is the case
-                    // in the "space holder found A B … space no more changing due to timeout"
-                    // log loop — the dedup below at 'removeDuplicatePlaceholder' can't help
-                    // because it is gated off while spaceIsChanging is (perpetually) true.
-                    if self.flowGate.notePlaceholderCount(holdersOnScreen.count,
-                                                          now: Date().timeIntervalSince1970),
-                       self.resolveStalePlaceholders(onScreenIds: holdersOnScreen) {
-                        return // next scan will see a single, unambiguous placeholder
+                if !wasChangingSpace && self.spaceIsChanging {
+                    print("space changing — waiting for stable placeholder topology")
+                    self.spaceInChanging()
+                }
+
+                self.samePlaceholderSince = holdersOnScreen.count == 1 &&
+                    holdersOnScreen.first == self.currentSpaceId
+                    ? self.samePlaceholderSince + 1
+                    : 0
+
+                // Persistent duplicates are repairable, but only after the animation grace
+                // period measured by the gate. All mutation stays synchronous on the main actor
+                // so an old scan can never overwrite a newer topology.
+                if self.flowGate.noteDuplicatePlaceholderIDs(holdersOnScreen, now: topologyNow),
+                   self.resolveStalePlaceholders(onScreenIds: holdersOnScreen) {
+                    return
+                }
+
+                if topologySettled, let settledID = holdersOnScreen.first {
+                    self.currentSpaceId = settledID
+
+                    if let placeholder = self.placeholders.first(where: {
+                        $0.windowNumber == settledID || $0.id == settledID
+                    }) {
+                        if placeholder.id == -1 {
+                            placeholder.id = settledID
+                        }
+                        self.curPlaceholder = placeholder
+                        self.spaces[settledID] = placeholder
+                    } else {
+                        // The window list can contain the just-closed stale panel for one pass.
+                        // Keep the prior reference until repair is independently authorized.
+                        self.curPlaceholder = nil
                     }
 
-                    if (spaceHolderId == -1 || spaceHolderFound > -1 || spaceHolderFound == -2) {
-                        
-                        if true && (!self.spaceIsChanging && !self.activateNewApp) && spaceHolderId >= 0 && spaceHolderId != self.currentSpaceId && self.curPlaceholder?.stillValid() ?? false {
-                            DispatchQueue.main.async {
-                                for placeholder in self.placeholders {
-                                    if placeholder.stillValid() && self.curPlaceholder?.id != spaceHolderId {
-                                        if placeholder.numWindows == self.curPlaceholder?.numWindows && spaceHolderId != self.currentSpaceId {
-                                            self.removeDuplicatePlaceholder(idNew: spaceHolderId, idOld: self.currentSpaceId)
-                                            spaceHolderId = self.currentSpaceId
-                                            print("duplicate space holder removed")
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        
-                        if self.currentSpaceId != spaceHolderId || (spaceHolderFound < 0 && self.currentSpaceId > 0){
-                            if !self.currentSpaceIds.contains(spaceHolderId){
-                                self.samePlaceholderSince = 0
-                            }
-                            
-                            sameSpaceHolderId = spaceHolderId
-                        }
-                        
-                        // register the space holder in the list of "current space holders"
-                        // this is an ugly but realistic approach. the space holder managament is a mess
-                        if spaceHolderId > 0 {
-                            if !self.currentSpaceIds.contains(spaceHolderId){
-                                self.currentSpaceIds.append(spaceHolderId)
-                            }
-                        }
-                        
-                        
-                        if spaceHolderFound >= 0 {
-                            self.currentSpaceId = spaceHolderId
-                            print("unique space holder found", spaceHolderId)
-                        }
-                        
-                        //spaceHolderFound = -2 // force "space changing" status (it means that two space holders were found)
-                        if spaceHolderFound == -2 && !self.spaceIsChanging {
-                            print("space changing")
-                            self.spaceIsChanging = true
-                            self.spaceInChanging()
-                        }
-                        
-                        // after fullscreen: Thread 1: EXC_BAD_ACCESS (code=1, address=0x20)
-                        DispatchQueue.main.async {
-                            self.curPlaceholder = nil
-                        }
-                    }
-                    
-                    if self.spaceIsChanging {
-                        if self.samePlaceholderSince > Static.WaitAfterSpaceChange {
-                            self.spaceIsChanging = false
-                            print("space no more changing due to timeout")
-                        }
-                        else {
-                            print("space is still changing because of ", self.samePlaceholderSince, " <= ", Static.WaitAfterSpaceChange)
-                        }
-                    }
-                    else {
-                        //TODO: Thread 1: EXC_BAD_ACCESS (code=1, address=0x20) (placeholders)
-                        DispatchQueue.main.async {
-                            if self.curPlaceholder == nil {
-                                let _placeholders = self.placeholders
-                                for placeholder in _placeholders {
-                                    if let pl = placeholder as? SwifterPlaceholder{
-                                        if(placeholder.id == -1){
-                                            placeholder.id = self.currentSpaceId
-                                        }
-                                        
-                                        if(placeholder.id == self.currentSpaceId){
-                                            self.curPlaceholder = placeholder
-                                            self.spaces[self.currentSpaceId] = self.curPlaceholder
-                                            break;
-                                        }
-                                    }
-                                }
+                    if !self.activateNewApp {
+                        for win in windows ?? [] {
+                            if let dict = win as? [String: AnyObject] {
+                                let winId = dict["kCGWindowNumber"] as? Int ?? -1
+                                getWindow(winId: winId)?.spaceId = settledID
                             }
                         }
                     }
-                    
-                    if spaceHolderFound == -1 {
-                        if !self.spaceIsChanging && !self.activateNewApp{
-                            for win in windows!{
-                                if let dict = win as? [String: AnyObject] {
-                                    let winId = dict["kCGWindowNumber"] as? Int ?? -1
-                                    
-                                    let appWin = getWindow(winId: winId)
-                                    appWin?.spaceId = self.curPlaceholder?.id ?? self.currentSpaceId // update every time
-                                }
-                            }
-                        }
-                    }
-                    
-                    if spaceHolderFound >= 0 {
-                        self.spaceIsChanging = false
-                    }
+
+                    print("stable unique space holder found", settledID)
                 }
             }
             
@@ -2030,11 +1915,9 @@ public class Display : Equatable {
             cycleWindows(windows: windows)
 
             if spaceIsChanging {
-                // The tick-based timeout (samePlaceholderSince > WaitAfterSpaceChange) can
-                // never fire when the placeholder of the current space is gone (sleep or
-                // fullscreen teardown): samePlaceholderSince is reset on every cycle because
-                // spaceHolderId stays -1, and this guard then blocks screenshots and new
-                // windows forever. The gate's wall-clock safety window force-clears it.
+                // A notification or duplicate topology must not block screenshots forever if
+                // WindowServer never supplies a final holder. The wall-clock safety window
+                // releases it, then missing-holder repair receives a separate grace period.
                 if flowGate.recoverStuckSpaceChange(now: Date().timeIntervalSince1970) {
                     print("space no more changing due to wall-clock timeout")
                 }
@@ -2044,6 +1927,27 @@ public class Display : Equatable {
             }
 
             curPlaceholder?.numWindows = windows.count
+
+            if !self.isFullscreen && !spaceIsChanging &&
+                self.flowGate.shouldRepairMissingPlaceholder(now: Date().timeIntervalSince1970) {
+                print("repairing genuinely missing SwifterPlaceholder")
+                let winHolder = SwifterPlaceholder()
+                winHolder.numWindows = windows.count
+                winHolder.show()
+
+                self.curPlaceholder = winHolder
+                self.currentSpaceId = winHolder.windowNumber
+                if self.currentSpaceId == -1 {
+                    self.currentSpaceId = -2
+                }
+
+                // AppKit objects and this collection are main-thread confined. Tell the gate
+                // immediately so stale window-list snapshots cannot create another holder.
+                self.placeholders.append(winHolder)
+                self.flowGate.notePlaceholderCreated(
+                    id: winHolder.windowNumber,
+                    now: Date().timeIntervalSince1970)
+            }
             
             // If the new frame is bigger, force the shot
             var vForceShot = forceShot
@@ -2088,9 +1992,6 @@ public class Display : Equatable {
                 
                 //print("Current window rect: ", winnerRect)
                 
-                // Check for fullscreen
-                let isFullSize = winnerRect.size.width >= self.frame.width && winnerRect.size.height >= self.frame.height - self.menuHeight
-                
                 // "isFullscreen" check
                 let isFinderDragging = appWin.appTitle == "Finder" && appWin.winTitle == ""
                 
@@ -2106,36 +2007,6 @@ public class Display : Equatable {
                     self.currentSpaceId = self.curPlaceholder?.windowNumber ?? -2
                     if self.currentSpaceId == -1 {
                         self.currentSpaceId = -2
-                    }
-                }
-                
-                if !self.isFullscreen && !spaceIsChanging{
-                    if self.currentSpaceId == -1 {
-                        noSpaceholderFor += 1
-                        
-                        if noSpaceholderFor > (waitCyclesCoolDown) {
-                            print("creating new SwifterPlaceholder")
-                            let winHolder = SwifterPlaceholder()
-                            winHolder.numWindows = windows.count
-                            
-                            // It cause useless space change after fullscreen
-                            // check in case of opening a window in another space
-                            winHolder.show()
-                            
-                            self.curPlaceholder = winHolder
-                            self.currentSpaceId = winHolder.windowNumber
-                            
-                            if self.currentSpaceId == -1 {
-                                self.currentSpaceId  = -2
-                            }
-                            
-                            placeholdersQueue.async {
-                                self.placeholders.append(winHolder)
-                            }
-                        }
-                    }
-                    else {
-                        noSpaceholderFor = 0
                     }
                 }
                 
@@ -3305,14 +3176,12 @@ public class Display : Equatable {
         
         aboveBy = 0
         aboveByPixels = 0
-        
-        curPlaceholder = nil
-        currentSpaceId = -1
         samePlaceholderSince = 0
-        
-        self.spaceIsChanging = false
-        
-        self.currentSpaceIds = []
+
+        // activeSpaceDidChange can fire in the middle of fullscreen/Space animation. Preserve
+        // the last valid placeholder mapping until this display observes one stable holder (or
+        // confirms a fullscreen topology, where no holder is expected).
+        flowGate.beginSpaceTransition(now: Date().timeIntervalSince1970)
     }
     
     func spaceInChanging(){

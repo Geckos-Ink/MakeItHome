@@ -96,8 +96,10 @@ enum PreviewFlowGateTests {
         Check.expect(!gate.allowsScreenshot, "screenshots are gated off while fullscreen")
 
         gate.updateFullscreen(false, now: 11)
-        Check.expect(!gate.isFullscreen, "leaves fullscreen the moment no fullscreen window is present")
-        Check.expect(gate.allowsScreenshot, "screenshots resume immediately after fullscreen ends")
+        Check.expect(gate.isFullscreen, "holds fullscreen during the first ambiguous exit snapshot")
+        gate.updateFullscreen(false, now: 11 + PreviewFlowGate.fullscreenExitSettleAfter)
+        Check.expect(!gate.isFullscreen, "leaves fullscreen after continuous absence settles")
+        Check.expect(gate.allowsScreenshot, "screenshots resume after fullscreen exit settles")
     }
 
     static func testStaleFullscreenIsCleared() {
@@ -175,14 +177,14 @@ enum PreviewFlowGateTests {
         let t0: TimeInterval = 2000
 
         // A single placeholder is normal — never a collapse signal.
-        Check.expect(!gate.notePlaceholderCount(1, now: t0), "one placeholder never signals a collapse")
+        Check.expect(!gate.noteDuplicatePlaceholderIDs([1], now: t0), "one placeholder never signals a collapse")
 
         // A brief two-placeholder blip (real space swipe) resolves before the window elapses.
-        Check.expect(!gate.notePlaceholderCount(2, now: t0), "first pass with duplicates just starts the timer")
-        Check.expect(!gate.notePlaceholderCount(2, now: t0 + 0.5), "still within the window — no collapse yet")
-        Check.expect(!gate.notePlaceholderCount(1, now: t0 + 0.7), "duplicates gone → reset, no collapse")
-        Check.expect(!gate.notePlaceholderCount(2, now: t0 + 1.0), "a fresh run restarts the timer from here")
-        Check.expect(!gate.notePlaceholderCount(2, now: t0 + 1.2), "brief swipe never trips the collapse")
+        Check.expect(!gate.noteDuplicatePlaceholderIDs([1, 2], now: t0), "first pass with duplicates just starts the timer")
+        Check.expect(!gate.noteDuplicatePlaceholderIDs([1, 2], now: t0 + 0.5), "still within the window — no collapse yet")
+        Check.expect(!gate.noteDuplicatePlaceholderIDs([2], now: t0 + 0.7), "duplicates gone → reset, no collapse")
+        Check.expect(!gate.noteDuplicatePlaceholderIDs([2, 3], now: t0 + 1.0), "a fresh run restarts the timer from here")
+        Check.expect(!gate.noteDuplicatePlaceholderIDs([2, 3], now: t0 + 1.2), "brief swipe never trips the collapse")
     }
 
     static func testPersistentDuplicatePlaceholdersSignalCollapseOnce() {
@@ -195,7 +197,7 @@ enum PreviewFlowGateTests {
         var firstSignalAt: TimeInterval? = nil
         var now = start
         for _ in 0..<20 { // 20 * 0.25s = 5s of the stuck loop
-            if gate.notePlaceholderCount(2, now: now) {
+            if gate.noteDuplicatePlaceholderIDs([6840, 6804], now: now) {
                 collapseSignals += 1
                 if firstSignalAt == nil { firstSignalAt = now }
             }
@@ -208,6 +210,14 @@ enum PreviewFlowGateTests {
         }
         // The signal is one-shot per run: it does not fire on every single pass.
         Check.expect(collapseSignals < 20, "collapse signal is one-shot, re-armed — not spamming every pass")
+
+        var changing = PreviewFlowGate()
+        Check.expect(!changing.noteDuplicatePlaceholderIDs([1, 2], now: start),
+                     "a duplicate ID set starts its own timer")
+        Check.expect(!changing.noteDuplicatePlaceholderIDs([2, 3], now: start + 2.9),
+                     "changing duplicate IDs restart the timer instead of collapsing")
+        Check.expect(!changing.noteDuplicatePlaceholderIDs([2, 3], now: start + 3.1),
+                     "the replacement set gets a full grace period")
     }
 
     // --- Flow simulations reproducing the reported bug ---------------------------------------
@@ -233,10 +243,14 @@ enum PreviewFlowGateTests {
             if p.screenshot || p.recorder { break }
         }
 
-        // Exit fullscreen — the very next pass must re-open both, no matter how long we idled.
-        let back = sim.step(fullscreenWindowPresent: false)
-        Check.expect(back.screenshot, "screenshots resume on the first pass after leaving fullscreen")
-        Check.expect(back.recorder, "recorder restarts on the first pass after leaving fullscreen")
+        // Exit fullscreen. WindowServer snapshots can flicker during the animation, so the gate
+        // deliberately waits for a short continuous absence before restarting the recorder.
+        var back = sim.step(fullscreenWindowPresent: false)
+        while !back.screenshot {
+            back = sim.step(fullscreenWindowPresent: false)
+        }
+        Check.expect(back.screenshot, "screenshots resume after the fullscreen exit settles")
+        Check.expect(back.recorder, "recorder restarts after the fullscreen exit settles")
     }
 
     static func testFullscreenThenBackWhileWindowsNotEvaluatedRecovers() {
@@ -300,6 +314,95 @@ enum PreviewFlowGateTests {
         Check.expect(cleared.screenshot, "re-opens immediately once the space settles (no waiting on the safety net)")
     }
 
+    static func testFullscreenExitIgnoresOneMissingSnapshot() {
+        Check.section("fullscreen animation: one missing snapshot cannot restart recording")
+        var gate = PreviewFlowGate()
+
+        gate.updateFullscreen(true, now: 100)
+        gate.updateFullscreen(false, now: 100.1)
+        Check.expect(gate.isFullscreen, "holds fullscreen through the first missing snapshot")
+        Check.expect(!gate.allowsRecorder(authorized: true, activated: true, ready: true, disabled: false),
+                     "recorder stays stopped during the ambiguous animation frame")
+
+        gate.updateFullscreen(true, now: 100.2)
+        Check.expect(gate.fullscreenAbsentSince == 0, "a re-confirmation cancels the pending exit")
+    }
+
+    static func testPlaceholderTopologyMustSettle() {
+        Check.section("space topology: transient holders are not committed or repaired")
+        var gate = PreviewFlowGate()
+        let start: TimeInterval = 7000
+
+        gate.beginSpaceTransition(now: start)
+        Check.expect(!gate.observePlaceholderTopology([10, 20], now: start + 0.1),
+                     "two holders during animation keep the transition guarded")
+        Check.expect(gate.spaceIsChanging, "duplicate topology remains marked as changing")
+        Check.expect(!gate.observePlaceholderTopology([20], now: start + 0.4),
+                     "the first single-holder snapshot is not committed")
+        Check.expect(!gate.observePlaceholderTopology([20], now: start + 0.8),
+                     "a single holder still inside the settle interval is not committed")
+        Check.expect(gate.observePlaceholderTopology([20], now: start + 1.2),
+                     "one stable holder settles the transition")
+        Check.expect(!gate.spaceIsChanging, "stable topology releases the transition guard")
+    }
+
+    static func testFullscreenNeverRepairsItsMissingPlaceholder() {
+        Check.section("fullscreen topology: no placeholder is valid and never auto-repaired")
+        var gate = PreviewFlowGate()
+        let start: TimeInterval = 8000
+
+        gate.beginSpaceTransition(now: start)
+        gate.updateFullscreen(true, now: start + 0.1)
+        gate.acceptFullscreenTopology(now: start + 0.1)
+        _ = gate.observePlaceholderTopology([], now: start + 10)
+
+        Check.expect(!gate.spaceIsChanging, "fullscreen topology does not retain a space lock")
+        Check.expect(!gate.shouldRepairMissingPlaceholder(now: start + 100),
+                     "missing placeholder in fullscreen never triggers repair")
+    }
+
+    static func testMissingPlaceholderRepairHasGrace() {
+        Check.section("missing placeholder repair: only after stable non-fullscreen grace")
+        var gate = PreviewFlowGate()
+        let start: TimeInterval = 9000
+
+        _ = gate.observePlaceholderTopology([], now: start)
+        Check.expect(!gate.shouldRepairMissingPlaceholder(now: start + 1),
+                     "does not repair a brief missing snapshot")
+        Check.expect(gate.shouldRepairMissingPlaceholder(
+            now: start + PreviewFlowGate.missingPlaceholderRepairAfter + 0.01),
+                     "allows repair only after continuous absence")
+
+        gate.notePlaceholderCreated(id: 42, now: start + 3)
+        Check.expect(!gate.shouldRepairMissingPlaceholder(now: start + 100),
+                     "creating a placeholder disarms repair until a new missing run")
+    }
+
+    static func testMultiDisplayTopologiesSettleIndependently() {
+        Check.section("multi-display: one fullscreen Space cannot corrupt another display")
+        var fullscreenDisplay = PreviewFlowGate()
+        var desktopDisplay = PreviewFlowGate()
+        let start: TimeInterval = 10_000
+
+        // The workspace notification is global, so both displays enter protection.
+        fullscreenDisplay.beginSpaceTransition(now: start)
+        desktopDisplay.beginSpaceTransition(now: start)
+
+        fullscreenDisplay.updateFullscreen(true, now: start + 0.1)
+        fullscreenDisplay.acceptFullscreenTopology(now: start + 0.1)
+        _ = desktopDisplay.observePlaceholderTopology([77], now: start + 0.1)
+        let desktopSettled = desktopDisplay.observePlaceholderTopology(
+            [77],
+            now: start + 0.1 + PreviewFlowGate.spaceTopologySettleAfter)
+
+        Check.expect(fullscreenDisplay.isFullscreen, "fullscreen display remains correctly gated")
+        Check.expect(!fullscreenDisplay.spaceIsChanging, "fullscreen's holder-less topology is accepted")
+        Check.expect(desktopSettled, "other display independently commits its stable holder")
+        Check.expect(!desktopDisplay.spaceIsChanging, "other display releases only its own transition")
+        Check.expect(!fullscreenDisplay.shouldRepairMissingPlaceholder(now: start + 100),
+                     "desktop settling cannot trigger repair on the fullscreen display")
+    }
+
     // --- Runner --------------------------------------------------------------------------------
 
     static func main() {
@@ -317,6 +420,11 @@ enum PreviewFlowGateTests {
         testFullscreenThenBackWhileWindowsNotEvaluatedRecovers()
         testFullscreenTeardownWithSpuriousSpaceChangeRecovers()
         testNormalSpaceChangeClearsImmediately()
+        testFullscreenExitIgnoresOneMissingSnapshot()
+        testPlaceholderTopologyMustSettle()
+        testFullscreenNeverRepairsItsMissingPlaceholder()
+        testMissingPlaceholderRepairHasGrace()
+        testMultiDisplayTopologiesSettleIndependently()
 
         print("\n────────────────────────────────────────")
         if Check.failed == 0 {
