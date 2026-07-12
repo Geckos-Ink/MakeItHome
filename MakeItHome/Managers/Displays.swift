@@ -951,14 +951,23 @@ public class Display : Equatable {
                 let openApp = win!.app!.runningApp // ?? runningApp
                 display.curFrontApp = openApp
                 
-                if !force {
+                let activateAllWindows = PreviewFlowGate.shouldActivateAllWindows(
+                    forceRequested: force,
+                    selectedSpaceID: win!.spaceId,
+                    appWindowSpaceIDs: Array(self.windows.values.map(\.spaceId)))
+
+                if !activateAllWindows {
                     openApp.activate(options: [])
                 }
                 else {
                     openApp.activate(options: [.activateAllWindows])
                 }
-                if display.pendingFrontAppAfterClose == openApp {
-                    display.pendingFrontAppAfterClose = nil
+                display.getPlaceholderById(win!.spaceId)?.releaseFocus()
+                // If the overscreen already finished hiding, there is no later focus-restoration
+                // callback that still needs this target. Otherwise keep it until that callback
+                // runs, so it cannot reactivate the app from the previous Space.
+                if display.windowHidden && display.pendingWindowAfterClose === win {
+                    display.pendingWindowAfterClose = nil
                 }
                 
                 delay(ms: 75){
@@ -989,7 +998,7 @@ public class Display : Equatable {
             else {
                 display.aboveBy = 0
                 display.activateNewApp = true
-                display.pendingFrontAppAfterClose = runningApp
+                display.pendingWindowAfterClose = win
 
                 display.curFrontWindow = nil // try to not trigger the activation of another app during the closing process
                 
@@ -1657,14 +1666,6 @@ public class Display : Equatable {
 
                 var aheadRects = [NSRect]()
                 
-                // Menu Bar Height checker
-                var removeMenuHeight : CGFloat = 0
-                
-                let menuHeight = NSApplication.shared.menu!.menuBarHeight
-                if menuHeight > 30 {
-                    removeMenuHeight = menuHeight
-                }
-                
                 // Every on-screen placeholder panel seen this pass. More than one means stale
                 // duplicates (see PreviewFlowGate.noteDuplicatePlaceholderIDs).
                 var scannedHolderIds : [Int] = []
@@ -1726,8 +1727,12 @@ public class Display : Equatable {
                         let winOwnerChecked = winOwnerName == name || (winPid.map { $0 == pid } ?? false)
                         
                         if winLayer == 0 && rectOnCurrentDisplay && !excludedApps.contains(winOwnerName ?? "") {
-                            // In case of emergency break the glass: https://developer.apple.com/documentation/appkit/nswindowwillenterfullscreennotification (seems not working for other apps)
-                            if rect.height >= (screen.frame.height-removeMenuHeight) && rect.width >= screen.frame.width {
+                            // Geometry is the fallback because AppKit fullscreen notifications
+                            // cover only our own windows. Require the complete display frame:
+                            // normal maximized/Desktop windows stop below the menu bar.
+                            if PreviewFlowGate.isFullscreenWindowFrame(
+                                rect,
+                                displayFrame: self.frame) {
                                 fullscreenDetected = true
                             }
                         }
@@ -1796,8 +1801,9 @@ public class Display : Equatable {
                             //appWin?.lastRect = rect
                             
                             fullscreenDetected = fullscreenDetected ||
-                                (winnerRect.size.width >= self.frame.width &&
-                                 winnerRect.size.height >= self.frame.height - self.menuHeight)
+                                PreviewFlowGate.isFullscreenWindowFrame(
+                                    winnerRect,
+                                    displayFrame: self.frame)
                         }
                         else if !winOwnerChecked && winner == nil{
                             if rect != self.screen.frame{
@@ -1918,22 +1924,10 @@ public class Display : Equatable {
 
             cycleWindows(windows: windows)
 
-            if spaceIsChanging {
-                // A notification or duplicate topology must not block screenshots forever if
-                // WindowServer never supplies a final holder. The wall-clock safety window
-                // releases it, then missing-holder repair receives a separate grace period.
-                if flowGate.recoverStuckSpaceChange(now: Date().timeIntervalSince1970) {
-                    print("space no more changing due to wall-clock timeout")
-                }
-                else {
-                    return false
-                }
-            }
-
-            curPlaceholder?.numWindows = windows.count
-
-            if !self.isFullscreen && !spaceIsChanging &&
-                self.flowGate.shouldRepairMissingPlaceholder(now: Date().timeIntervalSince1970) {
+            // A new normal Desktop has no holder yet, so its topology cannot clear
+            // spaceIsChanging by itself. Evaluate stable missing-holder repair before the
+            // transition guard returns. Fullscreen and transient empty snapshots remain gated.
+            if self.flowGate.shouldRepairMissingPlaceholder(now: Date().timeIntervalSince1970) {
                 print("repairing genuinely missing SwifterPlaceholder")
                 let winHolder = SwifterPlaceholder()
                 winHolder.numWindows = windows.count
@@ -1951,7 +1945,27 @@ public class Display : Equatable {
                 self.flowGate.notePlaceholderCreated(
                     id: winHolder.windowNumber,
                     now: Date().timeIntervalSince1970)
+
+                // An empty Desktop can leave ScreenCaptureKit without a deliverable window and
+                // the stream may have stopped while its holder was missing. The new holder makes
+                // the Desktop capturable again; explicitly restore the low-profile stream instead
+                // of waiting for unrelated mouse movement or an app switch.
+                self.recordingPaused = false
+                self.setRecorderProfile(lowProfile: true)
             }
+
+            if spaceIsChanging {
+                // Keep previews blocked during the visible Desktop animation so windows and
+                // holders from both Spaces cannot be registered together.
+                if flowGate.recoverStuckSpaceChange(now: Date().timeIntervalSince1970) {
+                    print("space no more changing due to wall-clock timeout")
+                }
+                else {
+                    return false
+                }
+            }
+
+            curPlaceholder?.numWindows = windows.count
             
             // If the new frame is bigger, force the shot
             var vForceShot = forceShot
@@ -2721,23 +2735,39 @@ public class Display : Equatable {
     //MARK: Window show/hide
     var frontWinBefore : AppWindows.Window?
     private var frontAppBefore : NSRunningApplication?
-    fileprivate var pendingFrontAppAfterClose : NSRunningApplication?
+    private var frontSpaceBefore = -1
+    fileprivate var pendingWindowAfterClose : AppWindows.Window?
 
     private func restoreFocusAfterHiding() {
-        // A preview click deliberately replaces the previous app. Keep its target even though
-        // activateNewApp may already have been reset by the closing animation.
-        if let selectedApp = pendingFrontAppAfterClose, !selectedApp.isTerminated {
-            selectedApp.activate(options: [])
-            return
+        defer {
+            frontAppBefore = nil
+            frontSpaceBefore = -1
         }
 
+        // A preview click deliberately replaces the previous window. Consume the exact target,
+        // not only its application: an application can own windows on multiple Spaces, and an
+        // app-only activation may return macOS to the previously active Space.
+        if let selectedWindow = pendingWindowAfterClose,
+           let selectedApp = selectedWindow.app?.runningApp,
+           !selectedApp.isTerminated {
+            pendingWindowAfterClose = nil
+            selectedWindow.activate()
+            return
+        }
+        pendingWindowAfterClose = nil
+
         if let currentWindow = curFrontWindow,
+           currentWindow.appearsInThiSpace,
            currentWindow.spaceId == currentSpaceId {
             currentWindow.activate()
             return
         }
 
-        if let previousApp = frontAppBefore, !previousApp.isTerminated {
+        if PreviewFlowGate.shouldRestorePreviousFocus(
+            openedSpaceID: frontSpaceBefore,
+            currentSpaceID: currentSpaceId),
+           let previousApp = frontAppBefore,
+           !previousApp.isTerminated {
             previousApp.activate(options: [])
         }
     }
@@ -2767,15 +2797,25 @@ public class Display : Equatable {
             
             let dontPrioritizeRunningApp = self.spaceIsChanging || self.curFrontWindow?.app?.runningApp != NSRunningApplication.current
 
-            if let frontmostApp = NSWorkspace.shared.frontmostApplication,
-               frontmostApp != NSRunningApplication.current,
-               !frontmostApp.isTerminated {
-                self.frontAppBefore = frontmostApp
+            let focusCandidate = NSWorkspace.shared.frontmostApplication.flatMap { app in
+                app != NSRunningApplication.current && !app.isTerminated ? app : nil
+            } ?? self.curFrontApp.flatMap { app in
+                app != NSRunningApplication.current && !app.isTerminated ? app : nil
             }
-            else if let currentApp = self.curFrontApp,
-                    currentApp != NSRunningApplication.current,
-                    !currentApp.isTerminated {
-                self.frontAppBefore = currentApp
+
+            // FrontmostApplication may still report an app whose only window is on the previous
+            // Desktop. Save it for restoration only when its tracked window is visibly current.
+            if let focusCandidate,
+               let currentWindow = self.curFrontWindow,
+               currentWindow.app?.runningApp == focusCandidate,
+               currentWindow.appearsInThiSpace,
+               currentWindow.spaceId == self.currentSpaceId {
+                self.frontAppBefore = focusCandidate
+                self.frontSpaceBefore = self.currentSpaceId
+            }
+            else {
+                self.frontAppBefore = nil
+                self.frontSpaceBefore = -1
             }
             
             //change dimension

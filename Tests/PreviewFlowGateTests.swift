@@ -12,6 +12,7 @@
 //
 
 import Foundation
+import CoreGraphics
 
 // MARK: - Tiny test harness (keeps this runnable via plain `swiftc`, no XCTest bundle needed)
 
@@ -308,10 +309,92 @@ enum PreviewFlowGateTests {
         var sim = FlowSimulator()
         _ = sim.step(fullscreenWindowPresent: false, spaceChangeSignal: true)
         let blocked = sim.step(fullscreenWindowPresent: false)
-        Check.expect(!blocked.screenshot, "blocked while the space is changing")
+        Check.expect(!blocked.screenshot, "screenshots stay blocked while the Space is changing")
 
         let cleared = sim.step(fullscreenWindowPresent: false, clearSpaceChange: true)
-        Check.expect(cleared.screenshot, "re-opens immediately once the space settles (no waiting on the safety net)")
+        Check.expect(cleared.screenshot, "re-opens immediately once the Space settles")
+    }
+
+    static func testNewDesktopWithoutHolderRepairsDuringTransition() {
+        Check.section("REGRESSION: a new Desktop without a holder does not deadlock")
+        var gate = PreviewFlowGate()
+        let start: TimeInterval = 6_000
+
+        gate.beginSpaceTransition(now: start)
+        _ = gate.observePlaceholderTopology([], now: start + 0.1)
+
+        Check.expect(gate.spaceIsChanging, "empty new Desktop still protects Space bookkeeping")
+        Check.expect(!gate.allowsScreenshot,
+                     "previews remain blocked while the new Desktop holder is pending")
+        Check.expect(!gate.shouldRepairMissingPlaceholder(now: start + 1),
+                     "a transient empty animation snapshot does not create a holder")
+
+        let repairAt = start + 0.1 + PreviewFlowGate.missingPlaceholderRepairAfter + 0.01
+        Check.expect(gate.shouldRepairMissingPlaceholder(now: repairAt),
+                     "stable empty Desktop can create its holder before the stuck-transition timeout")
+        Check.expect(repairAt - start < PreviewFlowGate.spaceIsChangingForceResetAfter,
+                     "holder repair does not wait for the five-second safety reset")
+
+        gate.notePlaceholderCreated(id: 91, now: repairAt)
+        Check.expect(!gate.spaceIsChanging, "creating the new Desktop holder settles bookkeeping")
+        Check.expect(gate.allowsScreenshot, "previews resume only after holder bookkeeping settles")
+        Check.expect(!gate.shouldRepairMissingPlaceholder(now: repairAt + 100),
+                     "the created holder disarms further repairs and prevents an infinity loop")
+    }
+
+    static func testOnlyCompleteDisplayFramesAreFullscreen() {
+        Check.section("fullscreen geometry: normal Desktop windows keep recording enabled")
+        let display = CGRect(x: 0, y: 0, width: 1800, height: 1169)
+        let maximized = CGRect(x: 0, y: 0, width: 1800, height: 1130)
+        let stageManaged = CGRect(x: 61, y: 0, width: 1739, height: 1130)
+        let fullscreen = CGRect(x: 0, y: 0, width: 1800, height: 1169)
+        let adjacentLargeWindow = CGRect(x: 1700, y: 0, width: 2000, height: 1169)
+
+        Check.expect(!PreviewFlowGate.isFullscreenWindowFrame(maximized, displayFrame: display),
+                     "a menu-bar-sized maximized window is a normal Desktop window")
+        Check.expect(!PreviewFlowGate.isFullscreenWindowFrame(stageManaged, displayFrame: display),
+                     "a Stage Manager maximized window is a normal Desktop window")
+        Check.expect(PreviewFlowGate.isFullscreenWindowFrame(fullscreen, displayFrame: display),
+                     "a complete display-sized window is fullscreen")
+        Check.expect(!PreviewFlowGate.isFullscreenWindowFrame(adjacentLargeWindow, displayFrame: display),
+                     "a large window intersecting from another display is not fullscreen here")
+    }
+
+    static func testCrossSpaceActivationDoesNotPullPreviousWindowsForward() {
+        Check.section("cross-Space activation: do not activate all application windows")
+
+        Check.expect(!PreviewFlowGate.shouldActivateAllWindows(
+            forceRequested: false,
+            selectedSpaceID: 20,
+            appWindowSpaceIDs: [20]),
+                     "a non-forced activation never requests all windows")
+        Check.expect(PreviewFlowGate.shouldActivateAllWindows(
+            forceRequested: true,
+            selectedSpaceID: 20,
+            appWindowSpaceIDs: [20, 20, -1]),
+                     "force remains available when all known windows are on the selected Space")
+        Check.expect(!PreviewFlowGate.shouldActivateAllWindows(
+            forceRequested: true,
+            selectedSpaceID: 20,
+            appWindowSpaceIDs: [10, 20]),
+                     "windows on another Space suppress activateAllWindows and prevent bounce-back")
+    }
+
+    static func testFocusRestorationIsScopedToOpenedSpace() {
+        Check.section("overscreen close: never restore focus into a previous Space")
+
+        Check.expect(PreviewFlowGate.shouldRestorePreviousFocus(
+            openedSpaceID: 20,
+            currentSpaceID: 20),
+                     "focus may be restored when the overscreen closes on its opening Space")
+        Check.expect(!PreviewFlowGate.shouldRestorePreviousFocus(
+            openedSpaceID: 10,
+            currentSpaceID: 20),
+                     "focus is not restored after the active Desktop changed")
+        Check.expect(!PreviewFlowGate.shouldRestorePreviousFocus(
+            openedSpaceID: -1,
+            currentSpaceID: -1),
+                     "unknown transition IDs never authorize focus restoration")
     }
 
     static func testFullscreenExitIgnoresOneMissingSnapshot() {
@@ -420,6 +503,10 @@ enum PreviewFlowGateTests {
         testFullscreenThenBackWhileWindowsNotEvaluatedRecovers()
         testFullscreenTeardownWithSpuriousSpaceChangeRecovers()
         testNormalSpaceChangeClearsImmediately()
+        testNewDesktopWithoutHolderRepairsDuringTransition()
+        testOnlyCompleteDisplayFramesAreFullscreen()
+        testCrossSpaceActivationDoesNotPullPreviousWindowsForward()
+        testFocusRestorationIsScopedToOpenedSpace()
         testFullscreenExitIgnoresOneMissingSnapshot()
         testPlaceholderTopologyMustSettle()
         testFullscreenNeverRepairsItsMissingPlaceholder()

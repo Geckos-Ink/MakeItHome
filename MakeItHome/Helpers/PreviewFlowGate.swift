@@ -16,15 +16,48 @@
 //   1. `isFullscreen` is derived from the window list every pass, with a short exit debounce so
 //      a single incomplete WindowServer snapshot during a fullscreen animation cannot restart
 //      ScreenCaptureKit while the fullscreen Space is still being assembled.
-//   2. `spaceIsChanging` may block updates, but only up to a wall-clock safety window. A real
-//      space switch settles in ~1s; anything longer is treated as stuck and force-cleared.
+//   2. `spaceIsChanging` blocks previews while placeholder/window-to-Space bookkeeping settles,
+//      but only up to a wall-clock safety window. A real space switch settles in ~1s; anything
+//      longer is treated as stuck and force-cleared.
 //   3. Missing placeholders are repairable only after a stable, non-fullscreen interval. A
 //      fullscreen Space legitimately has no placeholder and must never trigger auto-repair.
 //
 
 import Foundation
+import CoreGraphics
 
 struct PreviewFlowGate {
+
+    /// A native fullscreen window covers the complete display, including the menu-bar area.
+    /// A maximized window on a normal Desktop covers only the visible frame and must not disable
+    /// MakeItHome or prevent that Desktop from receiving a placeholder.
+    static func isFullscreenWindowFrame(_ windowFrame: CGRect,
+                                        displayFrame: CGRect,
+                                        tolerance: CGFloat = 3) -> Bool {
+        let coveredFrame = windowFrame.intersection(displayFrame)
+        return !coveredFrame.isNull &&
+            coveredFrame.size.width >= displayFrame.size.width - tolerance &&
+            coveredFrame.size.height >= displayFrame.size.height - tolerance
+    }
+
+    /// `.activateAllWindows` can pull an application window from a different Space to the front,
+    /// undoing a placeholder-driven Space switch. It is safe only when every known window for
+    /// the application belongs to the selected Space (unknown `-1` IDs are ignored).
+    static func shouldActivateAllWindows(forceRequested: Bool,
+                                         selectedSpaceID: Int,
+                                         appWindowSpaceIDs: [Int]) -> Bool {
+        guard forceRequested else { return false }
+        return !appWindowSpaceIDs.contains { spaceID in
+            spaceID >= 0 && spaceID != selectedSpaceID
+        }
+    }
+
+    /// Closing the overscreen without a selection must not activate an app from the Desktop that
+    /// was current before a later Space change. Unknown/transitional IDs are deliberately unsafe.
+    static func shouldRestorePreviousFocus(openedSpaceID: Int,
+                                           currentSpaceID: Int) -> Bool {
+        openedSpaceID > 0 && openedSpaceID == currentSpaceID
+    }
 
     /// A space change must never block previews longer than this (seconds). Real space
     /// switches settle in ~1s; anything longer means the placeholder bookkeeping got stuck
@@ -268,10 +301,12 @@ struct PreviewFlowGate {
     }
 
     /// True only for a continuously missing placeholder on a topology that is known not to be
-    /// fullscreen or in transition. This is the guard for the destructive auto-repair path.
+    /// fullscreen. A newly selected Desktop legitimately has no holder while `spaceIsChanging`
+    /// is still true, so the caller must evaluate this repair before returning for the transition
+    /// gate. The continuous-absence grace prevents a transient animation snapshot from creating
+    /// a holder, while previews remain blocked until the holder is created or observed.
     func shouldRepairMissingPlaceholder(now: TimeInterval) -> Bool {
         guard !isFullscreen,
-              !spaceIsChanging,
               placeholderSignature.isEmpty,
               missingPlaceholderSince > 0,
               now - missingPlaceholderSince >= Self.missingPlaceholderRepairAfter,
