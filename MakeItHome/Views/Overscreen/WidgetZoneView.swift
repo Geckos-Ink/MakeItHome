@@ -170,25 +170,11 @@ public struct TopWebView: NSViewRepresentable {
     var delegate: DragDropDelegate?
     
     public func sendMessage(str: String){
-        // Call the injected JavaScript function from Swift
-        let callScript = "receiveMessage('\(str)');"
-        wkwv.evaluateJavaScript(callScript, completionHandler: nil)
+        wkwv.sendMessage(str: str)
     }
     
-    public func sendMessage(obj: JSMessage){        
-        do {
-            let jsonData = try JSONEncoder().encode(obj)
-            let msg = String(data: jsonData, encoding: String.Encoding.utf8)
-            
-            if msg != nil{
-                let callScript = "receiveMessage("+msg!+");"
-                //print(callScript)
-                wkwv.evaluateJavaScript(callScript, completionHandler: nil)
-            }
-        }
-        catch {
-            print("EEEEERRROOORRR")
-        }
+    public func sendMessage(obj: JSMessage){
+        wkwv.sendMessage(obj: obj)
     }
             
 }
@@ -419,6 +405,10 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
 
     public func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         (webView as? TopWKWV)?.prepareForContentReload()
+    }
+
+    public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        (webView as? TopWKWV)?.detectPageMessageReceiver()
     }
 
 
@@ -729,11 +719,72 @@ private final class NativeWebViewOverlay: NSView {
     }
 }
 
+private final class NativeWebViewReloadControl: NSView {
+    private let button = NSButton()
+
+    override var isFlipped: Bool { true }
+
+    init(target: AnyObject, action: Selector) {
+        super.init(frame: .zero)
+
+        wantsLayer = true
+        layer?.cornerRadius = 12
+        layer?.cornerCurve = .continuous
+        layer?.borderWidth = 0.5
+        layer?.borderColor = NSColor.white.withAlphaComponent(0.28).cgColor
+        shadow = NSShadow()
+        shadow?.shadowBlurRadius = 10
+        shadow?.shadowOffset = NSSize(width: 0, height: -2)
+        shadow?.shadowColor = NSColor.black.withAlphaComponent(0.2)
+
+        button.isBordered = false
+        button.image = NSImage(
+            systemSymbolName: "arrow.clockwise",
+            accessibilityDescription: "Reload"
+        )
+        button.imagePosition = .imageOnly
+        button.contentTintColor = .labelColor
+        button.toolTip = "Reload"
+        button.target = target
+        button.action = action
+        button.frame = bounds
+        button.autoresizingMask = [.width, .height]
+
+        if #available(macOS 26.0, *) {
+            let glassView = NSGlassEffectView(frame: bounds)
+            glassView.style = .regular
+            glassView.cornerRadius = 12
+            glassView.autoresizingMask = [.width, .height]
+            glassView.contentView = button
+            addSubview(glassView)
+        } else {
+            let materialView = NSVisualEffectView(frame: bounds)
+            materialView.material = .hudWindow
+            materialView.blendingMode = .withinWindow
+            materialView.state = .active
+            materialView.autoresizingMask = [.width, .height]
+            materialView.wantsLayer = true
+            materialView.layer?.cornerRadius = 12
+            materialView.layer?.cornerCurve = .continuous
+            materialView.layer?.masksToBounds = true
+            addSubview(materialView)
+            addSubview(button)
+        }
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+}
+
 private final class PersistentNativeWebViewHost: NSView, WKNavigationDelegate, WKUIDelegate {
     let webViewIdentifier: String
     let webView: WKWebView
 
-    private let reloadButton = NSButton()
+    private(set) lazy var reloadControl = NativeWebViewReloadControl(
+        target: self,
+        action: #selector(reloadPage)
+    )
     private var configuredURL: String?
     private var reloadToken = ""
     private var restoresSession = true
@@ -762,23 +813,6 @@ private final class PersistentNativeWebViewHost: NSView, WKNavigationDelegate, W
         webView.uiDelegate = self
         webView.autoresizingMask = [.width, .height]
         addSubview(webView)
-
-        reloadButton.bezelStyle = .circular
-        reloadButton.image = NSImage(systemSymbolName: "arrow.clockwise", accessibilityDescription: "Reload")
-        reloadButton.imagePosition = .imageOnly
-        reloadButton.toolTip = "Reload"
-        reloadButton.target = self
-        reloadButton.action = #selector(reloadPage)
-        reloadButton.translatesAutoresizingMaskIntoConstraints = false
-        reloadButton.isHidden = true
-        addSubview(reloadButton, positioned: .above, relativeTo: webView)
-
-        NSLayoutConstraint.activate([
-            reloadButton.topAnchor.constraint(equalTo: topAnchor, constant: 10),
-            reloadButton.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -10),
-            reloadButton.widthAnchor.constraint(equalToConstant: 36),
-            reloadButton.heightAnchor.constraint(equalToConstant: 36)
-        ])
     }
 
     required init?(coder: NSCoder) {
@@ -792,7 +826,7 @@ private final class PersistentNativeWebViewHost: NSView, WKNavigationDelegate, W
 
     func update(url rawURL: String, restoresSession: Bool, controls: String, reloadToken: String) {
         self.restoresSession = restoresSession
-        reloadButton.isHidden = controls != "reload"
+        reloadControl.isHidden = controls != "reload"
 
         if self.reloadToken != reloadToken {
             if !self.reloadToken.isEmpty {
@@ -923,6 +957,14 @@ public class TopWKWV : WKWebView, NSDraggingSource{
     private let nativeWebViewOverlay = NativeWebViewOverlay(frame: .zero)
     private var nativeWebViews: [String: PersistentNativeWebViewHost] = [:]
 
+    private let nativeReloadControlSize = NSSize(width: 38, height: 38)
+    private let nativeReloadControlInset: CGFloat = 10
+
+    private var pageCanReceiveMessages = false
+    private var pageMessageDeliveryInFlight = false
+    private var pageMessageGeneration = 0
+    private var pendingPageMessages: [Any] = []
+
     public override func layout() {
         super.layout()
 
@@ -932,7 +974,99 @@ public class TopWKWV : WKWebView, NSDraggingSource{
     }
 
     func prepareForContentReload() {
-        nativeWebViews.values.forEach { $0.isHidden = true }
+        pageCanReceiveMessages = false
+        pageMessageGeneration += 1
+
+        nativeWebViews.values.forEach {
+            $0.isHidden = true
+            $0.reloadControl.isHidden = true
+        }
+    }
+
+    func detectPageMessageReceiver() {
+        let generation = pageMessageGeneration
+        callAsyncJavaScript(
+            "return typeof receiveMessage === 'function';",
+            arguments: [:],
+            in: nil,
+            in: .page,
+            completionHandler: { [weak self] result in
+                guard let self, generation == self.pageMessageGeneration else { return }
+
+                switch result {
+                case .success(let value):
+                    self.pageCanReceiveMessages = value as? Bool ?? false
+                    self.deliverNextPageMessage()
+                case .failure(let error):
+                    self.pageCanReceiveMessages = false
+                    print("Unable to detect widget page message receiver: \(error.localizedDescription)")
+                }
+            }
+        )
+    }
+
+    private func enqueuePageMessage(_ message: Any) {
+        let enqueue = { [weak self] in
+            guard let self else { return }
+            self.pendingPageMessages.append(message)
+            self.deliverNextPageMessage()
+        }
+
+        if Thread.isMainThread {
+            enqueue()
+        } else {
+            DispatchQueue.main.async(execute: enqueue)
+        }
+    }
+
+    private func deliverNextPageMessage() {
+        guard pageCanReceiveMessages,
+              !pageMessageDeliveryInFlight,
+              let message = pendingPageMessages.first else {
+            return
+        }
+
+        pageMessageDeliveryInFlight = true
+        let generation = pageMessageGeneration
+        callAsyncJavaScript(
+            """
+            if (typeof receiveMessage === 'function') {
+                receiveMessage(message);
+                return true;
+            }
+            return false;
+            """,
+            arguments: ["message": message],
+            in: nil,
+            in: .page,
+            completionHandler: { [weak self] result in
+                guard let self else { return }
+                self.pageMessageDeliveryInFlight = false
+
+                if generation != self.pageMessageGeneration {
+                    if case .success(let value) = result, value as? Bool == true {
+                        self.pendingPageMessages.removeFirst()
+                    }
+                    self.deliverNextPageMessage()
+                    return
+                }
+
+                switch result {
+                case .success(let value) where value as? Bool == true:
+                    self.pendingPageMessages.removeFirst()
+                    self.deliverNextPageMessage()
+                case .success:
+                    // Navigation may have replaced the page after readiness was
+                    // checked. Keep the message queued for the next widgets page.
+                    self.pageCanReceiveMessages = false
+                case .failure(let error):
+                    // A broken handler must not block unrelated messages behind it.
+                    self.pendingPageMessages.removeFirst()
+                    print("Unable to deliver widget page message: \(error.localizedDescription)")
+                    self.deliverNextPageMessage()
+                }
+            }
+        )
     }
 
     func syncNativeWebViews(from messageBody: Any) {
@@ -960,6 +1094,7 @@ public class TopWKWV : WKWebView, NSDraggingSource{
                 host = PersistentNativeWebViewHost(identifier: identifier)
                 nativeWebViews[identifier] = host
                 nativeWebViewOverlay.addSubview(host)
+                nativeWebViewOverlay.addSubview(host.reloadControl, positioned: .above, relativeTo: nil)
             }
 
             let x = (rawView["x"] as? NSNumber)?.doubleValue ?? 0
@@ -972,16 +1107,31 @@ public class TopWKWV : WKWebView, NSDraggingSource{
             host.frame = NSRect(x: x, y: y, width: width, height: height)
             host.alphaValue = max(0, min(1, opacity))
             host.isHidden = !visible || width <= 0 || height <= 0
+            host.reloadControl.frame = NSRect(
+                x: x + width - nativeReloadControlInset - nativeReloadControlSize.width,
+                y: y + nativeReloadControlInset,
+                width: nativeReloadControlSize.width,
+                height: nativeReloadControlSize.height
+            )
+            host.reloadControl.alphaValue = host.alphaValue
             host.update(
                 url: rawView["url"] as? String ?? "",
                 restoresSession: rawView["restoresSession"] as? Bool ?? true,
                 controls: rawView["controls"] as? String ?? "",
                 reloadToken: rawView["reloadToken"] as? String ?? ""
             )
+            host.reloadControl.isHidden = host.isHidden || host.reloadControl.isHidden
+        }
+
+        // WKWebView uses composited content, so controls must remain siblings above
+        // every native web view rather than children of a web view host.
+        nativeWebViews.values.forEach {
+            nativeWebViewOverlay.addSubview($0.reloadControl, positioned: .above, relativeTo: nil)
         }
 
         let staleIdentifiers = Set(nativeWebViews.keys).subtracting(seenIdentifiers)
         for identifier in staleIdentifiers {
+            nativeWebViews[identifier]?.reloadControl.removeFromSuperview()
             nativeWebViews[identifier]?.removeFromSuperview()
             nativeWebViews.removeValue(forKey: identifier)
         }
@@ -1217,24 +1367,17 @@ public class TopWKWV : WKWebView, NSDraggingSource{
     ///
     
     public func sendMessage(str: String){
-        // Call the injected JavaScript function from Swift
-        let callScript = "receiveMessage('\(str)');"
-        self.evaluateJavaScript(callScript, completionHandler: nil)
+        enqueuePageMessage(str)
     }
     
     public func sendMessage(obj: JSMessage){
         do {
             let jsonData = try JSONEncoder().encode(obj)
-            let msg = String(data: jsonData, encoding: String.Encoding.utf8)
-            
-            if msg != nil{
-                let callScript = "receiveMessage("+msg!+");"
-                //print(callScript)
-                self.evaluateJavaScript(callScript, completionHandler: nil)
-            }
+            let message = try JSONSerialization.jsonObject(with: jsonData)
+            enqueuePageMessage(message)
         }
         catch {
-            print("EEEEERRROOORRR")
+            print("Unable to encode widget page message: \(error.localizedDescription)")
         }
     }
 }

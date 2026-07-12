@@ -2005,6 +2005,10 @@ function newWidget(widget=null) {
     console.log("new widget")
     let $widget = $(".myWidget.template").clone()
     $widget.removeClass("template")
+    // The template fallback is localizable, but this clone contains user data.
+    // Leaving data-i18n attached lets a later localization reply overwrite the
+    // saved title with "My widget name".
+    $widget.find('.name').removeAttr('data-i18n')
     
     let num = myWidgets.length
     console.log("wiget num", num)
@@ -2020,7 +2024,8 @@ function newWidget(widget=null) {
 
     apps.push('myWidget' + num)
 
-    let $leftMenu = $('<div class="appItem myWidgetsItem" id="appItem-myWidget' + num + '" onclick="openApp(\'myWidget' + num + '\')"><div class="img"><i class="fa-solid fa-circle"></i></div> <div class="text">' + widget.title + '</div></div>')    
+    let $leftMenu = $('<div class="appItem myWidgetsItem" id="appItem-myWidget' + num + '" onclick="openApp(\'myWidget' + num + '\')"><div class="img"><i class="fa-solid fa-circle"></i></div> <div class="text"></div></div>')
+    $leftMenu.find('.text').text(widget.title)
     $leftMenu.find('.img').css('color', widget.color)
 
     let $app = $("#app-myWidget-template").clone()
@@ -2062,8 +2067,8 @@ function newWidget(widget=null) {
     let navigationUpdate = null
     $widget.find('input, .name').on('keyup', (e) => { 
         console.log("input keydown", e)
-        widget.title = $widget.find('.name').html()
-        $leftMenu.find('.text').html(widget.title)
+        widget.title = $widget.find('.name').text()
+        $leftMenu.find('.text').text(widget.title)
         checkMyWidgetTitle($leftMenu)
 
         let newUrl = $widget.find('.url').val()
@@ -2091,7 +2096,7 @@ function newWidget(widget=null) {
         checkMyWidgetTitle($leftMenu)
     }
 
-    $widget.find('.name').html(widget.title)
+    $widget.find('.name').text(widget.title)
     $widget.find('.url').val(widget.url)
 
     if(!firstMyWidgetsLoad) saveMyWidgets()
