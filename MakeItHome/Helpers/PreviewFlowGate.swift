@@ -40,6 +40,18 @@ struct PreviewFlowGate {
             coveredFrame.size.height >= displayFrame.size.height - tolerance
     }
 
+    /// Broad geometry candidate used before consulting the active window's AXFullScreen state.
+    /// This includes native fullscreen configurations that keep the menu bar visible.
+    static func isFullscreenCandidateFrame(_ windowFrame: CGRect,
+                                           displayFrame: CGRect,
+                                           menuBarHeight: CGFloat,
+                                           tolerance: CGFloat = 3) -> Bool {
+        let coveredFrame = windowFrame.intersection(displayFrame)
+        return !coveredFrame.isNull &&
+            coveredFrame.size.width >= displayFrame.size.width - tolerance &&
+            coveredFrame.size.height >= displayFrame.size.height - menuBarHeight - tolerance
+    }
+
     /// `.activateAllWindows` can pull an application window from a different Space to the front,
     /// undoing a placeholder-driven Space switch. It is safe only when every known window for
     /// the application belongs to the selected Space (unknown `-1` IDs are ignored).

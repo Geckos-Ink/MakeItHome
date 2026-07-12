@@ -11,6 +11,7 @@ import ScreenCaptureKit
 import CoreImage
 import AVFoundation
 import CoreVideo
+import ApplicationServices
 
 import OrderedCollections
 import SceneKit
@@ -725,6 +726,36 @@ public class Display : Equatable {
     public var scaleCapture : CGFloat = 2
     
     public var menuHeight : CGFloat = 24
+
+    /// Geometry alone cannot distinguish a native fullscreen window with an always-visible menu
+    /// bar from a maximized Desktop window. Accessibility is already a core app permission, so
+    /// use the focused window's explicit AXFullScreen state whenever it is available.
+    private func currentAppNativeFullscreenState() -> Bool? {
+        guard AXIsProcessTrusted(), let app = curFrontApp else {
+            return nil
+        }
+
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        var focusedValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            appElement,
+            kAXFocusedWindowAttribute as CFString,
+            &focusedValue) == .success,
+              let focusedWindow = focusedValue else {
+            return nil
+        }
+
+        var fullscreenValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            focusedWindow as! AXUIElement,
+            "AXFullScreen" as CFString,
+            &fullscreenValue) == .success,
+              let fullscreen = fullscreenValue as? NSNumber else {
+            return nil
+        }
+
+        return fullscreen.boolValue
+    }
     
     //MARK: AppWindows
     
@@ -962,7 +993,6 @@ public class Display : Equatable {
                 else {
                     openApp.activate(options: [.activateAllWindows])
                 }
-                display.getPlaceholderById(win!.spaceId)?.releaseFocus()
                 // If the overscreen already finished hiding, there is no later focus-restoration
                 // callback that still needs this target. Otherwise keep it until that callback
                 // runs, so it cannot reactivate the app from the previous Space.
@@ -1417,6 +1447,8 @@ public class Display : Equatable {
             // just because checkForScreenshot keeps bailing out before it re-reads the windows.
             if self.flowGate.recoverStaleFullscreen(now: Date().timeIntervalSince1970) {
                 print("fullscreen cleared (stale, not re-confirmed) — re-enabling previews")
+                self.recordingPaused = false
+                self.setRecorderProfile(lowProfile: true)
             }
 
             // don't capture screenshot immediately after the triggering of above by
@@ -1663,6 +1695,9 @@ public class Display : Equatable {
 
                 winnerRect = NSRect.zero // set to default
                 var fullscreenDetected = false
+                var fullscreenGeometryCandidate = false
+                var completeDisplayCandidate = false
+                let fullscreenMenuBarHeight = NSApplication.shared.menu?.menuBarHeight ?? self.menuHeight
 
                 var aheadRects = [NSRect]()
                 
@@ -1727,14 +1762,15 @@ public class Display : Equatable {
                         let winOwnerChecked = winOwnerName == name || (winPid.map { $0 == pid } ?? false)
                         
                         if winLayer == 0 && rectOnCurrentDisplay && !excludedApps.contains(winOwnerName ?? "") {
-                            // Geometry is the fallback because AppKit fullscreen notifications
-                            // cover only our own windows. Require the complete display frame:
-                            // normal maximized/Desktop windows stop below the menu bar.
-                            if PreviewFlowGate.isFullscreenWindowFrame(
-                                rect,
-                                displayFrame: self.frame) {
-                                fullscreenDetected = true
-                            }
+                            fullscreenGeometryCandidate = fullscreenGeometryCandidate ||
+                                PreviewFlowGate.isFullscreenCandidateFrame(
+                                    rect,
+                                    displayFrame: self.frame,
+                                    menuBarHeight: fullscreenMenuBarHeight)
+                            completeDisplayCandidate = completeDisplayCandidate ||
+                                PreviewFlowGate.isFullscreenWindowFrame(
+                                    rect,
+                                    displayFrame: self.frame)
                         }
                         
                         let thisTimeHasTitle = winner != nil && winnerTitle == "" && !(winTitle ?? "").isEmpty
@@ -1800,7 +1836,12 @@ public class Display : Equatable {
                             winnerTitle = winTitle ?? ""
                             //appWin?.lastRect = rect
                             
-                            fullscreenDetected = fullscreenDetected ||
+                            fullscreenGeometryCandidate = fullscreenGeometryCandidate ||
+                                PreviewFlowGate.isFullscreenCandidateFrame(
+                                    winnerRect,
+                                    displayFrame: self.frame,
+                                    menuBarHeight: fullscreenMenuBarHeight)
+                            completeDisplayCandidate = completeDisplayCandidate ||
                                 PreviewFlowGate.isFullscreenWindowFrame(
                                     winnerRect,
                                     displayFrame: self.frame)
@@ -1813,9 +1854,25 @@ public class Display : Equatable {
                     }
                 }
                 
+                if completeDisplayCandidate {
+                    fullscreenDetected = true
+                }
+                else if fullscreenGeometryCandidate {
+                    // If AX is temporarily unavailable, prefer the conservative historical
+                    // behavior and gate a display-filling candidate until the next fresh scan.
+                    fullscreenDetected = currentAppNativeFullscreenState() ?? true
+                }
+
                 let topologyNow = Date().timeIntervalSince1970
                 let wasFullscreen = isFullscreen
                 flowGate.updateFullscreen(fullscreenDetected, now: topologyNow)
+
+                if wasFullscreen && !isFullscreen {
+                    // Do not depend on a front-app change or later pointer movement: exiting
+                    // fullscreen must restore ScreenCaptureKit before overscreen can open.
+                    recordingPaused = false
+                    setRecorderProfile(lowProfile: true)
+                }
 
                 // A fullscreen Space has no placeholder by design. Accept that topology and do
                 // not run duplicate/missing repair while entering, inside, or leaving fullscreen.

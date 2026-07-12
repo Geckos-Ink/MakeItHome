@@ -58,7 +58,7 @@ public class SwifterPlaceholder : NSWindow {
         center()
     }
     
-    /// `canBecomeKey` and `canBecomeMain` are both required so that text inputs inside the panel can receive focus
+    /// The holder briefly becomes key only to make macOS reveal its Space.
     override public var canBecomeKey: Bool {
         return true
     }
@@ -71,19 +71,16 @@ public class SwifterPlaceholder : NSWindow {
     
     /// Close automatically when out of focus, e.g. outside click
     override public func resignMain() {
-        DispatchQueue.main.async {
-            super.resignMain()
-            //close()
-        }
+        precondition(Thread.isMainThread)
+        super.resignMain()
     }
      
     /// Close and toggle presentation, so that it matches the current state of the panel
     override public func close() {
-        DispatchQueue.main.async {
-            if !self.closed && self.isVisible && !(self.contentView?.isInFullScreenMode ?? false) {
-                super.close()
-                self.closed = true
-            }
+        precondition(Thread.isMainThread)
+        if !closed && isVisible && !(contentView?.isInFullScreenMode ?? false) {
+            super.close()
+            closed = true
         }
     }
     
@@ -92,33 +89,18 @@ public class SwifterPlaceholder : NSWindow {
     }
     
     func show() {
+        precondition(Thread.isMainThread)
         if !self.closed {
-            DispatchQueue.main.async {
-                self.orderFront(nil)
-            }
+            orderFront(nil)
         }
     }
     
     func activate(){
+        precondition(Thread.isMainThread)
         if !self.closed {
-            DispatchQueue.main.async {
-                NSApplication.shared.activate(ignoringOtherApps: true)
-                self.makeKeyAndOrderFront(self)
-            }
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            makeKeyAndOrderFront(self)
         }
     }
 
-    /// A placeholder may briefly become key solely to ask macOS to reveal its Space. Once the
-    /// destination application is activated it must remain as an unfocused, invisible anchor.
-    func releaseFocus() {
-        DispatchQueue.main.async {
-            if self.isKeyWindow {
-                self.resignKey()
-            }
-            if self.isMainWindow {
-                self.resignMain()
-            }
-        }
-    }
 }
-

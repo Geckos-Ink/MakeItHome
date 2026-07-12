@@ -358,6 +358,11 @@ enum PreviewFlowGateTests {
                      "a complete display-sized window is fullscreen")
         Check.expect(!PreviewFlowGate.isFullscreenWindowFrame(adjacentLargeWindow, displayFrame: display),
                      "a large window intersecting from another display is not fullscreen here")
+        Check.expect(PreviewFlowGate.isFullscreenCandidateFrame(
+            maximized,
+            displayFrame: display,
+            menuBarHeight: 39),
+                     "a menu-bar-visible fullscreen layout reaches AX verification")
     }
 
     static func testCrossSpaceActivationDoesNotPullPreviousWindowsForward() {
