@@ -402,6 +402,40 @@ enum PreviewFlowGateTests {
                      "unknown transition IDs never authorize focus restoration")
     }
 
+    static func testAutomaticFocusWaitsForNewDesktopHolder() {
+        Check.section("first overscreen use: automatic focus waits for the new holder")
+        var gate = PreviewFlowGate()
+        let start: TimeInterval = 11_000
+
+        gate.notePlaceholderCreated(id: 10, now: start)
+        Check.expect(gate.allowsAutomaticFocusRestore(toSpaceID: 10),
+                     "a known current holder permits normal focus restoration")
+
+        gate.beginSpaceTransition(now: start + 1)
+        Check.expect(!gate.allowsAutomaticFocusRestore(toSpaceID: 10),
+                     "the previous holder ID becomes untrusted as soon as Desktop changes")
+        Check.expect(!gate.allowsAutomaticFocusRestore(toSpaceID: 20),
+                     "the destination is not trusted before its holder is observed")
+
+        _ = gate.observePlaceholderTopology([20], now: start + 1.1)
+        Check.expect(!gate.allowsAutomaticFocusRestore(toSpaceID: 20),
+                     "one transient holder snapshot cannot enable automatic activation")
+        _ = gate.observePlaceholderTopology(
+            [20],
+            now: start + 1.1 + PreviewFlowGate.spaceTopologySettleAfter)
+        Check.expect(gate.allowsAutomaticFocusRestore(toSpaceID: 20),
+                     "the stable destination holder enables focus restoration")
+
+        var emptyDesktop = PreviewFlowGate()
+        emptyDesktop.beginSpaceTransition(now: start)
+        _ = emptyDesktop.observePlaceholderTopology([], now: start + 0.1)
+        Check.expect(!emptyDesktop.allowsAutomaticFocusRestore(toSpaceID: 10),
+                     "an empty new Desktop never reuses the previous holder")
+        emptyDesktop.notePlaceholderCreated(id: 30, now: start + 3)
+        Check.expect(emptyDesktop.allowsAutomaticFocusRestore(toSpaceID: 30),
+                     "creating the empty Desktop's own holder safely enables restoration")
+    }
+
     static func testFullscreenExitIgnoresOneMissingSnapshot() {
         Check.section("fullscreen animation: one missing snapshot cannot restart recording")
         var gate = PreviewFlowGate()
@@ -512,6 +546,7 @@ enum PreviewFlowGateTests {
         testOnlyCompleteDisplayFramesAreFullscreen()
         testCrossSpaceActivationDoesNotPullPreviousWindowsForward()
         testFocusRestorationIsScopedToOpenedSpace()
+        testAutomaticFocusWaitsForNewDesktopHolder()
         testFullscreenExitIgnoresOneMissingSnapshot()
         testPlaceholderTopologyMustSettle()
         testFullscreenNeverRepairsItsMissingPlaceholder()

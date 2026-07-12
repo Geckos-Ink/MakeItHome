@@ -2813,6 +2813,12 @@ public class Display : Equatable {
         }
         pendingWindowAfterClose = nil
 
+        // On the first visit to a Desktop, currentSpaceId can still point at the Desktop we just
+        // left. Never let a no-selection close turn that stale ID into an automatic Space change.
+        guard flowGate.allowsAutomaticFocusRestore(toSpaceID: currentSpaceId) else {
+            return
+        }
+
         if let currentWindow = curFrontWindow,
            currentWindow.appearsInThiSpace,
            currentWindow.spaceId == currentSpaceId {
@@ -2866,7 +2872,8 @@ public class Display : Equatable {
                let currentWindow = self.curFrontWindow,
                currentWindow.app?.runningApp == focusCandidate,
                currentWindow.appearsInThiSpace,
-               currentWindow.spaceId == self.currentSpaceId {
+               currentWindow.spaceId == self.currentSpaceId,
+               self.flowGate.allowsAutomaticFocusRestore(toSpaceID: self.currentSpaceId) {
                 self.frontAppBefore = focusCandidate
                 self.frontSpaceBefore = self.currentSpaceId
             }

@@ -336,6 +336,16 @@ struct PreviewFlowGate {
         !spaceIsChanging && !isFullscreen
     }
 
+    /// Whether closing the overscreen without a selection may reactivate a cached window. The
+    /// numeric `currentSpaceId` alone is not trustworthy immediately after a Desktop switch: it
+    /// still names the previous holder until the new topology settles or its holder is created.
+    func allowsAutomaticFocusRestore(toSpaceID spaceID: Int) -> Bool {
+        spaceID > 0 &&
+            !spaceIsChanging &&
+            !isFullscreen &&
+            placeholderSignature == [spaceID]
+    }
+
     /// Whether the screen recorder should stay running for live previews, given the
     /// surrounding authorization / activation state. Mirrors `shouldKeepScreenRecorderActive`.
     func allowsRecorder(authorized: Bool, activated: Bool, ready: Bool, disabled: Bool) -> Bool {
