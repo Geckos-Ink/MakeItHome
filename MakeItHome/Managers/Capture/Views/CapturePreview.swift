@@ -256,24 +256,23 @@ public struct CapturePreview: NSViewRepresentable {
         
         // Function to stop rendering
         func stopRendering() {
-            if isRendering{
+            if isRendering || isPlaying || isShowing {
                 print("stop SCNScene rendering")
                 
                 hidden()
-                
-                isRendering = false
             }
         }
         
         // Function to restart rendering
         func restartRendering() {
-            if(!isRendering){
+            if !isRendering || !isPlaying || !isShowing {
                 print("start SCNScene rendering")
-                
-                showed()
-                
-                isRendering = true
             }
+
+            // `showed()` and `hidden()` are also called directly by the side-change path.
+            // Always apply the active state here instead of trusting a possibly stale flag.
+            showed()
+            setNeedsDisplay(bounds)
         }
         
         
@@ -382,17 +381,40 @@ public struct CapturePreview: NSViewRepresentable {
         public var isShowing = false
         
         public func showed(){
+            self.isRendering = true
             self.isPlaying = true
             self.isShowing = true
             self.preferredFramesPerSecond = Static.SceneKitPreferredFPS
             self.rendersContinuously = Static.SceneKitContinuousRenderingWhenActive
+            self.setNeedsDisplay(bounds)
         }
         
         public func hidden(){
+            clearPreviewFocus()
+            self.isRendering = false
             self.isPlaying = false
             self.isShowing = false
             self.preferredFramesPerSecond = Static.SceneKitSleepPreferredFPS
             self.rendersContinuously = false
+        }
+
+        /// SceneKit keeps the last rendered material state while rendering is stopped.
+        /// Clear hover/frontmost highlights first so a disabled overscreen cannot leave a
+        /// small, focused-looking preview in the window's last frame.
+        private func clearPreviewFocus() {
+            mouseOnApp = nil
+            clickedOnApp = nil
+            draggedClickedApp = false
+            isPreviewPointerInteractionActive = false
+            resetGravityMouse()
+
+            guard let listApp else { return }
+            for app in listApp.values {
+                app.inUsing = false
+                for win in app.windows {
+                    win.clearFocusAppearance()
+                }
+            }
         }
         
         public func forget(){
@@ -725,6 +747,9 @@ public struct CapturePreview: NSViewRepresentable {
                 // First check preview update
                 if self.curDisplay!.previewUpdated {
                     for app in self.listApp! {
+                        // Recompute this from the windows below. Without resetting it, an app
+                        // that used to be frontmost remains visually focused after app changes.
+                        app.value.inUsing = false
                         for win in app.value.windows{
                             win.setMaterial()
                         }
@@ -1362,6 +1387,14 @@ public struct CapturePreview: NSViewRepresentable {
             var emissionAlpha : CGFloat = 0
             private var appliedEmission : CGFloat = -1
 
+            func clearFocusAppearance() {
+                minAlpha = 0
+                emissionAlpha = 0
+                appliedEmission = 0
+                geometry.firstMaterial?.emission.intensity = 0
+                geometry.firstMaterial?.transparency = 1
+            }
+
             func setEmissionAlpha(to: CGFloat){
                 var tto = to
                 if tto == 0 {
@@ -1577,11 +1610,18 @@ public struct CapturePreview: NSViewRepresentable {
                         }
                     }
 
+                    let wasFocused = self.minAlpha > 0
+                    self.minAlpha = win.inUsing ? 1 : 0
+
                     if win.inUsing {
-                        self.minAlpha = 1
                         self.app?.inUsing = true
                         
                         //self.node.filters = addBloom() // is too much performance consuming
+                    }
+                    else if wasFocused {
+                        // `minAlpha` used to be write-only: once set to 1, minimized previews
+                        // retained the rounded emission/glass effect even after losing focus.
+                        clearFocusAppearance()
                     }
                 }
                 else {
@@ -1973,6 +2013,7 @@ public struct CapturePreview: NSViewRepresentable {
         }
         
         public func unset(){
+            clearPreviewFocus()
             nodeApps?.removeFromParentNode()
             nodeApps = nil
             self.freeListApp()

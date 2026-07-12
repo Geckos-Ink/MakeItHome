@@ -957,6 +957,9 @@ public class Display : Equatable {
                 else {
                     openApp.activate(options: [.activateAllWindows])
                 }
+                if display.pendingFrontAppAfterClose == openApp {
+                    display.pendingFrontAppAfterClose = nil
+                }
                 
                 delay(ms: 75){
                     
@@ -986,6 +989,7 @@ public class Display : Equatable {
             else {
                 display.aboveBy = 0
                 display.activateNewApp = true
+                display.pendingFrontAppAfterClose = runningApp
 
                 display.curFrontWindow = nil // try to not trigger the activation of another app during the closing process
                 
@@ -2716,6 +2720,28 @@ public class Display : Equatable {
     
     //MARK: Window show/hide
     var frontWinBefore : AppWindows.Window?
+    private var frontAppBefore : NSRunningApplication?
+    fileprivate var pendingFrontAppAfterClose : NSRunningApplication?
+
+    private func restoreFocusAfterHiding() {
+        // A preview click deliberately replaces the previous app. Keep its target even though
+        // activateNewApp may already have been reset by the closing animation.
+        if let selectedApp = pendingFrontAppAfterClose, !selectedApp.isTerminated {
+            selectedApp.activate(options: [])
+            return
+        }
+
+        if let currentWindow = curFrontWindow,
+           currentWindow.spaceId == currentSpaceId {
+            currentWindow.activate()
+            return
+        }
+
+        if let previousApp = frontAppBefore, !previousApp.isTerminated {
+            previousApp.activate(options: [])
+        }
+    }
+
     func showWindow(){
         DispatchQueue.main.async {
             if self.checkWindowStatus(reclose: false){
@@ -2740,6 +2766,17 @@ public class Display : Equatable {
             }
             
             let dontPrioritizeRunningApp = self.spaceIsChanging || self.curFrontWindow?.app?.runningApp != NSRunningApplication.current
+
+            if let frontmostApp = NSWorkspace.shared.frontmostApplication,
+               frontmostApp != NSRunningApplication.current,
+               !frontmostApp.isTerminated {
+                self.frontAppBefore = frontmostApp
+            }
+            else if let currentApp = self.curFrontApp,
+                    currentApp != NSRunningApplication.current,
+                    !currentApp.isTerminated {
+                self.frontAppBefore = currentApp
+            }
             
             //change dimension
             //manager.window?.setFrame(frame, display: true)
@@ -2822,13 +2859,8 @@ public class Display : Equatable {
                 }
                 
                 //TODO: check if spaceChanged is still an useful condition
-                if(!self.spaceIsChanging && !self.activateNewApp){
-                    if(self.curFrontWindow != nil /*&& frontWinBefore == curFrontWindow*/ && self.curFrontWindow?.spaceId == self.currentSpaceId){
-                        self.curFrontWindow?.activate()
-                    }
-                    /*else {
-                     curFrontApp?.activate(options: NSApplication.ActivationOptions.activateAllWindows)
-                     }*/
+                if !self.spaceIsChanging {
+                    self.restoreFocusAfterHiding()
                 }
                 
                 //curFrontApp = nil
