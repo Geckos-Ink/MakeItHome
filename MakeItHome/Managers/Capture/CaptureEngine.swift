@@ -11,6 +11,33 @@ import ScreenCaptureKit
 import OSLog
 import Combine
 
+/// ScreenCaptureKit does not tolerate overlapping mutations of the same stream. In
+/// particular, an update racing a stop can crash inside `SCStreamConfiguration.isEqual`.
+private actor CaptureEngineOperationGate {
+    private var isLocked = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func acquire() async {
+        guard isLocked else {
+            isLocked = true
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    func release() {
+        guard !waiters.isEmpty else {
+            isLocked = false
+            return
+        }
+
+        waiters.removeFirst().resume()
+    }
+}
+
 /// A structure that contains the video data to render.
 struct CapturedFrame {
     static let invalid = CapturedFrame(surface: nil, contentRect: .zero, contentScale: 0, scaleFactor: 0, pixelBuffer: nil, displayID: nil)
@@ -29,6 +56,7 @@ struct CapturedFrame {
 @available(macOS 12.3, *) class CaptureEngine: NSObject, @unchecked Sendable {
     
     private let logger = Logger()
+    private let operationGate = CaptureEngineOperationGate()
     
     private var stream: SCStream?
     private let videoSampleBufferQueue = DispatchQueue(label: "ink.geckos.MakeItHome.VideoSampleBufferQueue",
@@ -45,8 +73,11 @@ struct CapturedFrame {
     private var streamOutput: CaptureEngineStreamOutput? // https://developer.apple.com/forums/thread/733077
     
     /// - Tag: StartCapture
-    func startCapture(configuration: SCStreamConfiguration, filter: SCContentFilter) -> AsyncThrowingStream<CapturedFrame, Error> {
-        AsyncThrowingStream<CapturedFrame, Error> { continuation in
+    func startCapture(configuration: SCStreamConfiguration, filter: SCContentFilter) async -> AsyncThrowingStream<CapturedFrame, Error> {
+        await operationGate.acquire()
+
+        var shouldStart = false
+        let frames = AsyncThrowingStream<CapturedFrame, Error> { continuation in
             
             self.continuation = continuation
             
@@ -63,37 +94,61 @@ struct CapturedFrame {
                 // Add a stream output to capture screen content.
                 try stream?.addStreamOutput(streamOutput!, type: .screen, sampleHandlerQueue: videoSampleBufferQueue)
                 /*try stream?.addStreamOutput(streamOutput, type: .audio, sampleHandlerQueue: audioSampleBufferQueue)*/
-                
-                stream?.startCapture()
+                shouldStart = true
             } catch {
                 continuation.finish(throwing: error)
             }
         }
+
+        if shouldStart {
+            do {
+                try await stream?.startCapture()
+            } catch {
+                continuation?.finish(throwing: error)
+                continuation = nil
+                streamOutput = nil
+                stream = nil
+            }
+        }
+
+        await operationGate.release()
+        return frames
     }
     
     func stopCapture() async {
-        defer {
-            continuation = nil
-            streamOutput = nil
-            stream = nil
-        }
+        await operationGate.acquire()
+
         do {
             try await stream?.stopCapture()
             continuation?.finish()
         } catch {
             continuation?.finish(throwing: error)
         }
+        continuation = nil
+        streamOutput = nil
+        stream = nil
         powerMeter.processSilence()
+
+        await operationGate.release()
     }
     
     /// - Tag: UpdateStreamConfiguration
     func update(configuration: SCStreamConfiguration, filter: SCContentFilter) async {
+        await operationGate.acquire()
+
+        guard !Task.isCancelled else {
+            await operationGate.release()
+            return
+        }
+
         do {
             try await stream?.updateConfiguration(configuration)
             try await stream?.updateContentFilter(filter)
         } catch {
             logger.error("Failed to update the stream session: \(String(describing: error))")
         }
+
+        await operationGate.release()
     }
 }
 
