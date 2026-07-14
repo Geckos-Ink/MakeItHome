@@ -3,7 +3,7 @@
 ## Project Summary
 - MakeItHome is a macOS SwiftUI app that extends screen edges into an "overscreen" UI for app switching and widgets.
 - Uses ScreenCaptureKit for capture, SceneKit for rendering, and CoreImage for preview processing.
-- Current release noted in README is 1.9.6, with 1.9.7 in progress.
+- Current release is 2.0.9; development happens on branches named after the version in progress.
 
 ## Repo Layout
 - `MakeItHome/Managers/Displays.swift`: display detection, mouse/overscreen logic, window tracking, screenshot cropping.
@@ -40,7 +40,7 @@
 - Defer extension permission alerts until the overscreen has fully closed. A permission request must not force-close an active search WebView or leave the overscreen unable to reopen.
 
 ## Known Hotspots
-- `Displays.swift` aboveBy logic is complex and has unused variables (noted in README).
+- `Displays.swift` aboveBy logic is complex and has unused variables.
 - Rendering responsiveness depends on timely ScreenRecorder profile switches and SceneKit rendering state.
 
 ## Roadmap (from README and notes)
@@ -49,5 +49,5 @@
   - Widgets from external apps (todo)
   - App Extension API, demo, and documentation; browser extension integration
 - Clean up aboveBy management in Display class.
-- Investigate thread overflow issues mentioned in README.
+- Investigate thread overflow issues (possibly only a debug problem).
 - Improve release testing coverage.

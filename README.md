@@ -8,18 +8,34 @@
   <a href="https://apps.apple.com/it/app/makeithome-screen-extender/id6444596296?l=en-GB&mt=12"><img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/download_mac_appstore.png?raw=true"/></a>
 </p>
 
-## The UI extender for macOS
+# The UI extender for macOS
+
+MakeItHome extends your Mac beyond the physical edges of the screen. Push the cursor past a screen border and you enter the **overscreen**: a virtual area surrounding your desktop where you can switch between apps with live window previews, pin your favorite apps, and access a full zone of widgets — without ever touching the Dock or Cmd-Tab.
 
 <img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_0.gif?raw=true">
 
-Current release version: 2.0.9
+**Current release: 2.0.9** — [available on the Mac App Store](https://apps.apple.com/it/app/makeithome-screen-extender/id6444596296?l=en-GB&mt=12)
 
-## Some messages for new and older users
+## Features
 
-- The application uses Screen Recording to work and to create the magic. Don't be scared, the recorded images are not saved on storage nor sent through internet.
-- Don't be scared neither by the "Security" issues presented by GitHub: are all related to the Angular project used for the Notes and Tasks in the Widgets Zone, and are incosistent issues in the practice. Anyway, it's important to check sometimes issues related to the Swift code.
+- **Overscreen app switching** — cross a screen edge to reveal the running apps with live, real-time window previews. Click a preview to jump straight to that window.
+- **App locking** — pin an app to a screen edge so it is always one flick away, on every Space.
+- **The Widgets Zone** — the top edge hosts a dedicated widgets area with:
+  - **Notes and Tasks** — quick notes and to-do lists, always within reach.
+  - **Calendar** — glance at your schedule without opening another app.
+  - **Clipboard history** — capture what you copy and paste it back later.
+  - **My Widgets** — add your own custom web widgets.
+- **Fast web search** — start a web search directly from the top zone, with full-page results in an instant overlay.
+- **App Extension API** — third-party apps can extend their preview in the overscreen with their own interactive area (see below).
+- **Localization** — the interface is translated into multiple languages.
+- **Multi-display aware** — works with your monitors' arrangement.
+
+### A note on privacy
+
+MakeItHome uses the Screen Recording permission to create its magic: the live previews of your windows. The captured images are processed entirely on your Mac — they are never saved to disk nor sent over the internet.
 
 ## How to
+
 <center>
   <table>
   	<tr>
@@ -49,42 +65,49 @@ Current release version: 2.0.9
   <table>
 </center>
 
-## MakeItHome 2.0
-The current versions 1.9.x aims to the completion of "MakeItHome 2.0" objectives.
+## The App Extension
 
-These objectives are:
-- Widgets Zone in the top bar (completed)
-- Widgets from external apps (todo)
-- App Extension: an application can extend its icon in the windows switching area. The work is in progress: when an application has the extension area, an aurora borealis is generated at the base of its preview. Then, if the user "break" more the screen boundaries on the aurora's side, he will access a doubled overscreen with a WebView where the application can render what he wants. My first intention about using this feature is to create a browser extension and create a rapid tab switching with web page preview. But an application is free to set what it wants: for example a music player app can display the songs queue and permit the rapid change of song. Respect than the Widgets Zone, the App Extension has no design structure, so all focus is about the APIs and the communication protocol between MakeItHome and the app. I aim to implement the App Extension "theoretically" with an update only with a demo app and documentation and then create the browsers extensions... well, when I'll have time. 
+An application can extend its icon in the window-switching area. When an app exposes an extension area, an aurora borealis glows at the base of its preview: "break" the screen boundary further on the aurora's side and you access a doubled overscreen with a WebView, where the application is free to render whatever it wants.
+
+For example, a browser can offer rapid tab switching with web page previews, or a music player can display the song queue and let you change tracks instantly. Unlike the Widgets Zone, the App Extension imposes no design structure: the focus is entirely on the API and the communication protocol between MakeItHome and the app.
 
 <img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/makeithome-web-preview.gif?raw=true">
-<i>A preview of App Extension area with MakeItHome Web for Safari.</i>
+<i>A preview of the App Extension area with MakeItHome Web for Safari.</i>
 
-The App Extension is implemented in current release of MakeItHome. As soon as possible I'll write a tutorial about it.
-Here's already available an App Extension demo: <a href="https://github.com/Geckos-Ink/MakeItHome-AppExtension-Demo">https://github.com/Geckos-Ink/MakeItHome-AppExtension-Demo</a>. 
+The App Extension API is implemented in the current release, and a demo app is already available: [MakeItHome-AppExtension-Demo](https://github.com/Geckos-Ink/MakeItHome-AppExtension-Demo). A full tutorial and API documentation are on the way.
 
-<hr>
-In conclusion, all 1.9.x versions are, yes, essential bug fixing but also mainly features introduction. I aim to new features' stability on version 2.0.x
+## Project status
 
-## Notes
-This project deserves a better documentation, most of all seen the fact that soon I should publish a new update, at least to improve the user experience and to complete the widgets zone. 
+The 2.0.x series is the consolidation of the "MakeItHome 2.0" goals introduced during the 1.9.x cycle, with the focus now on stability and polish:
 
-I try to make a to do list as memorandum:
-- The aboveBy management in Display class is full of unused variables. Clear it.
-- <b>VERY IMPORTANT: solve this holy threads "overflow" issue (only a debug problem?)</b>
+- ✅ Widgets Zone in the top bar
+- ✅ App Extension API, with a working demo app
+- ✅ Browser extension groundwork (MakeItHome Web)
+- ✅ Clipboard history widget
+- ✅ Interface localization
+- 🚧 Widgets from external apps
+- 🚧 App Extension tutorial and API documentation
+- 🚧 Browser extensions for more browsers
 
-## Development guide
-- The top widgets zone web assets if located at MakeItHome/Resources/assets/, instead the Swift controller is located at MakeItHome/Views/Overscreen/WidgetZoneView.swift
+Development happens on branches named after the version in progress (currently **2.0.9**).
 
-Currently I'm working on version **1.9.7** on the homonymous branch.
+**Looking for testers!** New features have a talent for shipping with a bug nobody noticed. If you'd like to help make releases more stable, get in touch (contacts below).
 
-<b>I have a huge problem about testing before its release. If I create a new feature, this mathematically brings a new bug that I don't notice. I'm looking for tester to make more stable the releases.</b>
+## Development
 
-SonarCloud link: <a>https://sonarcloud.io/project/overview?id=Geckos-Ink_MakeItHome</a>
+- Open `MakeItHome.xcodeproj` in Xcode and run the macOS target.
+- The app requires the **Screen Recording** and **Accessibility** permissions to function.
+- The top Widgets Zone web assets live in `MakeItHome/Resources/assets/`; its Swift controller is `MakeItHome/Views/Overscreen/WidgetZoneView.swift`.
+- The browser extension sources are in `MakeItHome/MakeItHome Web Extension/`.
 
-### Articles:
+Heads-up on GitHub's security advisories: they are all related to the Angular project used for the Notes and Tasks widgets and are inconsistent issues in practice. The Swift code advisories are the ones worth checking.
 
-MacWorld: Why breaking your Mac’s screen is a good idea | dlroWcaM
+Code quality dashboard: [SonarCloud](https://sonarcloud.io/project/overview?id=Geckos-Ink_MakeItHome)
 
-### Credits
-Riccardo Cecchini \<rcecchini.ds@gmail.com> cekkr@github
+## Articles
+
+- MacWorld: <a href="https://www.macworld.com/article/1533463/why-breaking-your-macs-screen-is-a-good-idea.html">*Why breaking your Mac's screen is a good idea*</a>
+
+## Credits
+
+Riccardo Cecchini \<rcecchini.ds@gmail.com> [cekkr](https://github.com/cekkr)
