@@ -343,12 +343,120 @@ let selEl = null
 let canDragOut = false
 let dontDrop = false // useless stuff (for the moment)
 
-let $webSearchFrame = $("#webSearchFrame")
+let $webSearchWebView = $("#webSearchWebView")
+let latestExtensionPermissions = null
 
 let toDoAtOpening = [] // events array
 let settingsState = {
     enableClipboardCapture: true,
 }
+
+///
+/// Native web views
+///
+
+const nativeWebViewSelector = '[data-native-webview-id]'
+let nativeWebViewSyncScheduled = false
+let observedNativeWebViews = new WeakSet()
+const nativeWebViewResizeObserver = new ResizeObserver(() => scheduleNativeWebViewSync())
+
+function nativeWebViewPresentation(element) {
+    let opacity = 1
+    let current = element
+
+    while(current && current.nodeType === Node.ELEMENT_NODE) {
+        const style = window.getComputedStyle(current)
+        if(style.display === 'none' || style.visibility === 'hidden')
+            return { visible: false, opacity: 0 }
+
+        const currentOpacity = Number.parseFloat(style.opacity)
+        if(Number.isFinite(currentOpacity)) opacity *= currentOpacity
+        current = current.parentElement
+    }
+
+    const rect = element.getBoundingClientRect()
+    const visible = opacity > 0.001 && rect.width > 0 && rect.height > 0 &&
+        rect.right > 0 && rect.bottom > 0 && rect.left < window.innerWidth && rect.top < window.innerHeight
+
+    return { visible: visible, opacity: opacity }
+}
+
+function syncNativeWebViews() {
+    nativeWebViewSyncScheduled = false
+
+    const handler = window.webkit?.messageHandlers?.nativeWebView
+    if(!handler) return
+
+    const views = []
+    document.querySelectorAll(nativeWebViewSelector).forEach((element) => {
+        const id = (element.dataset.nativeWebviewId || '').trim()
+        if(!id) return
+
+        if(!observedNativeWebViews.has(element)) {
+            observedNativeWebViews.add(element)
+            nativeWebViewResizeObserver.observe(element)
+        }
+
+        const rect = element.getBoundingClientRect()
+        const presentation = nativeWebViewPresentation(element)
+        views.push({
+            id: id,
+            url: element.dataset.nativeUrl || '',
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+            visible: presentation.visible,
+            opacity: presentation.opacity,
+            restoresSession: element.dataset.nativeRestoresSession === 'true',
+            controls: element.dataset.nativeControls || '',
+            reloadToken: element.dataset.nativeReloadToken || ''
+        })
+    })
+
+    handler.postMessage({ views: views })
+}
+
+function scheduleNativeWebViewSync() {
+    if(nativeWebViewSyncScheduled) return
+    nativeWebViewSyncScheduled = true
+    window.requestAnimationFrame(syncNativeWebViews)
+}
+
+const nativeWebViewMutationObserver = new MutationObserver(() => scheduleNativeWebViewSync())
+nativeWebViewMutationObserver.observe(document.body, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: [
+        'class', 'hidden', 'style', 'data-native-webview-id', 'data-native-url',
+        'data-native-restores-session', 'data-native-controls', 'data-native-reload-token'
+    ]
+})
+
+window.addEventListener('resize', scheduleNativeWebViewSync)
+window.addEventListener('scroll', scheduleNativeWebViewSync, true)
+scheduleNativeWebViewSync()
+
+registerLocalizations({
+    'widgets.extensions.unknown': 'Unknown',
+    'widgets.extensions.status.trusted': 'Trusted',
+    'widgets.extensions.status.not_trusted': 'Not trusted',
+    'widgets.extensions.status.connected': 'Connected',
+    'widgets.extensions.status.secret_stored': 'Secret stored',
+    'widgets.extensions.status.popup_retry': 'Popup retry in %d s',
+    'widgets.extensions.empty': 'No extension detected yet. Open the extension once, then refresh this list.',
+    'widgets.extensions.unknown_extension': 'Unknown extension',
+    'widgets.extensions.bundle': 'Bundle',
+    'widgets.extensions.client_id': 'Client ID',
+    'widgets.extensions.version': 'Version',
+    'widgets.extensions.last_seen': 'Last seen',
+    'widgets.extensions.request_permission': 'Request Permission',
+    'widgets.extensions.revoke_permission': 'Revoke Permission',
+    'widgets.extensions.permission_allowed': 'Permission allowed.',
+    'widgets.extensions.permission_denied': 'Permission denied.',
+    'widgets.extensions.permission_ignored': 'Popup ignored. MakeItHome will ask again after 30 seconds.',
+});
 
 function applySettingToControls(setting) {
     if(setting == "detectDragAndDrop" && $checkDragAndDropDetect)
@@ -365,6 +473,12 @@ function receiveMessage(message){
         let obj = message
 
         switch(obj.type){
+            case 'localizations':
+                applyLocalizations(obj.localizations)
+                if(latestExtensionPermissions !== null)
+                    renderExtensionPermissionsStatus(latestExtensionPermissions)
+                break;
+
             case 'setSetting':
                 if(obj.valBool !== undefined) retrieveSetting(obj.setting, obj.valBool)
                 break;
@@ -401,26 +515,6 @@ function receiveMessage(message){
                     $e.remove()
                 }
             })
-        }
-
-        if(obj.type == 'frameResponse'){
-            let url = obj.url;
-                        
-            if(url.includes('/url?q=')){
-                url = getQueryParameters(url)['q'];
-                $webSearchFrame[0].src = bridgeUrl(url);
-            }
-
-            if(!obj.data){
-                $webSearchFrame[0].src = bridgeUrl(url);
-                return;
-            }            
-
-            let html = fromBinary(obj.data)
-            //html = obj.value;
-            //html = decodeURIComponent(html);
-            html = convertRelativeUrlsToAbsolute(html, url)
-            $webSearchFrame[0].contentWindow.postMessage(html, "*");
         }
 
         if(obj.type == 'newClipboardItem'){
@@ -542,6 +636,7 @@ function receiveMessage(message){
         clearOnScrollable()
 
         stopFullscreenMode();   
+        scheduleNativeWebViewSync()
         
         for (let cbk of toDoAtOpening) {
             cbk()
@@ -1264,27 +1359,39 @@ function editTask(event) {
 
 let fullscreenMode = false;
 let searchSelectAll = false;
+const searchWebViewFadeOutDuration = 500;
 function startFullscreenMode(){
     if(!fullscreenMode){
         sendMessage({type: "enterFullscreen"})
         fullscreenMode = true;
+        fullscreenMouseBelow = false;
 
-        $extension.animate({
+        $extension.stop(true, false).animate({
             opacity: 1
-        }, 250)
+        }, {
+            duration: 250,
+            step: scheduleNativeWebViewSync,
+            complete: scheduleNativeWebViewSync
+        })
     }
 }
 
 function stopFullscreenMode(){
     if(fullscreenMode){
-        sendMessage({type: "closeFullscreen"})
-
-        $extension.animate({
-            opacity: 0
-        }, 250)
-
         fullscreenMode = false;
         searchSelectAll = true;
+
+        $extension.stop(true, false).animate({
+            opacity: 0
+        }, {
+            duration: searchWebViewFadeOutDuration,
+            step: scheduleNativeWebViewSync,
+            complete: function() {
+                scheduleNativeWebViewSync()
+                if(!fullscreenMode)
+                    sendMessage({type: "closeFullscreen"})
+            }
+        })
     }
 }
 
@@ -1309,59 +1416,21 @@ function searchPressEnter(e) {
         startFullscreenMode();
 
         let url = "https://www.google.com/search?hl=en&q="+encodeURIComponent($searchBar.val());
+        $webSearchWebView.attr('data-native-url', url)
+        scheduleNativeWebViewSync()
         
         setTimeout(()=>{
 
             $webSearch.show();
 
-            sendMessage({type: 'navUrl', url: url})
-
             $webSearch.animate({
                 opacity: 1
-            }, 250, ()=>{
-                var rect = $webSearchFrame[0].getBoundingClientRect();
-                sendMessage({type: "navPos", x: rect.x, y: rect.y, width: $webSearchFrame[0].offsetWidth, height: $webSearchFrame[0].offsetHeight})
-            });
+            }, 250);
 
         }, 100);
 
-        return;
-
-        //url = "https://duckduckgo.com/?q="+encodeURIComponent($searchBar.val().replaceAll(' ', '+'));
-        url = bridgeUrl(url)
-
-        //$webSearchFrame.attr('src', 'mrWhite.html')
-
-        $webSearchFrame.attr('src', url)
-
-        $webSearch.animate({
-            opacity: 1
-        }, 250);
     }
 }
-
-/*$webSearchFrame.click((e)=>{
-    
-})*/
-
-$webSearch.click((e)=>{
-    alert("click")
-    stopFullscreenMode();
-})
-
-window.addEventListener('message', function(event) {
-    // Used for communication with iframe, could receive invalid data
-    if(!event.data) return; 
-
-    console.log("Message received from the child: " + event.data); // Message received from child
-
-    $webSearchFrame[0].src = "mrWhite.html";
-
-    let url = event.data.replace("file:///", "")
-    //url = "https://geckos.ink/api/proxy.php?url="+encodeURIComponent(url)
-
-    sendMessage({type:"frameOpen", value: url });
-});
 
 ///
 /// Selection manager
@@ -1616,21 +1685,24 @@ function revokeExtensionPermission(identity){
 }
 
 function formatExtensionTimestamp(seconds){
-    if(!seconds) return "Unknown"
+    if(!seconds) return localizedString('widgets.extensions.unknown', 'Unknown')
     let dt = new Date(seconds * 1000)
     return dt.toLocaleString()
 }
 
 function extensionPermissionStatusLabel(permission){
     let statuses = []
-    statuses.push(permission.trusted ? "Trusted" : "Not trusted")
-    if(permission.connected) statuses.push("Connected")
-    if(permission.hasSecret) statuses.push("Secret stored")
+    statuses.push(permission.trusted
+        ? localizedString('widgets.extensions.status.trusted', 'Trusted')
+        : localizedString('widgets.extensions.status.not_trusted', 'Not trusted'))
+    if(permission.connected) statuses.push(localizedString('widgets.extensions.status.connected', 'Connected'))
+    if(permission.hasSecret) statuses.push(localizedString('widgets.extensions.status.secret_stored', 'Secret stored'))
 
     if(permission.ignoredUntil){
         let msLeft = (permission.ignoredUntil * 1000) - Date.now()
         if(msLeft > 0){
-            statuses.push("Popup retry in " + Math.ceil(msLeft / 1000) + "s")
+            statuses.push(localizedString('widgets.extensions.status.popup_retry', 'Popup retry in %d s')
+                .replace('%d', Math.ceil(msLeft / 1000)))
         }
     }
 
@@ -1642,12 +1714,12 @@ function renderExtensionPermissionsStatus(list){
 
     $extensionPermissionsList.html("")
     if(!list || !list.length){
-        $extensionPermissionsList.append('<div class="extensionPermissionCard">No extension detected yet. Open the extension once, then refresh this list.</div>')
+        $extensionPermissionsList.append('<div class="extensionPermissionCard">' + localizedString('widgets.extensions.empty', 'No extension detected yet. Open the extension once, then refresh this list.') + '</div>')
         return
     }
 
     for(let permission of list){
-        let extensionName = antiHtmlInjection(permission.extensionName || permission.bundleId || "Unknown extension")
+        let extensionName = antiHtmlInjection(permission.extensionName || permission.bundleId || localizedString('widgets.extensions.unknown_extension', 'Unknown extension'))
         let bundleId = antiHtmlInjection(permission.bundleId || "unknown.bundle")
         let clientId = permission.clientId ? antiHtmlInjection(permission.clientId) : "-"
         let extensionVersion = permission.extensionVersion ? antiHtmlInjection(permission.extensionVersion) : "-"
@@ -1658,11 +1730,11 @@ function renderExtensionPermissionsStatus(list){
         let html = ''
         html += '<div class="extensionPermissionCard">'
         html += '  <div class="name">' + extensionName + '</div>'
-        html += '  <div class="meta">Bundle: ' + bundleId + '<br>Client ID: ' + clientId + '<br>Version: ' + extensionVersion + '<br>Last seen: ' + lastSeenAt + '</div>'
+        html += '  <div class="meta">' + localizedString('widgets.extensions.bundle', 'Bundle') + ': ' + bundleId + '<br>' + localizedString('widgets.extensions.client_id', 'Client ID') + ': ' + clientId + '<br>' + localizedString('widgets.extensions.version', 'Version') + ': ' + extensionVersion + '<br>' + localizedString('widgets.extensions.last_seen', 'Last seen') + ': ' + lastSeenAt + '</div>'
         html += '  <div class="status">' + status + '</div>'
         html += '  <div class="actions">'
-        html += '    <button class="action request" data-identity="' + identity + '">Request Permission</button>'
-        html += '    <button class="action revoke" data-identity="' + identity + '">Revoke Permission</button>'
+        html += '    <button class="action request" data-identity="' + identity + '">' + localizedString('widgets.extensions.request_permission', 'Request Permission') + '</button>'
+        html += '    <button class="action revoke" data-identity="' + identity + '">' + localizedString('widgets.extensions.revoke_permission', 'Revoke Permission') + '</button>'
         html += '  </div>'
         html += '</div>'
 
@@ -1673,16 +1745,16 @@ function renderExtensionPermissionsStatus(list){
 function notifyPermissionDecision(decision){
     if(!decision) return
 
-    let text = ""
+    var text = ""
     switch(decision){
         case "allow":
-            text = "Permission allowed."
+            text = localizedString('widgets.extensions.permission_allowed', 'Permission allowed.')
             break
         case "deny":
-            text = "Permission denied."
+            text = localizedString('widgets.extensions.permission_denied', 'Permission denied.')
             break
         case "ignored":
-            text = "Popup ignored. MakeItHome will ask again after 30 seconds."
+            text = localizedString('widgets.extensions.permission_ignored', 'Popup ignored. MakeItHome will ask again after 30 seconds.')
             break
     }
 
@@ -1698,7 +1770,8 @@ function notifyPermissionDecision(decision){
 function receiveExtensionPermissionsStatus(obj){
     if(!obj) return
     notifyPermissionDecision(obj.decision)
-    renderExtensionPermissionsStatus(obj.extensionPermissions || [])
+    latestExtensionPermissions = obj.extensionPermissions || []
+    renderExtensionPermissionsStatus(latestExtensionPermissions)
 }
 
 $(document).ready(function() {
@@ -1832,6 +1905,17 @@ let pickers = []
 let myWidgetsListLoad = []
 
 let firstMyWidgetsLoad = true
+function createMyWidgetId() {
+    if(window.crypto?.randomUUID) return window.crypto.randomUUID()
+    return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2)
+}
+
+function normalizedWidgetURL(url) {
+    const value = (url || '').trim()
+    if(!value || /^[a-z][a-z0-9+.-]*:/i.test(value)) return value
+    return 'https://' + value
+}
+
 function loadMyWidgets() {
     let _myWidgets = localStorage.getItem("myWidgets")
     if (_myWidgets) {
@@ -1842,7 +1926,12 @@ function loadMyWidgets() {
     }
 
     myWidgetsListLoad = []
+    let migratedWidgetIds = false
     for (let widget of _myWidgets) {
+        if(!widget.id) {
+            widget.id = createMyWidgetId()
+            migratedWidgetIds = true
+        }
         console.log("loading", widget)
         let res = newWidget(widget)        
 
@@ -1861,6 +1950,7 @@ function loadMyWidgets() {
     }
 
     firstMyWidgetsLoad = false
+    if(migratedWidgetIds) saveMyWidgets()
 }
 
 $('ons-list-item.myWidgets').on('click', (e) => {
@@ -1915,11 +2005,16 @@ function newWidget(widget=null) {
     console.log("new widget")
     let $widget = $(".myWidget.template").clone()
     $widget.removeClass("template")
+    // The template fallback is localizable, but this clone contains user data.
+    // Leaving data-i18n attached lets a later localization reply overwrite the
+    // saved title with "My widget name".
+    $widget.find('.name').removeAttr('data-i18n')
     
     let num = myWidgets.length
     console.log("wiget num", num)
 
     widget = widget || { title: "My widget", color: "#0000ff" }
+    widget.id = widget.id || createMyWidgetId()
     myWidgets.push(widget)
 
     let id = 'myWidget' + num
@@ -1929,13 +2024,16 @@ function newWidget(widget=null) {
 
     apps.push('myWidget' + num)
 
-    let $leftMenu = $('<div class="appItem myWidgetsItem" id="appItem-myWidget' + num + '" onclick="openApp(\'myWidget' + num + '\')"><div class="img"><i class="fa-solid fa-circle"></i></div> <div class="text">' + widget.title + '</div></div>')    
+    let $leftMenu = $('<div class="appItem myWidgetsItem" id="appItem-myWidget' + num + '" onclick="openApp(\'myWidget' + num + '\')"><div class="img"><i class="fa-solid fa-circle"></i></div> <div class="text"></div></div>')
+    $leftMenu.find('.text').text(widget.title)
     $leftMenu.find('.img').css('color', widget.color)
 
     let $app = $("#app-myWidget-template").clone()
     $app.addClass('myWidgetApp')
     $app.attr('id', 'app-myWidget' + num)
-    $app.find('iframe').attr('src', widget.url)
+    let $nativeWebView = $app.find('.myWidgetWebView')
+    $nativeWebView.attr('data-native-webview-id', 'my-widget-' + widget.id)
+    $nativeWebView.attr('data-native-url', normalizedWidgetURL(widget.url))
 
     $widget.find('.colorPicker').attr('id','myWidgetColorPicker' + num)
     let picker = initColorPicker('myWidgetColorPicker' + num)
@@ -1966,24 +2064,24 @@ function newWidget(widget=null) {
 
     console.log('inputs', $widget.find('input'))
 
+    let navigationUpdate = null
     $widget.find('input, .name').on('keyup', (e) => { 
         console.log("input keydown", e)
-        widget.title = $widget.find('.name').html()
-        $leftMenu.find('.text').html(widget.title)
+        widget.title = $widget.find('.name').text()
+        $leftMenu.find('.text').text(widget.title)
         checkMyWidgetTitle($leftMenu)
 
         let newUrl = $widget.find('.url').val()
-        if (newUrl != widget.url)
-            $app.find('iframe').attr('src', newUrl)
-
         widget.url = newUrl
+
+        clearTimeout(navigationUpdate)
+        navigationUpdate = setTimeout(() => {
+            $nativeWebView.attr('data-native-url', normalizedWidgetURL(widget.url))
+            scheduleNativeWebViewSync()
+        }, 400)
 
         saveMyWidgets()
     })   
-    
-    $app.find('.reload').on('click', (e) => {
-        $app.find('iframe').attr('src', widget.url)
-    })
 
     // Create app
     $('.leftMenu').append($leftMenu)
@@ -1998,8 +2096,11 @@ function newWidget(widget=null) {
         checkMyWidgetTitle($leftMenu)
     }
 
-    $widget.find('.name').html(widget.title)
+    $widget.find('.name').text(widget.title)
     $widget.find('.url').val(widget.url)
+
+    if(!firstMyWidgetsLoad) saveMyWidgets()
+    scheduleNativeWebViewSync()
 
     return [widget, $widget, picker]
 }

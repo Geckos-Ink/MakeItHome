@@ -92,6 +92,13 @@ public class AppExtensionWebViewCoordinator: NSObject, WKNavigationDelegate, Dra
         (webView as? AppExtensionWKWV)?.forceReload()
     }
 
+    public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard webView === Static.AppExtensionWebView else { return }
+
+        Static.appExtensionManager?.webViewDidFinishLoading()
+        (webView as? AppExtensionWKWV)?.sendCurrentVersion()
+    }
+
     // Implement WKNavigationDelegate method to allow navigation for dropped items
     public func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         

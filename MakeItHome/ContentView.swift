@@ -241,12 +241,6 @@ public struct ContentView: View {
                 .opacity(vars.overlayOpacity)
         )
         .overlay {
-            NavigateZoneView()
-                .offset(x: vars.navOverlayOffsetX, y: vars.navOverlayOffsetY)
-                .frame(width: vars.navOverlaySizeX, height: vars.navOverlaySizeY)
-                .opacity(vars.navOverlayOpacity)
-        }
-        .overlay {
             AppExtensionView()
                 .offset(x: vars.appExtOverlayOffsetX, y: vars.appExtOverlayOffsetY)
                 .frame(width: vars.appExtOverlaySizeX, height: vars.appExtOverlaySizeY)

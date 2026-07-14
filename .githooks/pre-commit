@@ -1,0 +1,29 @@
+#!/bin/bash
+#
+# Pre-commit hook: run the fast PreviewFlowGate flow tests before every commit.
+#
+# These guard the preview/recording gate (the "frozen previews after idle/fullscreen" bug).
+# They compile a single pure Swift file and finish in well under a second, so they are cheap to
+# run on every commit. Bypass with `git commit --no-verify` if you ever need to.
+#
+# Enabled via:  git config core.hooksPath .githooks   (already set once; versioned in the repo)
+
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+
+if [ ! -x "$ROOT/Tests/run.sh" ]; then
+    # Tests missing (e.g. old branch) — don't block the commit.
+    exit 0
+fi
+
+echo "› pre-commit: running PreviewFlowGate flow tests…"
+if "$ROOT/Tests/run.sh" > /tmp/previewflowgate-precommit.log 2>&1; then
+    tail -n 1 /tmp/previewflowgate-precommit.log
+else
+    echo "✗ PreviewFlowGate tests FAILED — commit aborted."
+    echo "  Full output:"
+    cat /tmp/previewflowgate-precommit.log
+    echo "  (bypass with: git commit --no-verify)"
+    exit 1
+fi

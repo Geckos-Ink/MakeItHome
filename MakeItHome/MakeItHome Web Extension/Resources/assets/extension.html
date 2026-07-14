@@ -82,7 +82,7 @@
     
 </style>
 
-<div id="safariTabs" class="safariSwiperContainer swiper-container">
+<div id="safariTabs" class="safariSwiperContainer swiper swiper-container">
     <div class="swiper-wrapper"></div>
     <div class="swiper-pagination"></div>
 </div>
@@ -99,14 +99,73 @@
         clearTimeout(vars.safari.swiperRetryTimer)
         vars.safari.swiperRetryTimer = null
     }
+    if(vars.safari.swiperRefreshTimer){
+        clearTimeout(vars.safari.swiperRefreshTimer)
+        vars.safari.swiperRefreshTimer = null
+    }
     vars.safari.slides = []
     vars.safari.tabs = {}
+
+    function swiperHasLayout(){
+        let container = document.getElementById('safariTabs')
+        if(!container || !isShowing) return false
+
+        let bounds = container.getBoundingClientRect()
+        return bounds.width > 1 && bounds.height > 1
+    }
+
+    function scheduleSwiperRefresh(attempt = 0){
+        if(vars.safari.swiperRefreshTimer){
+            clearTimeout(vars.safari.swiperRefreshTimer)
+        }
+
+        // The native overscreen changes both position and size. Wait across a
+        // few render frames so coverflow sees its final non-zero geometry.
+        const delays = [0, 16, 50, 120, 250]
+        vars.safari.swiperRefreshTimer = setTimeout(()=>{
+            vars.safari.swiperRefreshTimer = null
+
+            if(!swiperHasLayout()){
+                if(isShowing && attempt + 1 < delays.length){
+                    scheduleSwiperRefresh(attempt + 1)
+                }
+                return
+            }
+
+            if(!vars.safari.swiper){
+                instanceSwiper()
+            }
+
+            let swiper = vars.safari.swiper
+            if(swiper && !swiper.destroyed){
+                swiper.update()
+                // Re-run the active effect after the size update. Without this,
+                // an instance created during the native transition can retain
+                // plain two-dimensional transforms.
+                swiper.setTranslate(swiper.translate)
+            }
+
+            if(attempt + 1 < delays.length){
+                scheduleSwiperRefresh(attempt + 1)
+            }
+        }, delays[Math.min(attempt, delays.length - 1)])
+    }
 
     // Swiper may not be evaluated yet when the first screenshots arrive:
     // retry instead of throwing, so slides queued in vars.safari.slides
     // get appended once the library is ready
     function ensureSwiper(){
         if(vars.safari.swiper) return true
+
+        if(!swiperHasLayout()){
+            if(isShowing && !vars.safari.swiperRetryTimer){
+                vars.safari.swiperRetryTimer = setTimeout(()=>{
+                    vars.safari.swiperRetryTimer = null
+                    scheduleSwiperRefresh()
+                }, 50)
+            }
+            return false
+        }
 
         if(typeof Swiper === 'undefined'){
             if(!vars.safari.swiperRetryTimer){
@@ -219,14 +278,10 @@
 
     setEvent('show', ()=>{
         console.log("showing safari extension", isHorizontal)
-        if(!vars.safari.swiper || vars.safari.swiperIsHorizontal !== isHorizontal){
-            resetSwiper()
+        if(vars.safari.swiper && vars.safari.swiperIsHorizontal !== isHorizontal){
+            destroySwiper()
         }
-        else {
-            // Instanced while the zone was display:none: every size was 0 and the
-            // coverflow transforms never got computed, leaving the tabs "plain"
-            vars.safari.swiper.update()
-        }
+        scheduleSwiperRefresh()
     })
 
     vars.safari.blob = ""
@@ -440,6 +495,7 @@
             vars.safari.slides.push($slide[0])
             if(vars.safari.swiper){
                 vars.safari.swiper.appendSlide($slide[0])
+                scheduleSwiperRefresh()
             }
             else {
                 ensureSwiper() // appends every pending slide once the library is ready

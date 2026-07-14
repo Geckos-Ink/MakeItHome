@@ -13,6 +13,7 @@ enum ConnectionApprovalDecision: String {
     case allow
     case deny
     case ignored
+    case deferred
 }
 
 struct AppExtensionPermissionStatus: Codable {
@@ -29,6 +30,16 @@ struct AppExtensionPermissionStatus: Codable {
 }
 
 class AppExtensionManager {
+    private struct DeferredConnectionApproval {
+        var identity: String
+        var bundleId: String
+        var clientId: String?
+        var extensionName: String?
+        var extensionVersion: String?
+        var isReplacingConnection: Bool
+        var reason: String
+    }
+
     var apps : [String: AppExtension] = [:]
     private let trustPrefix = "TrustedAppExtension_"
     private let trustNamePrefix = "TrustedAppExtensionName_"
@@ -54,6 +65,14 @@ class AppExtensionManager {
     // ever converging. During the window we reuse the existing connection's secret instead.
     private let approvalGraceSeconds: TimeInterval = 10
     private var recentlyApprovedUntil: [String: TimeInterval] = [:]
+    private var deferredApprovals: [String: DeferredConnectionApproval] = [:]
+    private var deferredApprovalTimer: Timer?
+
+    func webViewDidFinishLoading() {
+        for app in apps.values {
+            app.webViewDidFinishLoading()
+        }
+    }
     
     func closedApp(bundleId: String){
         guard let app = apps[bundleId] else { return }
@@ -146,6 +165,8 @@ class AppExtensionManager {
             clearIgnoredUntil(identity: identity)
         case .ignored:
             setIgnoredUntil(identity: identity, value: Date().timeIntervalSince1970 + approvalIgnoreCooldownSeconds)
+        case .deferred:
+            break
         }
 
         return decision
@@ -245,6 +266,10 @@ class AppExtensionManager {
                     reply.status = "error"
                     reply.description = "connectionIgnored"
                     return reply
+                case .deferred:
+                    reply.status = "error"
+                    reply.description = "connectionDeferred"
+                    return reply
                 }
 
                 let newApp = AppExtension(bundleId: bundleId, identity: identity)
@@ -319,6 +344,10 @@ class AppExtensionManager {
                         setIgnoredUntil(identity: identity, value: Date().timeIntervalSince1970 + approvalIgnoreCooldownSeconds)
                         reply.status = "error"
                         reply.description = "connectionIgnored"
+                        return reply
+                    case .deferred:
+                        reply.status = "error"
+                        reply.description = "connectionDeferred"
                         return reply
                     }
                 }
@@ -720,46 +749,23 @@ class AppExtensionManager {
 
     private func requestConnectionApproval(bundleId: String, clientId: String?, extensionName: String?, extensionVersion: String?, isReplacingConnection: Bool, reason: String) -> ConnectionApprovalDecision {
         let action: () -> ConnectionApprovalDecision = {
-            let extensionDisplayName = self.extensionDisplayName(bundleId: bundleId, clientId: clientId, extensionName: extensionName)
-            let alert = NSAlert()
-            alert.alertStyle = .warning
-            alert.messageText = "Allow \(extensionDisplayName) extension?"
+            let request = DeferredConnectionApproval(
+                identity: self.extensionIdentity(bundleId: bundleId, clientId: clientId),
+                bundleId: bundleId,
+                clientId: clientId,
+                extensionName: extensionName,
+                extensionVersion: extensionVersion,
+                isReplacingConnection: isReplacingConnection,
+                reason: reason
+            )
 
-            var informativeText = "\(extensionDisplayName) (\(bundleId)) requested a connection to MakeItHome.\n\nReason: \(reason)"
-            if let clientId = self.normalizedClientId(clientId) {
-                informativeText += "\nClient ID: \(clientId)"
-            }
-            if let extensionVersion = extensionVersion, !extensionVersion.isEmpty {
-                informativeText += "\nVersion: \(extensionVersion)"
-            }
-            if isReplacingConnection {
-                informativeText += "\n\nThis will replace the previously confirmed connection."
+            guard !self.shouldWaitForOverscreenToClose else {
+                self.enqueueDeferredApproval(request)
+                return .deferred
             }
 
-            informativeText += "\n\nAllow only if you trust this extension."
-            informativeText += "\nThis confirmation expires in \(Int(self.approvalTimeoutSeconds)) seconds."
-            alert.informativeText = informativeText
-            alert.addButton(withTitle: "Allow")
-            alert.addButton(withTitle: "Deny")
-
-            let timeoutWork = DispatchWorkItem {
-                NSApp.abortModal()
-            }
-            DispatchQueue.main.asyncAfter(deadline: .now() + self.approvalTimeoutSeconds, execute: timeoutWork)
-
-            NSApp.activate(ignoringOtherApps: true)
-            let response = alert.runModal()
-            timeoutWork.cancel()
-            alert.window.orderOut(nil)
-
-            switch response {
-            case .alertFirstButtonReturn:
-                return .allow
-            case .alertSecondButtonReturn:
-                return .deny
-            default:
-                return .ignored
-            }
+            self.removeDeferredApproval(identity: request.identity)
+            return self.presentConnectionApproval(request)
         }
 
         if Thread.isMainThread {
@@ -768,6 +774,118 @@ class AppExtensionManager {
 
         return DispatchQueue.main.sync {
             action()
+        }
+    }
+
+    private var shouldWaitForOverscreenToClose: Bool {
+        Static.mainWindowInUsing || (Static.curDisplay?.isOverscreenPresentationInProgress ?? false)
+    }
+
+    private func enqueueDeferredApproval(_ request: DeferredConnectionApproval) {
+        deferredApprovals[request.identity] = request
+        guard deferredApprovalTimer == nil else { return }
+
+        let timer = Timer(timeInterval: 0.1, repeats: true) { [weak self] _ in
+            self?.presentNextDeferredApprovalIfPossible()
+        }
+        timer.tolerance = 0.02
+        deferredApprovalTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func removeDeferredApproval(identity: String) {
+        deferredApprovals.removeValue(forKey: identity)
+        if deferredApprovals.isEmpty {
+            deferredApprovalTimer?.invalidate()
+            deferredApprovalTimer = nil
+        }
+    }
+
+    private func presentNextDeferredApprovalIfPossible() {
+        guard !shouldWaitForOverscreenToClose,
+              !Static.isExtensionApprovalPromptShowing,
+              let request = deferredApprovals.values.first else {
+            return
+        }
+
+        removeDeferredApproval(identity: request.identity)
+        let decision = presentConnectionApproval(request)
+
+        switch decision {
+        case .allow:
+            let currentSecret = (apps[request.bundleId]?.identity == request.identity)
+                ? apps[request.bundleId]?.secret
+                : nil
+            saveTrustedExtension(
+                identity: request.identity,
+                extensionName: request.extensionName,
+                secret: currentSecret
+            )
+            clearIgnoredUntil(identity: request.identity)
+            markRecentlyApproved(identity: request.identity)
+            markInstallCompletedIfNeeded(bundleId: request.bundleId, extensionName: request.extensionName)
+        case .deny:
+            setTrustedExtension(identity: request.identity, trusted: false)
+            clearIgnoredUntil(identity: request.identity)
+        case .ignored:
+            setIgnoredUntil(
+                identity: request.identity,
+                value: Date().timeIntervalSince1970 + approvalIgnoreCooldownSeconds
+            )
+        case .deferred:
+            enqueueDeferredApproval(request)
+        }
+    }
+
+    private func presentConnectionApproval(_ request: DeferredConnectionApproval) -> ConnectionApprovalDecision {
+        Static.isExtensionApprovalPromptShowing = true
+        defer {
+            Static.isExtensionApprovalPromptShowing = false
+        }
+
+        let extensionDisplayName = extensionDisplayName(
+            bundleId: request.bundleId,
+            clientId: request.clientId,
+            extensionName: request.extensionName
+        )
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Allow \(extensionDisplayName) extension?"
+
+        var informativeText = "\(extensionDisplayName) (\(request.bundleId)) requested a connection to MakeItHome.\n\nReason: \(request.reason)"
+        if let clientId = normalizedClientId(request.clientId) {
+            informativeText += "\nClient ID: \(clientId)"
+        }
+        if let extensionVersion = request.extensionVersion, !extensionVersion.isEmpty {
+            informativeText += "\nVersion: \(extensionVersion)"
+        }
+        if request.isReplacingConnection {
+            informativeText += "\n\nThis will replace the previously confirmed connection."
+        }
+
+        informativeText += "\n\nAllow only if you trust this extension."
+        informativeText += "\nThis confirmation expires in \(Int(approvalTimeoutSeconds)) seconds."
+        alert.informativeText = informativeText
+        alert.addButton(withTitle: "Allow")
+        alert.addButton(withTitle: "Deny")
+
+        let timeoutWork = DispatchWorkItem {
+            NSApp.abortModal()
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + approvalTimeoutSeconds, execute: timeoutWork)
+
+        NSApp.activate(ignoringOtherApps: true)
+        let response = alert.runModal()
+        timeoutWork.cancel()
+        alert.window.orderOut(nil)
+
+        switch response {
+        case .alertFirstButtonReturn:
+            return .allow
+        case .alertSecondButtonReturn:
+            return .deny
+        default:
+            return .ignored
         }
     }
 
@@ -915,12 +1033,24 @@ class AppExtension {
         statusMessages = []
         hasStatusUpdate = false
     }
+
+    func webViewDidFinishLoading() {
+        // A navigation replaces the entire JavaScript context, including every
+        // extension container previously injected into it.
+        updateWebViewIdentityIfNeeded()
+        markNeedsContainer()
+        syncIfNeeded(force: true)
+    }
     
     func syncIfNeeded(force: Bool = false) {
         updateWebViewIdentityIfNeeded()
         
         guard !syncInFlight else { return }
-        guard Static.AppExtensionWebView != nil else { return }
+        guard let webView = Static.AppExtensionWebView else { return }
+        // evaluateJavaScript during the initial file navigation races the host
+        // functions declared in appExtensionView.html. didFinish restarts the
+        // sync once that JavaScript context is ready.
+        guard !webView.isLoading else { return }
         
         let now = Date.now.timeIntervalSince1970
         if !force && (now - lastSyncAttemptAt) < syncThrottle {

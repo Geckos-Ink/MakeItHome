@@ -81,6 +81,7 @@ func loadTopWKWB(webView: WKWebView, force: Bool = false){
             return
         }
         wkwv.didLoadContent = true
+        wkwv.prepareForContentReload()
     }
 
     if Static.TopBarIsPreview {
@@ -128,7 +129,16 @@ public struct TopWebView: NSViewRepresentable {
         wkwv.registerForDraggedTypes([.fileURL, .png, .string])
         wkwv.uiDelegate = context.coordinator
         wkwv.navigationDelegate = context.coordinator
-        
+        wkwv.configuration.userContentController.removeScriptMessageHandler(forName: "widgetLocalization")
+        wkwv.configuration.userContentController.add(context.coordinator, name: "widgetLocalization")
+        wkwv.configuration.userContentController.removeScriptMessageHandler(forName: "nativeWebView")
+        wkwv.configuration.userContentController.add(context.coordinator, name: "nativeWebView")
+        // Reliable, coalescing-free channel for page->native messages (clipboard
+        // selection, settings, etc.). The legacy "myapp://" URL bridge silently
+        // dropped repeated identical navigations; postMessage never does.
+        wkwv.configuration.userContentController.removeScriptMessageHandler(forName: "widgetMessage")
+        wkwv.configuration.userContentController.add(context.coordinator, name: "widgetMessage")
+
         //wkwv.configuration.setValue(true, forKey: "_allowUniversalAccessFromFileURLs")
         wkwv.configuration.userInterfaceDirectionPolicy = .system
      
@@ -160,25 +170,11 @@ public struct TopWebView: NSViewRepresentable {
     var delegate: DragDropDelegate?
     
     public func sendMessage(str: String){
-        // Call the injected JavaScript function from Swift
-        let callScript = "receiveMessage('\(str)');"
-        wkwv.evaluateJavaScript(callScript, completionHandler: nil)
+        wkwv.sendMessage(str: str)
     }
     
-    public func sendMessage(obj: JSMessage){        
-        do {
-            let jsonData = try JSONEncoder().encode(obj)
-            let msg = String(data: jsonData, encoding: String.Encoding.utf8)
-            
-            if msg != nil{
-                let callScript = "receiveMessage("+msg!+");"
-                //print(callScript)
-                wkwv.evaluateJavaScript(callScript, completionHandler: nil)
-            }
-        }
-        catch {
-            print("EEEEERRROOORRR")
-        }
+    public func sendMessage(obj: JSMessage){
+        wkwv.sendMessage(obj: obj)
     }
             
 }
@@ -189,7 +185,7 @@ public protocol DragDropDelegate {
     func didDrop(files: [URL])
 }
 
-public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate, NSDraggingDestination, DropDelegate, DragDropDelegate {
+public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate, WKScriptMessageHandler, NSDraggingDestination, DropDelegate, DragDropDelegate {
     var parent: TopWebView
 
     var firstLoad = true
@@ -198,8 +194,221 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
         self.parent = parent
     }
 
+    private func sendWidgetLocalizations(_ localizations: [String: String]) {
+        var reply = JSMessage()
+        reply.type = "localizations"
+        reply.localizations = Dictionary(
+            uniqueKeysWithValues: localizations.map { key, fallback in
+                (
+                    key,
+                    NSLocalizedString(
+                        key,
+                        tableName: nil,
+                        bundle: .main,
+                        value: fallback,
+                        comment: "Widget zone web interface"
+                    )
+                )
+            }
+        )
+        parent.sendMessage(obj: reply)
+    }
+
+    /// Decodes a `JSMessage` sent through the `widgetMessage` script handler.
+    /// The page posts the already-stringified JSON, but we also accept a plain
+    /// object (dictionary) for robustness.
+    private func decodeJSMessage(from body: Any) -> JSMessage? {
+        let data: Data?
+        if let string = body as? String {
+            data = string.data(using: .utf8)
+        } else if let dictionary = body as? [String: Any] {
+            data = try? JSONSerialization.data(withJSONObject: dictionary)
+        } else {
+            data = nil
+        }
+
+        guard let data else { return nil }
+        return try? JSONDecoder().decode(JSMessage.self, from: data)
+    }
+
+    /// Follows redirects for a proxied frame request and returns the final body
+    /// to the page. Promoted from a local function so both the URL bridge and the
+    /// `widgetMessage` handler can reach it.
+    private func frameOpenUrl(url: URL) {
+        let request = URLRequest(url: url)
+
+        let task = URLSession.shared.dataTask(with: request) { (data, response, error) in
+            if let error = error {
+                print("Error: \(error)")
+            } else if let data = data {
+                if let response = response as? HTTPURLResponse {
+                    let statusCode = response.statusCode
+                    let headers = response.allHeaderFields
+
+                    print("Status Code: \(statusCode)")
+                    print("Headers: \(headers)")
+
+                    if let loc = headers["location"] as? String, let next = URL(string: loc) {
+                        self.frameOpenUrl(url: next)
+                    } else {
+                        var msg = JSMessage()
+                        msg.type = "frameResponse"
+                        msg.data = data
+                        msg.url = url.absoluteURL
+                        self.parent.sendMessage(obj: msg)
+                    }
+                } else {
+                    print("Error: Invalid HTTPURLResponse")
+                }
+            }
+        }
+
+        task.resume()
+    }
+
+    /// Single source of truth for handling a decoded page message, shared by the
+    /// legacy `myapp://` URL bridge and the `widgetMessage` script handler.
+    func handleJSMessage(_ json: JSMessage) {
+        if json.type == "jsError" {
+            print(json.value ?? "")
+        }
+
+        if json.type == "selItem", let id = json.id {
+            Static.clipboard?.selectElement(id: id)
+
+            Static.isDraggingFromPoint = NSEvent.mouseLocation
+            Static.selectedClipboardItemId = id
+            parent.wkwv.dragOutside = true
+            print("DRAGGING OUT MODE")
+        }
+
+        if json.type == "enterFullscreen" {
+            Static.curDisplay?.onFullOverscreenMode()
+        }
+
+        if json.type == "closeFullscreen" {
+            Static.curDisplay?.outFullOverscreenMode()
+        }
+
+        if json.type == "frameOpen", let value = json.value, let url = URL(string: value) {
+            frameOpenUrl(url: url)
+        }
+
+        if json.type == "navUrl", let url = json.url {
+            Static.navWebView?.navigate(url: url)
+        }
+
+        if json.type == "navPos" {
+            Static.storeView?.view?.vars.navOverlayOffsetX = 0 // json.x!
+            Static.storeView?.view?.vars.navOverlayOffsetY = (json.y! / 2)
+            Static.storeView?.view?.vars.navOverlaySizeX = json.width!
+            Static.storeView?.view?.vars.navOverlaySizeY = json.height!
+        }
+
+        if json.type == "setSetting" {
+            var settingReply = JSMessage()
+            settingReply.type = "setSetting"
+            settingReply.setting = json.setting
+
+            switch json.setting {
+            case "detectDragAndDrop":
+                Static.EnableDragDropDetection = json.valBool!
+                Static.User.set(Static.EnableDragDropDetection, forKey: "EnableDragDropDetection")
+                settingReply.valBool = Static.EnableDragDropDetection
+            case "enableClipboardCapture":
+                Static.EnableClipboardCapture = json.valBool!
+                settingReply.valBool = Static.EnableClipboardCapture
+            case .none:
+                break
+            case .some(_):
+                break
+            }
+
+            if settingReply.valBool != nil {
+                self.parent.sendMessage(obj: settingReply)
+            }
+        }
+
+        if json.type == "localizationRequest", let localizations = json.localizations {
+            sendWidgetLocalizations(localizations)
+        }
+
+        if json.type == "extensionPermissions" {
+            var reply = JSMessage()
+            reply.type = "extensionPermissionsStatus"
+
+            if json.op == "revoke", let identity = json.strId, !identity.isEmpty {
+                Static.appExtensionManager?.revokeExtensionPermission(identity: identity)
+            } else if json.op == "request", let identity = json.strId, !identity.isEmpty {
+                let decision = Static.appExtensionManager?.requestExtensionPermission(identity: identity)
+                reply.decision = decision?.rawValue
+            }
+
+            reply.extensionPermissions = Static.appExtensionManager?.extensionPermissionsStatus() ?? []
+            self.parent.sendMessage(obj: reply)
+        }
+
+        if json.type == "calendar" {
+            Static.calendar?.receive(msg: json)
+        }
+
+        if json.type == "haptic" {
+            NSHapticFeedbackManager.defaultPerformer.perform(
+                NSHapticFeedbackManager.FeedbackPattern.generic,
+                performanceTime: NSHapticFeedbackManager.PerformanceTime.now
+            )
+        }
+
+        if json.type == "reload" {
+            if let url = URL(string: "http://127.0.1:19494/widgets.html?height=" + String(format: "%.1f", Static.OverscreenSizeTop)) {
+                let urlReq = URLRequest(url: url)
+                self.parent.wkwv.prepareForContentReload()
+                self.parent.wkwv.load(urlReq)
+            } else {
+                print("Invalid URL")
+            }
+        }
+    }
+
+    public func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        if message.name == "nativeWebView" {
+            parent.wkwv.syncNativeWebViews(from: message.body)
+            return
+        }
+
+        if message.name == "widgetMessage" {
+            if let json = decodeJSMessage(from: message.body) {
+                handleJSMessage(json)
+            }
+            return
+        }
+
+        guard message.name == "widgetLocalization" else {
+            return
+        }
+
+        let localizations: [String: String]
+        if let strings = message.body as? [String: String] {
+            localizations = strings
+        } else if let values = message.body as? [String: Any] {
+            localizations = values.compactMapValues { $0 as? String }
+        } else {
+            return
+        }
+
+        sendWidgetLocalizations(localizations)
+    }
+
     public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         (webView as? TopWKWV)?.forceReload()
+    }
+
+    public func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        (webView as? TopWKWV)?.prepareForContentReload()
+    }
+
+    public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        (webView as? TopWKWV)?.detectPageMessageReceiver()
     }
 
 
@@ -252,52 +461,7 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
         }
         
         print("received url ", url)
-        
-        func frameOpenUrl(url : URL){
-            
-            var request = URLRequest(url: url)
-            //request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
-            
-            // Create a URLSession task for making the GET request
-            let task = URLSession.shared.dataTask(with: request) { (data, response, error) in
-              // Handle the response here
-              if let error = error {
-                  print("Error: \(error)")
-              } else if let data = data {
-                  
-                  if let response = response as? HTTPURLResponse {
-                      let statusCode = response.statusCode
-                      let headers = response.allHeaderFields
-                      
-                      // Handle the response here
-                      print("Status Code: \(statusCode)")
-                      print("Headers: \(headers)")
-                      
-                      let loc = headers["location"]
-                      if loc != nil {
-                          frameOpenUrl(url: URL(string: (loc as? String)!)!)
-                      }
-                      else {
-                          // Parse the data if needed
-                          var msg = JSMessage()
-                          msg.type = "frameResponse";
-                          //msg.value = String(data: data, encoding: .ascii);
-                          msg.data = data
-                          msg.url = url.absoluteURL
-                          self.parent.sendMessage(obj: msg)
-                      }
-                      
-                  } else {
-                      // Handle error or unexpected response type
-                      print("Error: Invalid HTTPURLResponse")
-                  }
-              }
-            }
 
-            // Start the task
-            task.resume()
-        }
-        
         let frame = navigationAction.targetFrame
         if !(frame?.isMainFrame ?? true){ // it's an internal frame
                     
@@ -389,111 +553,10 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
                 isJson = false
             }
             
-            if isJson {
-                if json?.type == "jsError"{
-                    print(json?.value);
-                }
-                
-                if json?.type == "selItem"{
-                    let id = json?.id
-                    
-                    Static.clipboard?.selectElement(id: id!)
-                    
-                    Static.isDraggingFromPoint = NSEvent.mouseLocation
-                    Static.selectedClipboardItemId = id!
-                    parent.wkwv.dragOutside = true
-                    print("DRAGGING OUT MODE")
-                }
-                
-                if json?.type == "enterFullscreen" {
-                    Static.curDisplay?.onFullOverscreenMode()
-                }
-                
-                if json?.type == "closeFullscreen" {
-                    Static.curDisplay?.outFullOverscreenMode()
-                }
-                
-                if json?.type == "frameOpen" {
-                    let url = URL(string: json!.value!)
-                    if url != nil{
-                        frameOpenUrl(url: url!)
-                    }
-                }
-                
-                if json?.type == "navUrl" {
-                    Static.navWebView?.navigate(url: json!.url!)
-                }
-                
-                if json?.type == "navPos" {
-                    Static.storeView?.view?.vars.navOverlayOffsetX = 0 // json!.x!
-                    Static.storeView?.view?.vars.navOverlayOffsetY = (json!.y! / 2)
-                    Static.storeView?.view?.vars.navOverlaySizeX = json!.width!
-                    Static.storeView?.view?.vars.navOverlaySizeY = json!.height!
-                }
-                
-                if json?.type == "setSetting" {
-                    var settingReply = JSMessage()
-                    settingReply.type = "setSetting"
-                    settingReply.setting = json?.setting
-                    
-                    switch json?.setting {
-                    case "detectDragAndDrop":
-                        Static.EnableDragDropDetection = json!.valBool!
-                        Static.User.set(Static.EnableDragDropDetection, forKey: "EnableDragDropDetection")
-                        settingReply.valBool = Static.EnableDragDropDetection
-                        break
-                    case "enableClipboardCapture":
-                        Static.EnableClipboardCapture = json!.valBool!
-                        settingReply.valBool = Static.EnableClipboardCapture
-                        break
-                    case .none:
-                        break
-                    case .some(_):
-                        break
-                    }
-
-                    if settingReply.valBool != nil {
-                        self.parent.sendMessage(obj: settingReply)
-                    }
-                }
-
-                if json?.type == "extensionPermissions" {
-                    var reply = JSMessage()
-                    reply.type = "extensionPermissionsStatus"
-
-                    if json?.op == "revoke", let identity = json?.strId, !identity.isEmpty {
-                        Static.appExtensionManager?.revokeExtensionPermission(identity: identity)
-                    } else if json?.op == "request", let identity = json?.strId, !identity.isEmpty {
-                        let decision = Static.appExtensionManager?.requestExtensionPermission(identity: identity)
-                        reply.decision = decision?.rawValue
-                    }
-
-                    reply.extensionPermissions = Static.appExtensionManager?.extensionPermissionsStatus() ?? []
-                    self.parent.sendMessage(obj: reply)
-                }
-                
-                if json?.type == "calendar" {
-                    Static.calendar?.receive(msg: json!)
-                }
-                
-                if json?.type == "haptic"{
-                    NSHapticFeedbackManager.defaultPerformer.perform(
-                        NSHapticFeedbackManager.FeedbackPattern.generic,
-                        performanceTime: NSHapticFeedbackManager.PerformanceTime.now
-                    )
-                }
-                
-                if json?.type == "reload" {
-                    if let url = URL(string: "http://127.0.1:19494/widgets.html?height="+String(format: "%.1f", Static.OverscreenSizeTop)) {
-                        let urlReq = URLRequest(url: url)
-                        self.parent.wkwv.load(urlReq)
-                    } else {
-                        print("Invalid URL")
-                    }
-                }
-                
+            if isJson, let json {
                 //todo: type == "widget", where to redirect the request directly to widget core(?)
-                
+                handleJSMessage(json)
+
                 decisionHandler(.cancel)
                 return
             }
@@ -611,11 +674,468 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
     }
 }
 
+private struct NativeWebViewSavedState: Codable {
+    var configuredURL: String
+    var currentURL: String
+}
+
+private final class NativeWebViewStateStore {
+    static let shared = NativeWebViewStateStore()
+
+    private let defaultsKey = "NativeWebViewSavedStates"
+    private var states: [String: NativeWebViewSavedState]
+
+    private init() {
+        if let data = UserDefaults.standard.data(forKey: defaultsKey),
+           let decoded = try? JSONDecoder().decode([String: NativeWebViewSavedState].self, from: data) {
+            states = decoded
+        } else {
+            states = [:]
+        }
+    }
+
+    func state(for identifier: String) -> NativeWebViewSavedState? {
+        states[identifier]
+    }
+
+    func save(identifier: String, configuredURL: String, currentURL: String) {
+        states[identifier] = NativeWebViewSavedState(
+            configuredURL: configuredURL,
+            currentURL: currentURL
+        )
+
+        if let data = try? JSONEncoder().encode(states) {
+            UserDefaults.standard.set(data, forKey: defaultsKey)
+        }
+    }
+}
+
+private final class NativeWebViewOverlay: NSView {
+    override var isFlipped: Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hitView = super.hitTest(point)
+        return hitView === self ? nil : hitView
+    }
+}
+
+private final class NativeWebViewReloadControl: NSView {
+    private let button = NSButton()
+
+    override var isFlipped: Bool { true }
+
+    init(target: AnyObject, action: Selector) {
+        super.init(frame: .zero)
+
+        wantsLayer = true
+        layer?.cornerRadius = 12
+        layer?.cornerCurve = .continuous
+        layer?.borderWidth = 0.5
+        layer?.borderColor = NSColor.white.withAlphaComponent(0.28).cgColor
+        shadow = NSShadow()
+        shadow?.shadowBlurRadius = 10
+        shadow?.shadowOffset = NSSize(width: 0, height: -2)
+        shadow?.shadowColor = NSColor.black.withAlphaComponent(0.2)
+
+        button.isBordered = false
+        button.image = NSImage(
+            systemSymbolName: "arrow.clockwise",
+            accessibilityDescription: "Reload"
+        )
+        button.imagePosition = .imageOnly
+        button.contentTintColor = .labelColor
+        button.toolTip = "Reload"
+        button.target = target
+        button.action = action
+        button.frame = bounds
+        button.autoresizingMask = [.width, .height]
+
+        if #available(macOS 26.0, *) {
+            let glassView = NSGlassEffectView(frame: bounds)
+            glassView.style = .regular
+            glassView.cornerRadius = 12
+            glassView.autoresizingMask = [.width, .height]
+            glassView.contentView = button
+            addSubview(glassView)
+        } else {
+            let materialView = NSVisualEffectView(frame: bounds)
+            materialView.material = .hudWindow
+            materialView.blendingMode = .withinWindow
+            materialView.state = .active
+            materialView.autoresizingMask = [.width, .height]
+            materialView.wantsLayer = true
+            materialView.layer?.cornerRadius = 12
+            materialView.layer?.cornerCurve = .continuous
+            materialView.layer?.masksToBounds = true
+            addSubview(materialView)
+            addSubview(button)
+        }
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+}
+
+private final class PersistentNativeWebViewHost: NSView, WKNavigationDelegate, WKUIDelegate {
+    let webViewIdentifier: String
+    let webView: WKWebView
+
+    private(set) lazy var reloadControl = NativeWebViewReloadControl(
+        target: self,
+        action: #selector(reloadPage)
+    )
+    private var configuredURL: String?
+    private var reloadToken = ""
+    private var restoresSession = true
+
+    override var isFlipped: Bool { true }
+
+    init(identifier: String) {
+        self.webViewIdentifier = identifier
+
+        let configuration = WKWebViewConfiguration()
+        configuration.websiteDataStore = .default()
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
+
+        webView = WKWebView(frame: .zero, configuration: configuration)
+        super.init(frame: .zero)
+
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+
+        webView.setValue(false, forKey: "drawsBackground")
+        if #available(macOS 12.0, *) {
+            webView.underPageBackgroundColor = .clear
+        }
+        webView.allowsBackForwardNavigationGestures = true
+        webView.navigationDelegate = self
+        webView.uiDelegate = self
+        webView.autoresizingMask = [.width, .height]
+        addSubview(webView)
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func layout() {
+        super.layout()
+        webView.frame = bounds
+    }
+
+    func update(url rawURL: String, restoresSession: Bool, controls: String, reloadToken: String) {
+        self.restoresSession = restoresSession
+        reloadControl.isHidden = controls != "reload"
+
+        if self.reloadToken != reloadToken {
+            if !self.reloadToken.isEmpty {
+                webView.reload()
+            }
+            self.reloadToken = reloadToken
+        }
+
+        let requestedURL = normalizedURL(from: rawURL)?.absoluteString
+        let savedState = NativeWebViewStateStore.shared.state(for: webViewIdentifier)
+
+        if let requestedURL {
+            guard requestedURL != configuredURL else { return }
+
+            configuredURL = requestedURL
+            let restoredURL: String?
+            if restoresSession && savedState?.configuredURL == requestedURL {
+                restoredURL = savedState?.currentURL
+            } else {
+                restoredURL = nil
+            }
+
+            load(urlString: restoredURL ?? requestedURL)
+            return
+        }
+
+        guard configuredURL == nil,
+              restoresSession,
+              let savedState,
+              normalizedURL(from: savedState.currentURL) != nil else {
+            return
+        }
+
+        configuredURL = savedState.configuredURL
+        load(urlString: savedState.currentURL)
+    }
+
+    @objc private func reloadPage() {
+        if webView.url == nil, let configuredURL {
+            load(urlString: configuredURL)
+        } else {
+            webView.reload()
+        }
+    }
+
+    private func load(urlString: String) {
+        guard let url = normalizedURL(from: urlString) else { return }
+        webView.load(URLRequest(url: url))
+    }
+
+    private func normalizedURL(from value: String) -> URL? {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if let url = URL(string: trimmed), url.scheme != nil {
+            return url
+        }
+        return URL(string: "https://" + trimmed)
+    }
+
+    private func saveNavigationState() {
+        guard restoresSession,
+              let configuredURL,
+              let currentURL = webView.url?.absoluteString,
+              !currentURL.isEmpty,
+              currentURL != "about:blank" else {
+            return
+        }
+
+        NativeWebViewStateStore.shared.save(
+            identifier: webViewIdentifier,
+            configuredURL: configuredURL,
+            currentURL: currentURL
+        )
+    }
+
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        saveNavigationState()
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        saveNavigationState()
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        webView.reload()
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        createWebViewWith configuration: WKWebViewConfiguration,
+        for navigationAction: WKNavigationAction,
+        windowFeatures: WKWindowFeatures
+    ) -> WKWebView? {
+        if navigationAction.targetFrame == nil {
+            webView.load(navigationAction.request)
+        }
+        return nil
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        decidePolicyFor navigationAction: WKNavigationAction,
+        decisionHandler: @escaping (WKNavigationActionPolicy) -> Void
+    ) {
+        guard let url = navigationAction.request.url else {
+            decisionHandler(.cancel)
+            return
+        }
+
+        let webSchemes = ["http", "https", "about", "file"]
+        if let scheme = url.scheme?.lowercased(), !webSchemes.contains(scheme) {
+            NSWorkspace.shared.open(url)
+            decisionHandler(.cancel)
+            return
+        }
+
+        decisionHandler(.allow)
+    }
+}
+
 public class TopWKWV : WKWebView, NSDraggingSource{
 
     public override var acceptsFirstResponder: Bool { return true }
 
     var didLoadContent = false
+
+    private let nativeWebViewOverlay = NativeWebViewOverlay(frame: .zero)
+    private var nativeWebViews: [String: PersistentNativeWebViewHost] = [:]
+
+    private let nativeReloadControlSize = NSSize(width: 38, height: 38)
+    private let nativeReloadControlInset: CGFloat = 10
+
+    private var pageCanReceiveMessages = false
+    private var pageMessageDeliveryInFlight = false
+    private var pageMessageGeneration = 0
+    private var pendingPageMessages: [Any] = []
+
+    public override func layout() {
+        super.layout()
+
+        if nativeWebViewOverlay.superview != nil {
+            nativeWebViewOverlay.frame = bounds
+        }
+    }
+
+    func prepareForContentReload() {
+        pageCanReceiveMessages = false
+        pageMessageGeneration += 1
+
+        nativeWebViews.values.forEach {
+            $0.isHidden = true
+            $0.reloadControl.isHidden = true
+        }
+    }
+
+    func detectPageMessageReceiver() {
+        let generation = pageMessageGeneration
+        callAsyncJavaScript(
+            "return typeof receiveMessage === 'function';",
+            arguments: [:],
+            in: nil,
+            in: .page,
+            completionHandler: { [weak self] result in
+                guard let self, generation == self.pageMessageGeneration else { return }
+
+                switch result {
+                case .success(let value):
+                    self.pageCanReceiveMessages = value as? Bool ?? false
+                    self.deliverNextPageMessage()
+                case .failure(let error):
+                    self.pageCanReceiveMessages = false
+                    print("Unable to detect widget page message receiver: \(error.localizedDescription)")
+                }
+            }
+        )
+    }
+
+    private func enqueuePageMessage(_ message: Any) {
+        let enqueue = { [weak self] in
+            guard let self else { return }
+            self.pendingPageMessages.append(message)
+            self.deliverNextPageMessage()
+        }
+
+        if Thread.isMainThread {
+            enqueue()
+        } else {
+            DispatchQueue.main.async(execute: enqueue)
+        }
+    }
+
+    private func deliverNextPageMessage() {
+        guard pageCanReceiveMessages,
+              !pageMessageDeliveryInFlight,
+              let message = pendingPageMessages.first else {
+            return
+        }
+
+        pageMessageDeliveryInFlight = true
+        let generation = pageMessageGeneration
+        callAsyncJavaScript(
+            """
+            if (typeof receiveMessage === 'function') {
+                receiveMessage(message);
+                return true;
+            }
+            return false;
+            """,
+            arguments: ["message": message],
+            in: nil,
+            in: .page,
+            completionHandler: { [weak self] result in
+                guard let self else { return }
+                self.pageMessageDeliveryInFlight = false
+
+                if generation != self.pageMessageGeneration {
+                    if case .success(let value) = result, value as? Bool == true {
+                        self.pendingPageMessages.removeFirst()
+                    }
+                    self.deliverNextPageMessage()
+                    return
+                }
+
+                switch result {
+                case .success(let value) where value as? Bool == true:
+                    self.pendingPageMessages.removeFirst()
+                    self.deliverNextPageMessage()
+                case .success:
+                    // Navigation may have replaced the page after readiness was
+                    // checked. Keep the message queued for the next widgets page.
+                    self.pageCanReceiveMessages = false
+                case .failure(let error):
+                    // A broken handler must not block unrelated messages behind it.
+                    self.pendingPageMessages.removeFirst()
+                    print("Unable to deliver widget page message: \(error.localizedDescription)")
+                    self.deliverNextPageMessage()
+                }
+            }
+        )
+    }
+
+    func syncNativeWebViews(from messageBody: Any) {
+        guard let body = messageBody as? [String: Any],
+              let rawViews = body["views"] as? [[String: Any]] else {
+            return
+        }
+
+        if nativeWebViewOverlay.superview == nil {
+            nativeWebViewOverlay.frame = bounds
+            nativeWebViewOverlay.autoresizingMask = [.width, .height]
+            addSubview(nativeWebViewOverlay, positioned: .above, relativeTo: nil)
+        }
+
+        var seenIdentifiers = Set<String>()
+
+        for rawView in rawViews {
+            guard let identifier = rawView["id"] as? String, !identifier.isEmpty else { continue }
+
+            seenIdentifiers.insert(identifier)
+            let host: PersistentNativeWebViewHost
+            if let existingHost = nativeWebViews[identifier] {
+                host = existingHost
+            } else {
+                host = PersistentNativeWebViewHost(identifier: identifier)
+                nativeWebViews[identifier] = host
+                nativeWebViewOverlay.addSubview(host)
+                nativeWebViewOverlay.addSubview(host.reloadControl, positioned: .above, relativeTo: nil)
+            }
+
+            let x = (rawView["x"] as? NSNumber)?.doubleValue ?? 0
+            let y = (rawView["y"] as? NSNumber)?.doubleValue ?? 0
+            let width = (rawView["width"] as? NSNumber)?.doubleValue ?? 0
+            let height = (rawView["height"] as? NSNumber)?.doubleValue ?? 0
+            let opacity = (rawView["opacity"] as? NSNumber)?.doubleValue ?? 1
+            let visible = rawView["visible"] as? Bool ?? false
+
+            host.frame = NSRect(x: x, y: y, width: width, height: height)
+            host.alphaValue = max(0, min(1, opacity))
+            host.isHidden = !visible || width <= 0 || height <= 0
+            host.reloadControl.frame = NSRect(
+                x: x + width - nativeReloadControlInset - nativeReloadControlSize.width,
+                y: y + nativeReloadControlInset,
+                width: nativeReloadControlSize.width,
+                height: nativeReloadControlSize.height
+            )
+            host.reloadControl.alphaValue = host.alphaValue
+            host.update(
+                url: rawView["url"] as? String ?? "",
+                restoresSession: rawView["restoresSession"] as? Bool ?? true,
+                controls: rawView["controls"] as? String ?? "",
+                reloadToken: rawView["reloadToken"] as? String ?? ""
+            )
+            host.reloadControl.isHidden = host.isHidden || host.reloadControl.isHidden
+        }
+
+        // WKWebView uses composited content, so controls must remain siblings above
+        // every native web view rather than children of a web view host.
+        nativeWebViews.values.forEach {
+            nativeWebViewOverlay.addSubview($0.reloadControl, positioned: .above, relativeTo: nil)
+        }
+
+        let staleIdentifiers = Set(nativeWebViews.keys).subtracting(seenIdentifiers)
+        for identifier in staleIdentifiers {
+            nativeWebViews[identifier]?.reloadControl.removeFromSuperview()
+            nativeWebViews[identifier]?.removeFromSuperview()
+            nativeWebViews.removeValue(forKey: identifier)
+        }
+    }
 
     func forceReload(){
         didLoadContent = false
@@ -847,24 +1367,17 @@ public class TopWKWV : WKWebView, NSDraggingSource{
     ///
     
     public func sendMessage(str: String){
-        // Call the injected JavaScript function from Swift
-        let callScript = "receiveMessage('\(str)');"
-        self.evaluateJavaScript(callScript, completionHandler: nil)
+        enqueuePageMessage(str)
     }
     
     public func sendMessage(obj: JSMessage){
         do {
             let jsonData = try JSONEncoder().encode(obj)
-            let msg = String(data: jsonData, encoding: String.Encoding.utf8)
-            
-            if msg != nil{
-                let callScript = "receiveMessage("+msg!+");"
-                //print(callScript)
-                self.evaluateJavaScript(callScript, completionHandler: nil)
-            }
+            let message = try JSONSerialization.jsonObject(with: jsonData)
+            enqueuePageMessage(message)
         }
         catch {
-            print("EEEEERRROOORRR")
+            print("Unable to encode widget page message: \(error.localizedDescription)")
         }
     }
 }
@@ -888,6 +1401,9 @@ public struct JSMessage: Codable {
     // App extension permissions
     var extensionPermissions: [AppExtensionPermissionStatus]?
     var decision: String?
+
+    // Widget zone localization bridge
+    var localizations: [String: String]?
     
     var x: CGFloat?
     var y: CGFloat?

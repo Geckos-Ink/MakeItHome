@@ -126,12 +126,25 @@ class ScreenRecorder: ObservableObject {
     let lowProfileFPS = 10
     let lowProfileDepth = 4
     
-    @MainActor public var recordingOnDisplay : CGDirectDisplayID = 94 // -1
+    @MainActor public var recordingOnDisplay : CGDirectDisplayID = 0
+    private var captureRunID: UInt = 0
+    private var captureIntentID: UInt = 0
+    private var stopOperationID: UInt = 0
+    private var captureStopTask: Task<Void, Never>?
+    private var captureUpdateTask: Task<Void, Never>?
+    private var isStarting = false
     
     /// Starts capturing screen content.
     func start(lowProfile: Bool = false, display: SCDisplay? = nil) async {
+        captureIntentID &+= 1
+        let intentID = captureIntentID
+
         if(display != nil){
             selectedDisplay = display
+        }
+        
+        guard let targetDisplayID = selectedDisplay?.displayID else {
+            return
         }
         
         let previousLowPriority = isLowPriority
@@ -147,9 +160,15 @@ class ScreenRecorder: ObservableObject {
         let profileChanged = previousLowPriority != isLowPriority || previousPriorityScale != priorityScale
         let staleFrame = lastFrame.map { Date().timeIntervalSince1970 - $0.captureTime > 1 } ?? false
         
-        if recordingOnDisplay == selectedDisplay?.displayID, isRunning, !staleFrame {
+        if recordingOnDisplay == targetDisplayID, isRunning, !isStarting, !staleFrame {
             if frameRateChanged || profileChanged, let filter = contentFilter {
                 self.priorityFrameRate = p
+                captureUpdateTask?.cancel()
+                await captureUpdateTask?.value
+                captureUpdateTask = nil
+                guard intentID == captureIntentID else {
+                    return
+                }
                 await captureEngine.update(configuration: streamConfiguration, filter: filter)
             }
             return
@@ -157,13 +176,19 @@ class ScreenRecorder: ObservableObject {
         
         self.priorityFrameRate = p
         
-        if isRunning {
-            await stop()
+        if isRunning || captureStopTask != nil {
+            await stopCaptureEngine()
+            guard intentID == captureIntentID else {
+                return
+            }
         }
         
         if !isSetup {
             // Starting polling for available screen content.
             await monitorAvailableContent()
+            guard intentID == captureIntentID else {
+                return
+            }
             isSetup = true
         }
         
@@ -172,27 +197,46 @@ class ScreenRecorder: ObservableObject {
             startAudioMetering()
         }
         
+        var startingRunID: UInt?
         do {
             let config = streamConfiguration
             let filter = contentFilter
 
-            if(filter == nil){
+            if filter == nil || intentID != captureIntentID {
                 return
             }
             
             // Update the running state.
             
             // Start the stream and await new video frames.
-            let frames = captureEngine.startCapture(configuration: config, filter: filter!)
+            captureRunID &+= 1
+            let runID = captureRunID
+            startingRunID = runID
+            lastFrame = nil
+            lastFrameTime = 0
+            isStarting = true
             isRunning = true
+            Static.isRecordingScreen = true
+            recordingOnDisplay = targetDisplayID
+
+            let frames = await captureEngine.startCapture(configuration: config, filter: filter!)
+            guard intentID == captureIntentID, runID == captureRunID else {
+                return
+            }
+            isStarting = false
+            print("recording started! display", targetDisplayID)
+            
             for try await frame in frames {
+                guard runID == captureRunID else {
+                    break
+                }
                 
                 if(Static.debugLastFrame){
                     print("lastFrame", NSDate().timeIntervalSince1970)
                 }
                                 
                 lastFrame = frame
-                lastFrame!.displayID = selectedDisplay?.displayID
+                lastFrame!.displayID = targetDisplayID
                 
                 capturePreview.updateFrame(frame)
                 
@@ -205,25 +249,70 @@ class ScreenRecorder: ObservableObject {
                 }
             }
             
-            Static.isRecordingScreen = true
-            print("recording started! display", selectedDisplay!.displayID)
-            recordingOnDisplay = selectedDisplay!.displayID
+            if runID == captureRunID {
+                Static.isRecordingScreen = false
+                isRunning = false
+                recordingOnDisplay = 0
+            }
         } catch {
+            guard startingRunID == captureRunID else {
+                return
+            }
             print("ScreenRecorder start error ese \(error.localizedDescription)")
             // Unable to start the stream. Set the running state to false.
             isRunning = false
+            isStarting = false
+            Static.isRecordingScreen = false
+            recordingOnDisplay = 0
+            lastFrame = nil
         }
     }
     
     /// Stops capturing screen content.
     func stop() async {
+        captureIntentID &+= 1
+        await stopCaptureEngine()
+    }
+
+    /// Serializes the suspending SCStream stop. A newer start waits for this exact operation;
+    /// an older start that resumes afterwards is rejected by `captureIntentID`.
+    private func stopCaptureEngine() async {
+        let needsEngineStop = isRunning || recordingOnDisplay != 0
+        captureRunID &+= 1
         recordingOnDisplay = 0
-        guard isRunning else { return }
-        
+        lastFrame = nil
+        lastFrameTime = 0
         Static.isRecordingScreen = false
         isRunning = false
-        await captureEngine.stopCapture()
+        isStarting = false
 
+        captureUpdateTask?.cancel()
+        await captureUpdateTask?.value
+        captureUpdateTask = nil
+
+        if let captureStopTask {
+            await captureStopTask.value
+            return
+        }
+
+        guard needsEngineStop else {
+            stopAudioMetering()
+            return
+        }
+
+        stopOperationID &+= 1
+        let operationID = stopOperationID
+        let stopTask = Task { [captureEngine] in
+            await captureEngine.stopCapture()
+        }
+        captureStopTask = stopTask
+
+        await stopTask.value
+
+        if operationID == stopOperationID {
+            captureStopTask = nil
+        }
+        isRunning = false
         stopAudioMetering()
     }
     
@@ -241,14 +330,20 @@ class ScreenRecorder: ObservableObject {
     
     /// - Tag: UpdateCaptureConfig
     private func updateEngine() {
-        guard isRunning else { return }
-        Task {
-            let curFilter = contentFilter
-            if(curFilter == nil){
+        guard isRunning, let filter = contentFilter else { return }
+
+        let configuration = streamConfiguration
+        let runID = captureRunID
+        captureUpdateTask?.cancel()
+        captureUpdateTask = Task { [weak self, captureEngine] in
+            guard let self,
+                  !Task.isCancelled,
+                  self.isRunning,
+                  runID == self.captureRunID else {
                 return
             }
-            
-            await captureEngine.update(configuration: streamConfiguration, filter: curFilter!)
+
+            await captureEngine.update(configuration: configuration, filter: filter)
         }
     }
     

@@ -256,24 +256,23 @@ public struct CapturePreview: NSViewRepresentable {
         
         // Function to stop rendering
         func stopRendering() {
-            if isRendering{
+            if isRendering || isPlaying || isShowing {
                 print("stop SCNScene rendering")
                 
                 hidden()
-                
-                isRendering = false
             }
         }
         
         // Function to restart rendering
         func restartRendering() {
-            if(!isRendering){
+            if !isRendering || !isPlaying || !isShowing {
                 print("start SCNScene rendering")
-                
-                showed()
-                
-                isRendering = true
             }
+
+            // `showed()` and `hidden()` are also called directly by the side-change path.
+            // Always apply the active state here instead of trusting a possibly stale flag.
+            showed()
+            setNeedsDisplay(bounds)
         }
         
         
@@ -382,17 +381,40 @@ public struct CapturePreview: NSViewRepresentable {
         public var isShowing = false
         
         public func showed(){
+            self.isRendering = true
             self.isPlaying = true
             self.isShowing = true
             self.preferredFramesPerSecond = Static.SceneKitPreferredFPS
             self.rendersContinuously = Static.SceneKitContinuousRenderingWhenActive
+            self.setNeedsDisplay(bounds)
         }
         
         public func hidden(){
+            clearPreviewFocus()
+            self.isRendering = false
             self.isPlaying = false
             self.isShowing = false
             self.preferredFramesPerSecond = Static.SceneKitSleepPreferredFPS
             self.rendersContinuously = false
+        }
+
+        /// SceneKit keeps the last rendered material state while rendering is stopped.
+        /// Clear hover/frontmost highlights first so a disabled overscreen cannot leave a
+        /// small, focused-looking preview in the window's last frame.
+        private func clearPreviewFocus() {
+            mouseOnApp = nil
+            clickedOnApp = nil
+            draggedClickedApp = false
+            isPreviewPointerInteractionActive = false
+            resetGravityMouse()
+
+            guard let listApp else { return }
+            for app in listApp.values {
+                app.inUsing = false
+                for win in app.windows {
+                    win.clearFocusAppearance()
+                }
+            }
         }
         
         public func forget(){
@@ -412,10 +434,28 @@ public struct CapturePreview: NSViewRepresentable {
         var clickStartedHere = NSPoint.zero
         var clickedOnApp : AppNode? = nil
         var draggedClickedApp : Bool = false
+        var isPreviewPointerInteractionActive = false
+
+        private struct GravityMouseState {
+            var previousPointer: CGPoint?
+            var previousSpeed: CGFloat = 0
+            var smoothedSpeedDelta: CGFloat = 0
+            var generatedPointer: CGPoint?
+            var lastRealMovement = CGPoint.zero
+        }
+
+        private var gravityMouseState = GravityMouseState()
+        private let gravityMinimumInputSpeed: CGFloat = 1.5
+        private let gravityMaximumInputSpeed: CGFloat = 10
+        private let gravityMinimumDirectionAlignment: CGFloat = 0.4
+        private let gravityLegacyDeltaMultiplier: CGFloat = 1_000
         
         var leftMouse = true
         
         public override func mouseDown(with evt: NSEvent) {
+            isPreviewPointerInteractionActive = true
+            resetGravityMouse()
+
             if self.curDisplay == nil || self.curDisplay?.aboveBy == 0 {
                 return
             }
@@ -460,10 +500,14 @@ public struct CapturePreview: NSViewRepresentable {
             self.clickStartedHere = CGPoint.zero
             self.clickedOnApp = nil
             Static.isDragginApp = false
+            isPreviewPointerInteractionActive = false
+            resetGravityMouse()
         }
         
         override public func rightMouseDown(with event: NSEvent) {
             self.leftMouse = false
+            isPreviewPointerInteractionActive = true
+            resetGravityMouse()
             
             // Handle right mouse down event here
             super.rightMouseDown(with: event)
@@ -502,6 +546,192 @@ public struct CapturePreview: NSViewRepresentable {
         override public func rightMouseUp(with event: NSEvent) {
             // Handle right mouse up event here
             super.rightMouseUp(with: event)
+            isPreviewPointerInteractionActive = false
+            resetGravityMouse()
+        }
+
+        private func resetGravityMouse() {
+            gravityMouseState = GravityMouseState()
+        }
+
+        private func quartzCursorPoint(fromAppKitPoint point: CGPoint) -> CGPoint {
+            if let currentEvent = CGEvent(source: nil) {
+                let currentQuartzPoint = currentEvent.location
+                let currentAppKitPoint = currentEvent.unflippedLocation
+                return CGPoint(
+                    x: point.x + (currentQuartzPoint.x - currentAppKitPoint.x),
+                    y: (currentQuartzPoint.y + currentAppKitPoint.y) - point.y
+                )
+            }
+
+            let mainScreenHeight = NSScreen.screens.first?.frame.height ?? bounds.height
+            return CGPoint(x: point.x, y: mainScreenHeight - point.y)
+        }
+
+        /// WindowPlane is also used for icon-only apps: `setIcon()` creates a
+        /// synthetic window plane for their icon. Keeping target discovery here
+        /// makes previews and icons follow exactly the same gravity rules.
+        private func gravityMouseTargetFrames(in apps: OrderedDictionary<String, AppNode>) -> [CGRect] {
+            apps.values.flatMap { app in
+                app.windows.map { $0.getFrame() }
+            }
+        }
+
+        /// Applies the GravityMouse attraction curve to the nearest preview or
+        /// icon. The original library's "planets" map to the SceneKit target
+        /// frames.
+        private func gravityMouseCursor(from cursor: CGPoint, scenePoint: SCNVector3) -> CGPoint? {
+            guard Static.enableGravityMouse,
+                  !isPreviewPointerInteractionActive,
+                  !Static.isDragginApp,
+                  !Static.OnAppExtensionZone,
+                  (curDisplay?.aboveByPixels ?? 0) >= Static.OverscreenSize - 1,
+                  curDisplay?.side != 3,
+                  let listApp else {
+                resetGravityMouse()
+                return nil
+            }
+
+            let sceneCursor = CGPoint(x: scenePoint.x, y: scenePoint.y)
+            let targetFrames = gravityMouseTargetFrames(in: listApp)
+
+            // Do not retain an attraction or synthesize another mouse move once
+            // the cursor has reached any interactive target, including an icon.
+            // Resetting here also prevents a stale generated move from pulling
+            // the cursor again as it leaves the target.
+            guard !targetFrames.contains(where: { NSMouseInRect(sceneCursor, $0, false) }) else {
+                resetGravityMouse()
+                return nil
+            }
+
+            let previousPointer = gravityMouseState.generatedPointer ?? gravityMouseState.previousPointer
+            gravityMouseState.generatedPointer = nil
+            gravityMouseState.previousPointer = cursor
+
+            guard let previousPointer else {
+                return nil
+            }
+
+            let delta = CGPoint(x: cursor.x - previousPointer.x, y: cursor.y - previousPointer.y)
+            let speed = sqrt((delta.x * delta.x) + (delta.y * delta.y))
+            if speed >= gravityMinimumInputSpeed {
+                gravityMouseState.lastRealMovement = delta
+            }
+            let speedDelta = speed - gravityMouseState.previousSpeed
+            gravityMouseState.previousSpeed = speed
+            gravityMouseState.smoothedSpeedDelta = ((gravityMouseState.smoothedSpeedDelta * 10) + speedDelta) / 11
+
+            // Keep the original library's behavior: engage only after deliberate
+            // movement is slowing down, and never while traversing targets fast.
+            // DeltaSpeed in GravityMouseLib is the per-tick delta scaled by 1,000.
+            let legacyDeltaSpeed = gravityMouseState.smoothedSpeedDelta * gravityLegacyDeltaMultiplier
+            guard speed >= gravityMinimumInputSpeed,
+                  speed < gravityMaximumInputSpeed,
+                  legacyDeltaSpeed < -50 else {
+                return nil
+            }
+
+            let projectedCursor = projectPoint(scenePoint)
+            let localCursorY = cursor.y - (curDisplay?.frame.minY ?? 0)
+            let projectedCursorY = CGFloat(projectedCursor.y)
+            let usesFlippedProjectionY = abs(projectedCursorY - localCursorY) > abs((bounds.height - projectedCursorY) - localCursorY)
+            let movement = gravityMouseState.lastRealMovement
+            let movementLength = sqrt((movement.x * movement.x) + (movement.y * movement.y))
+            guard movementLength >= gravityMinimumInputSpeed else {
+                return nil
+            }
+            var closestPlanet: (target: CGPoint, distanceRatio: CGFloat)?
+
+            for targetFrame in targetFrames {
+                let target = CGPoint(x: targetFrame.midX, y: targetFrame.midY)
+                let projectedTarget = projectPoint(SCNVector3(target.x, target.y, scenePoint.z))
+                let targetDirection = CGPoint(
+                    x: CGFloat(projectedTarget.x - projectedCursor.x),
+                    y: usesFlippedProjectionY
+                        ? -CGFloat(projectedTarget.y - projectedCursor.y)
+                        : CGFloat(projectedTarget.y - projectedCursor.y)
+                )
+                let targetDistance = sqrt(
+                    (targetDirection.x * targetDirection.x)
+                    + (targetDirection.y * targetDirection.y)
+                )
+                guard targetDistance > 0 else {
+                    continue
+                }
+
+                // Consider only targets genuinely in the direction of travel on
+                // both axes. This avoids a small movement choosing a neighboring
+                // preview merely because it happens to share the strip axis.
+                let directionAlignment = ((movement.x * targetDirection.x) + (movement.y * targetDirection.y))
+                    / (movementLength * targetDistance)
+                guard directionAlignment >= gravityMinimumDirectionAlignment else {
+                    continue
+                }
+
+                let distance = sqrt(pow(sceneCursor.x - target.x, 2) + pow(sceneCursor.y - target.y, 2))
+                let planetDistance = (targetFrame.width + targetFrame.height) / 2
+                let distanceRatio = (distance * 0.75) / planetDistance
+
+                guard distanceRatio < 1 else {
+                    continue
+                }
+
+                if closestPlanet == nil || distanceRatio < closestPlanet!.distanceRatio {
+                    closestPlanet = (target, distanceRatio)
+                }
+            }
+
+            guard let planet = closestPlanet else {
+                return nil
+            }
+
+            // This is the original GravityMouse curve: force comes directly from
+            // deceleration and is intentionally tiny. A cap keeps an abrupt stop
+            // from making the cursor feel manipulated.
+            let stoppingStrength = min(0.012, -legacyDeltaSpeed / 10_000)
+            let attractionExponent = 0.8 * stoppingStrength
+            let remainingDistance = CGFloat(pow(Double(planet.distanceRatio), Double(attractionExponent)))
+            let attractedScenePoint = SCNVector3(
+                planet.target.x + ((scenePoint.x - planet.target.x) * remainingDistance),
+                planet.target.y + ((scenePoint.y - planet.target.y) * remainingDistance),
+                scenePoint.z
+            )
+
+            let projectedAttractedCursor = projectPoint(attractedScenePoint)
+            let projectedYDelta = CGFloat(projectedAttractedCursor.y - projectedCursor.y)
+            let projectedXDelta = CGFloat(projectedAttractedCursor.x - projectedCursor.x)
+            var attractedCursor = cursor
+
+            // Attract on both axes. Displays.swift already accelerates movement
+            // along the previews strip, so reduce only that component in real
+            // time to keep cursor compensation from stacking.
+            let axisWeight = curDisplay?.gravityMouseAxisWeight ?? CGPoint(x: 1, y: 1)
+            attractedCursor.x += projectedXDelta * axisWeight.x
+            attractedCursor.y += (usesFlippedProjectionY ? -projectedYDelta : projectedYDelta) * axisWeight.y
+
+            let adjustment = CGPoint(x: attractedCursor.x - cursor.x, y: attractedCursor.y - cursor.y)
+            let attractionLength = sqrt((adjustment.x * adjustment.x) + (adjustment.y * adjustment.y))
+
+            // Retain control if the attenuated, two-axis adjustment would pull
+            // against the user's actual motion.
+            guard attractionLength > 0,
+                  ((movement.x * adjustment.x) + (movement.y * adjustment.y)) > 0 else {
+                return nil
+            }
+
+            let quartzAttractedCursor = quartzCursorPoint(fromAppKitPoint: attractedCursor)
+            guard sqrt((adjustment.x * adjustment.x) + (adjustment.y * adjustment.y)) >= 0.5,
+                  let event = CGEvent(mouseEventSource: nil,
+                                      mouseType: .mouseMoved,
+                                      mouseCursorPosition: quartzAttractedCursor,
+                                      mouseButton: .left) else {
+                return nil
+            }
+
+            event.post(tap: .cghidEventTap)
+            gravityMouseState.generatedPointer = attractedCursor
+            gravityMouseState.previousPointer = attractedCursor
+            return attractedCursor
         }
         
         /*override func rightMouseDragged(with event: NSEvent) {
@@ -517,6 +747,9 @@ public struct CapturePreview: NSViewRepresentable {
                 // First check preview update
                 if self.curDisplay!.previewUpdated {
                     for app in self.listApp! {
+                        // Recompute this from the windows below. Without resetting it, an app
+                        // that used to be frontmost remains visually focused after app changes.
+                        app.value.inUsing = false
                         for win in app.value.windows{
                             win.setMaterial()
                         }
@@ -526,9 +759,14 @@ public struct CapturePreview: NSViewRepresentable {
                 }
                 
                 // Check mouse event
-                let cursor = NSEvent.mouseLocation
+                var cursor = NSEvent.mouseLocation
                 
-                let point = self.unprojectPoint(SCNVector3(x: cursor.x-self.curDisplay!.frame.minX, y: cursor.y-self.curDisplay!.frame.minY, z: self.projectPoint(SCNVector3Zero).z+self.windowsZ))
+                var point = self.unprojectPoint(SCNVector3(x: cursor.x-self.curDisplay!.frame.minX, y: cursor.y-self.curDisplay!.frame.minY, z: self.projectPoint(SCNVector3Zero).z+self.windowsZ))
+
+                if let attractedCursor = gravityMouseCursor(from: cursor, scenePoint: point) {
+                    cursor = attractedCursor
+                    point = self.unprojectPoint(SCNVector3(x: cursor.x-self.curDisplay!.frame.minX, y: cursor.y-self.curDisplay!.frame.minY, z: self.projectPoint(SCNVector3Zero).z+self.windowsZ))
+                }
                 
                 var onApp : AppNode? = self.clickedOnApp
                 var mouseOnApp : AppNode? = nil
@@ -1149,6 +1387,14 @@ public struct CapturePreview: NSViewRepresentable {
             var emissionAlpha : CGFloat = 0
             private var appliedEmission : CGFloat = -1
 
+            func clearFocusAppearance() {
+                minAlpha = 0
+                emissionAlpha = 0
+                appliedEmission = 0
+                geometry.firstMaterial?.emission.intensity = 0
+                geometry.firstMaterial?.transparency = 1
+            }
+
             func setEmissionAlpha(to: CGFloat){
                 var tto = to
                 if tto == 0 {
@@ -1364,11 +1610,18 @@ public struct CapturePreview: NSViewRepresentable {
                         }
                     }
 
+                    let wasFocused = self.minAlpha > 0
+                    self.minAlpha = win.inUsing ? 1 : 0
+
                     if win.inUsing {
-                        self.minAlpha = 1
                         self.app?.inUsing = true
                         
                         //self.node.filters = addBloom() // is too much performance consuming
+                    }
+                    else if wasFocused {
+                        // `minAlpha` used to be write-only: once set to 1, minimized previews
+                        // retained the rounded emission/glass effect even after losing focus.
+                        clearFocusAppearance()
                     }
                 }
                 else {
@@ -1470,6 +1723,8 @@ public struct CapturePreview: NSViewRepresentable {
         }
         
         public func removeAppNode(app: AppNode, force: Bool){
+            // Remove the preview from the scene before laying out the remaining ones.
+            app.remove()
             listApp?.removeValue(forKey: app.app.title) //ugly way, but temporary
             
             let id = app.app.runningApp.processIdentifier;
@@ -1478,6 +1733,16 @@ public struct CapturePreview: NSViewRepresentable {
             if(force){
                 curDisplay?.apps.removeValue(forKey: id)
             }
+
+            guard listApp != nil, curDisplay != nil else {
+                return
+            }
+
+            SCNTransaction.begin()
+            SCNTransaction.animationDuration = 0.5
+            SCNTransaction.animationTimingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            setWindowsPosition()
+            SCNTransaction.commit()
         }
         
         func freeListApp(){
@@ -1748,6 +2013,7 @@ public struct CapturePreview: NSViewRepresentable {
         }
         
         public func unset(){
+            clearPreviewFocus()
             nodeApps?.removeFromParentNode()
             nodeApps = nil
             self.freeListApp()

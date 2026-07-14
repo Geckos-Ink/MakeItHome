@@ -212,9 +212,9 @@ struct MenuBarView: View {
                         Text("\(Image(systemName: "safari.fill")) Safari Extension").frame(width: 150).padding(2)
                     }).background(Color(red: 0.15, green: 0.48, blue: 0.95)).cornerRadius(5).buttonStyle(.bordered)*/
 
-                    if showInstallWebExtension {
+                    if showInstallWebExtension || true { // show always
                         Button(action: installSafariWebExtension, label: {
-                            Text("\(Image(systemName: "arrow.down.app.fill")) Install extension").frame(width: 150).padding(2)
+                            Text("\(Image(systemName: "arrow.down.app.fill")) Install Safari extension").frame(width: 150).padding(2)
                         }).background(Color(red: 0.25, green: 0.4, blue: 0.95)).cornerRadius(5).buttonStyle(.bordered)
                     }
                     

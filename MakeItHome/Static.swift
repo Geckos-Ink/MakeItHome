@@ -155,6 +155,8 @@ public class Static {
     public static let OverscreenAboveLimit : CGFloat = 5
     public static let CompensateAboveByCursor : Double = 0.99
     public static let DivideMaxSpeedBy : Double = 2.5
+    public static var overScreenMouseAxisAcceleration: CGFloat = 1.5
+    public static var enableGravityMouse: Bool = true
     
     public static let PutAsideInUsingApp = false
     public static let PutAsideInUsingAppBy : CGFloat = 10 // pixels
@@ -218,6 +220,8 @@ public class Static {
     
     // Space Change
     public static let WaitAfterSpaceChange = 3 // ticks
+    // Wall-clock safety net for a stuck space change lives in PreviewFlowGate
+    // (PreviewFlowGate.spaceIsChangingForceResetAfter).
     
     // Clipboard
     public static let ClipboardForgetElementsOlderThan = 30 // ergo: maximum clipboard items
@@ -443,6 +447,9 @@ public class Static {
     public static var isDraggingFromPoint : NSPoint?
     
     public static var screenWake = false
+    // A blocking extension-approval alert must never compete with the overscreen window.
+    // Display.active uses this to keep every display dismissed for the alert's lifetime.
+    public static var isExtensionApprovalPromptShowing = false
     
     public static var navWebView : NavigateWebView?
     

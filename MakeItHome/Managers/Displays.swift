@@ -11,6 +11,7 @@ import ScreenCaptureKit
 import CoreImage
 import AVFoundation
 import CoreVideo
+import ApplicationServices
 
 import OrderedCollections
 import SceneKit
@@ -24,16 +25,66 @@ public struct StrictMotionSample {
     let mouseSpeed: CGFloat
     let mouseSpeed10s: CGFloat
     let avgSpeed: Double
+    let acceleration: Double
     let avgAcceleration: Double
+    let frameDuration: TimeInterval
+    let frameScale: CGFloat
+
+    func merging(with newer: StrictMotionSample) -> StrictMotionSample {
+        let mergedDelta = CGPoint(x: mouseDelta.x + newer.mouseDelta.x,
+                                  y: mouseDelta.y + newer.mouseDelta.y)
+        let mergedFrameScale = max(0.001, frameScale + newer.frameScale)
+        let mergedSpeed = hypot(mergedDelta.x, mergedDelta.y) / mergedFrameScale
+
+        return StrictMotionSample(mouse: newer.mouse,
+                                  mouseDelta: mergedDelta,
+                                  mouseSpeed: mergedSpeed,
+                                  mouseSpeed10s: newer.mouseSpeed10s,
+                                  avgSpeed: newer.avgSpeed,
+                                  acceleration: max(acceleration, newer.acceleration),
+                                  avgAcceleration: newer.avgAcceleration,
+                                  frameDuration: frameDuration + newer.frameDuration,
+                                  frameScale: mergedFrameScale)
+    }
+}
+
+private func effectiveFrameScale(elapsed: TimeInterval, referenceFPS: Double) -> CGFloat {
+    let referenceDuration = 1 / max(1, referenceFPS)
+    // Ignore timer jitter below a quarter-frame and avoid treating a wake from
+    // sleep as hundreds of frames of pointer input.
+    let boundedElapsed = min(max(elapsed, referenceDuration * 0.25), 0.25)
+    return CGFloat(boundedElapsed / referenceDuration)
+}
+
+private func timeAdjustedAverage(current: Double,
+                                 sample: Double,
+                                 referenceWeight: Double,
+                                 frameScale: CGFloat) -> Double {
+    guard referenceWeight > 0 else { return sample }
+    let perFrameRetention = referenceWeight / (referenceWeight + 1)
+    let retention = pow(perFrameRetention, Double(max(0.001, frameScale)))
+    return (current * retention) + (sample * (1 - retention))
+}
+
+private func timeAdjustedAverage(current: CGFloat,
+                                 sample: CGFloat,
+                                 referenceWeight: CGFloat,
+                                 frameScale: CGFloat) -> CGFloat {
+    CGFloat(timeAdjustedAverage(current: Double(current),
+                                sample: Double(sample),
+                                referenceWeight: Double(referenceWeight),
+                                frameScale: frameScale))
 }
 
 public class DisplaysManager {
     private struct StrictMotionState {
         var acceleration: Double = 0
         var prevMouse: CGPoint = .zero
+        var previousSpeed: CGFloat = 0
         var mouseSpeed10s: CGFloat = 0
         var avgSpeed: Double = 1
         var avgAcceleration: Double = 0
+        var lastSampleTime: TimeInterval = 0
     }
     
     private let strictAvgWeight: CGFloat = 60 * 60
@@ -166,12 +217,13 @@ public class DisplaysManager {
         print("space did change")
         
         updateFrontmostApp()
-        //screenRecorderSelectDisplay()
-        
-        curDisplay?.spaceDidChange()
-        
-        // force to false (this could glitch the overscreen activation in the short term(?))
-        curDisplay?.spaceIsChanging = false
+
+        // The notification is global and may be caused by a fullscreen Space on any display.
+        // Protect every display until its own window topology settles; immediately clearing the
+        // flag here let an animation snapshot create/close placeholders on the wrong Space.
+        for display in displays {
+            display.spaceDidChange()
+        }
     }
     
     func getDisplayFromNSScreen(screen : NSScreen) -> Display? {
@@ -255,6 +307,10 @@ public class DisplaysManager {
             }
             
             await screenRecorder.refreshAvailableContent()
+
+            guard !Task.isCancelled else {
+                return
+            }
             
             let activeDisplay = self.curDisplay
             let activeDisplayId = activeDisplay?.screen.displayID
@@ -263,6 +319,7 @@ public class DisplaysManager {
             guard let activeDisplay,
                   activeDisplay.shouldKeepScreenRecorderActive(),
                   let scDisplay else {
+                guard !Task.isCancelled else { return }
                 await screenRecorder.stop()
                 return
             }
@@ -270,6 +327,7 @@ public class DisplaysManager {
             print("starting recording on display", scDisplay.displayID)
             activeDisplay.scDisplay = scDisplay
             screenRecorder.capturePreview.currentDisplay(display: activeDisplay)
+            guard !Task.isCancelled else { return }
             await screenRecorder.start(lowProfile: true, display: scDisplay)
         }
     }
@@ -418,14 +476,23 @@ public class DisplaysManager {
                     let sample = self.computeStrictSample(mouse: loc)
                     self.mouseTimerStateQueue.async {
                         self.pendingMouseLoc = loc
-                        self.pendingStrictSample = sample
+                        if let pendingSample = self.pendingStrictSample {
+                            self.pendingStrictSample = pendingSample.merging(with: sample)
+                        }
+                        else {
+                            self.pendingStrictSample = sample
+                        }
                         if self.mouseTickInFlight {
                             return
                         }
                         
                         self.mouseTickInFlight = true
                         Task(priority: .userInteractive) { @MainActor in
-                            let strictSample = self.mouseTimerStateQueue.sync { self.pendingStrictSample }
+                            let strictSample = self.mouseTimerStateQueue.sync {
+                                let sample = self.pendingStrictSample
+                                self.pendingStrictSample = nil
+                                return sample
+                            }
                             let currentLoc = strictSample?.mouse ?? self.mouseTimerStateQueue.sync { self.pendingMouseLoc }
                             self.updateMousePosition(cursor: currentLoc, from: 2, strictSample: strictSample)
                             self.mouseTimerStateQueue.async {
@@ -464,22 +531,37 @@ public class DisplaysManager {
 
     private func computeStrictSample(mouse: CGPoint) -> StrictMotionSample {
         var state = strictMotionState
+        let sampleTime = ProcessInfo.processInfo.systemUptime
+        let nominalDuration = 1 / updateHertz
+        let frameDuration = state.lastSampleTime > 0 ? sampleTime - state.lastSampleTime : nominalDuration
+        let frameScale = effectiveFrameScale(elapsed: frameDuration, referenceFPS: updateHertz)
         let prevMouse = state.prevMouse == .zero ? mouse : state.prevMouse
         let mouseDelta = CGPoint(x: mouse.x - prevMouse.x, y: mouse.y - prevMouse.y)
-        let mouseSpeed = sqrt((pow(mouseDelta.x, 2) + pow(mouseDelta.y, 2)))
+        let mouseSpeed = hypot(mouseDelta.x, mouseDelta.y) / frameScale
         
         let speedWindow = CGFloat(updateHertz * 10)
-        let mouseSpeed10s = ((state.mouseSpeed10s * speedWindow) + mouseSpeed) / (speedWindow + 1)
-        let avgSpeed = ((state.avgSpeed * Double(strictAvgWeight)) + Double(mouseSpeed)) / (Double(strictAvgWeight) + 1)
-        
-        let acceleration = sqrt((pow(mouseDelta.x, 2) + pow(mouseDelta.y, 2)))
-        let avgAcceleration = ((state.avgAcceleration * Double(strictAvgWeight)) + Double(acceleration)) / (Double(strictAvgWeight) + 1)
+        let mouseSpeed10s = timeAdjustedAverage(current: state.mouseSpeed10s,
+                                                sample: mouseSpeed,
+                                                referenceWeight: speedWindow,
+                                                frameScale: frameScale)
+        let avgSpeed = timeAdjustedAverage(current: state.avgSpeed,
+                                           sample: Double(mouseSpeed),
+                                           referenceWeight: Double(strictAvgWeight),
+                                           frameScale: frameScale)
+
+        let acceleration = Double(abs(mouseSpeed - state.previousSpeed) / frameScale)
+        let avgAcceleration = timeAdjustedAverage(current: state.avgAcceleration,
+                                                  sample: acceleration,
+                                                  referenceWeight: Double(strictAvgWeight),
+                                                  frameScale: frameScale)
         
         state.prevMouse = mouse
+        state.previousSpeed = mouseSpeed
         state.mouseSpeed10s = mouseSpeed10s
         state.avgSpeed = avgSpeed
         state.avgAcceleration = avgAcceleration
         state.acceleration = acceleration
+        state.lastSampleTime = sampleTime
         strictMotionState = state
         
         return StrictMotionSample(mouse: mouse,
@@ -487,7 +569,16 @@ public class DisplaysManager {
                                   mouseSpeed: mouseSpeed,
                                   mouseSpeed10s: mouseSpeed10s,
                                   avgSpeed: avgSpeed,
-                                  avgAcceleration: avgAcceleration)
+                                  acceleration: acceleration,
+                                  avgAcceleration: avgAcceleration,
+                                  frameDuration: frameDuration,
+                                  frameScale: frameScale)
+    }
+
+    fileprivate func synchronizeStrictMotionOrigin(to mouse: CGPoint) {
+        strictMotionQueue.async { [weak self] in
+            self?.strictMotionState.prevMouse = mouse
+        }
     }
     
     //TODO: Bring this in Display class
@@ -635,6 +726,36 @@ public class Display : Equatable {
     public var scaleCapture : CGFloat = 2
     
     public var menuHeight : CGFloat = 24
+
+    /// Geometry alone cannot distinguish a native fullscreen window with an always-visible menu
+    /// bar from a maximized Desktop window. Accessibility is already a core app permission, so
+    /// use the focused window's explicit AXFullScreen state whenever it is available.
+    private func currentAppNativeFullscreenState() -> Bool? {
+        guard AXIsProcessTrusted(), let app = curFrontApp else {
+            return nil
+        }
+
+        let appElement = AXUIElementCreateApplication(app.processIdentifier)
+        var focusedValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            appElement,
+            kAXFocusedWindowAttribute as CFString,
+            &focusedValue) == .success,
+              let focusedWindow = focusedValue else {
+            return nil
+        }
+
+        var fullscreenValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            focusedWindow as! AXUIElement,
+            "AXFullScreen" as CFString,
+            &fullscreenValue) == .success,
+              let fullscreen = fullscreenValue as? NSNumber else {
+            return nil
+        }
+
+        return fullscreen.boolValue
+    }
     
     //MARK: AppWindows
     
@@ -861,11 +982,22 @@ public class Display : Equatable {
                 let openApp = win!.app!.runningApp // ?? runningApp
                 display.curFrontApp = openApp
                 
-                if !force {
+                let activateAllWindows = PreviewFlowGate.shouldActivateAllWindows(
+                    forceRequested: force,
+                    selectedSpaceID: win!.spaceId,
+                    appWindowSpaceIDs: Array(self.windows.values.map(\.spaceId)))
+
+                if !activateAllWindows {
                     openApp.activate(options: [])
                 }
                 else {
                     openApp.activate(options: [.activateAllWindows])
+                }
+                // If the overscreen already finished hiding, there is no later focus-restoration
+                // callback that still needs this target. Otherwise keep it until that callback
+                // runs, so it cannot reactivate the app from the previous Space.
+                if display.windowHidden && display.pendingWindowAfterClose === win {
+                    display.pendingWindowAfterClose = nil
                 }
                 
                 delay(ms: 75){
@@ -896,6 +1028,7 @@ public class Display : Equatable {
             else {
                 display.aboveBy = 0
                 display.activateNewApp = true
+                display.pendingWindowAfterClose = win
 
                 display.curFrontWindow = nil // try to not trigger the activation of another app during the closing process
                 
@@ -1200,10 +1333,17 @@ public class Display : Equatable {
         self.activateSide[3] = Static.User.object(forKey: "DisplayEnableTop_\(self.screen.localizedName)") as? Bool ?? true
     }
     
-    public var isFullscreen : Bool = false
-    
+    /// Pure state machine for the transient preview/recording gate. `isFullscreen` and
+    /// `spaceIsChanging` below are thin facades over it so all the existing call sites keep
+    /// working while the recovery logic lives in one unit-testable place (see PreviewFlowGate).
+    var flowGate = PreviewFlowGate()
+
+    public var isFullscreen : Bool {
+        get { flowGate.isFullscreen }
+        set { flowGate.updateFullscreen(newValue, now: Date().timeIntervalSince1970) }
+    }
+
     public var currentSpaceId : Int = -1
-    var currentSpaceIds : [Int] = []
     public var spaces : [Int: SwifterPlaceholder] = [:]
     var curPlaceholder : SwifterPlaceholder? = nil
     var samePlaceholderSince : Int64 = 0
@@ -1232,34 +1372,35 @@ public class Display : Equatable {
     }
     
     var placeholders : [SwifterPlaceholder] = []
-    
-    func removeDuplicatePlaceholder(idNew : Int, idOld : Int){
-        var pos = -1
-        for i in 0 ... placeholders.count - 1 {
-            let pid = placeholders[i].id
-            if pid == idNew || pid == -1 {
-                placeholders[i].close()
-                pos = i
-                
-                if pid != -1{
-                    break
-                }
-            }
+
+    /// Collapses multiple simultaneously on-screen placeholder panels down to a single one.
+    /// Only ever touches `SwifterPlaceholder`s we own that are actually on screen (never the
+    /// main overscreen window — it carries the differently-cased "MakeItHome" title). Returns
+    /// true when it closed at least one duplicate, at which point the caller can stop: the next
+    /// window scan will see one unambiguous placeholder and previews resume.
+    @MainActor
+    @discardableResult
+    func resolveStalePlaceholders(onScreenIds : [Int]) -> Bool {
+        let ownedOnScreen = placeholders.filter { onScreenIds.contains($0.windowNumber) && $0.stillValid() }
+        guard ownedOnScreen.count >= 2 else {
+            return false
         }
-        
-        if pos >= 0 {
-            placeholders.remove(at: pos)
+
+        // Prefer to keep the one we already consider current; otherwise keep the first.
+        let keep = ownedOnScreen.first { $0 === curPlaceholder } ?? ownedOnScreen[0]
+        for placeholder in ownedOnScreen where placeholder !== keep {
+            placeholder.close()
+            spaces = spaces.filter { $0.value !== placeholder }
         }
-        
-        for app in apps {
-            for win in app.value.windows {
-                if win.value.spaceId == idNew {
-                    win.value.spaceId = idOld
-                }
-            }
-        }
+        placeholders.removeAll { ph in ph !== keep && ownedOnScreen.contains { $0 === ph } }
+
+        // Keep a safe owned reference, but let the next single-holder observations commit its
+        // Space ID after the topology settle interval. Do not force-clear the transition here.
+        curPlaceholder = keep
+        print("resolved stale duplicate placeholders, kept", keep.windowNumber)
+        return true
     }
-    
+
     var aboveByTriggeredSince : TimeInterval = 0
     
     //MARK: Display init
@@ -1300,7 +1441,16 @@ public class Display : Equatable {
             if self.disable || self.manager.curDisplay !== self {
                 return
             }
-            
+
+            // Runs on every tick, ahead of all the early-returns below, so a fullscreen that is
+            // genuinely gone can't stay stuck true (which would keep the recorder off forever)
+            // just because checkForScreenshot keeps bailing out before it re-reads the windows.
+            if self.flowGate.recoverStaleFullscreen(now: Date().timeIntervalSince1970) {
+                print("fullscreen cleared (stale, not re-confirmed) — re-enabling previews")
+                self.recordingPaused = false
+                self.setRecorderProfile(lowProfile: true)
+            }
+
             // don't capture screenshot immediately after the triggering of above by
             if (Date.now.timeIntervalSince1970 - self.aboveByTriggeredSince) < Static.WaitScreenshotAfterAboveBy {
                 return
@@ -1415,11 +1565,10 @@ public class Display : Equatable {
     public var frontMostAppSince : Int64 = 0
     
     var exitedFromFullscreen = 0 // how many cycles passed after exiting fullscreen mode
-    var noSpaceholderFor = 0 // how many cycles passed without a found space holder
     let waitCyclesCoolDown = 10 // how many checkForScreenshot cycles needed to unlock a checking
     
-    let placeholdersQueue = DispatchQueue(label: "ink.makeithome.placeholdersQueue")
-        
+    // Placeholder windows and their collections are AppKit state and are main-thread confined.
+
     func getPlaceholderById(_ id: Int) -> SwifterPlaceholder? {
         var placeholder : SwifterPlaceholder?
         for ph in self.placeholders {
@@ -1532,7 +1681,6 @@ public class Display : Equatable {
             }
             
             var winner : [String: AnyObject]? = nil
-            var winnerLayer = -1
             var winnerBehindSomething = false
             
             func rectContainsWinnerRect(rect : CGRect) -> Bool {
@@ -1543,26 +1691,20 @@ public class Display : Equatable {
                 return contains
             }
             
-            //var spaceHolder : [String: AnyObject]? = nil
-            var spaceHolderId = -1
-            var sameSpaceHolderId : Int = 0
-            
             func cycleWindows(windows : [CFDictionary]?){
-                
+
                 winnerRect = NSRect.zero // set to default
-                
+                var fullscreenDetected = false
+                var fullscreenGeometryCandidate = false
+                var completeDisplayCandidate = false
+                let fullscreenMenuBarHeight = NSApplication.shared.menu?.menuBarHeight ?? self.menuHeight
+
                 var aheadRects = [NSRect]()
                 
-                // Menu Bar Height checker
-                var removeMenuHeight : CGFloat = 0
-                
-                let menuHeight = NSApplication.shared.menu!.menuBarHeight
-                if menuHeight > 30 {
-                    removeMenuHeight = menuHeight
-                }
-                
-                var spaceHolderFound = -1
-                
+                // Every on-screen placeholder panel seen this pass. More than one means stale
+                // duplicates (see PreviewFlowGate.noteDuplicatePlaceholderIDs).
+                var scannedHolderIds : [Int] = []
+
                 func sortWinByLayer(_ w1: CFDictionary, _ w2: CFDictionary) -> Bool {
                     let dw1 = w1 as? [String: AnyObject]
                     let dw2 = w2 as? [String: AnyObject]
@@ -1576,7 +1718,6 @@ public class Display : Equatable {
                 let orderedWindows = windows //windows?.sorted(by: sortWinByLayer)
                 
                 var winnerTitle = ""
-                var _curSpaceholder : SwifterPlaceholder?
                 
                 for win in orderedWindows!{
                     if let dict = win as? [String: AnyObject] {
@@ -1618,36 +1759,27 @@ public class Display : Equatable {
                         appWin?.missingFor = 0
                         appWin?.appearsInThiSpace = !spaceIsChanging
                         
-                        let winOwnerChecked = (winOwnerName == name || pid == winPid!)
+                        let winOwnerChecked = winOwnerName == name || (winPid.map { $0 == pid } ?? false)
                         
                         if winLayer == 0 && rectOnCurrentDisplay && !excludedApps.contains(winOwnerName ?? "") {
-                            // In case of emergency break the glass: https://developer.apple.com/documentation/appkit/nswindowwillenterfullscreennotification (seems not working for other apps)
-                            if rect.height >= (screen.frame.height-removeMenuHeight) && rect.width >= screen.frame.width {
-                                self.isFullscreen = true
-                            }
+                            fullscreenGeometryCandidate = fullscreenGeometryCandidate ||
+                                PreviewFlowGate.isFullscreenCandidateFrame(
+                                    rect,
+                                    displayFrame: self.frame,
+                                    menuBarHeight: fullscreenMenuBarHeight)
+                            completeDisplayCandidate = completeDisplayCandidate ||
+                                PreviewFlowGate.isFullscreenWindowFrame(
+                                    rect,
+                                    displayFrame: self.frame)
                         }
                         
                         let thisTimeHasTitle = winner != nil && winnerTitle == "" && !(winTitle ?? "").isEmpty
                         
                         if winTitle == lowerTitle && winOnScreen == 1 && rectOnCurrentDisplay {
                             // found placeholder panel
-                            spaceHolderId = winId
-                            
-                            if self.currentSpaceId == winId {
-                                // ...
-                            }
-                            else {
-                                print("space holder found ", spaceHolderFound, winId)
-                                
-                                if spaceHolderFound == -1 {
-                                    spaceHolderFound = winId
-                                }
-                                else {
-                                    spaceHolderFound = -2
-                                    self.spaceIsChanging = true
-                                }
-                                
-                                self.currentSpaceId = spaceHolderFound
+                            if !scannedHolderIds.contains(winId) {
+                                scannedHolderIds.append(winId)
+                                print("space holder observed", winId)
                             }
                         }
                         else if (winner == nil || thisTimeHasTitle) && (winOnScreen == 1 && rectOnCurrentDisplay && !excludedApps.contains(winOwnerName ?? "") && winOwnerChecked && (rect.width+rect.height)/2 > 150)/* window must be enough big */{
@@ -1699,13 +1831,20 @@ public class Display : Equatable {
                             
                             
                             winner = dict
-                            winnerLayer = winLayer
                             winnerRect = rect
                             
                             winnerTitle = winTitle ?? ""
                             //appWin?.lastRect = rect
                             
-                            isFullscreen = winnerRect.size.width >= self.frame.width && winnerRect.size.height >= self.frame.height - self.menuHeight
+                            fullscreenGeometryCandidate = fullscreenGeometryCandidate ||
+                                PreviewFlowGate.isFullscreenCandidateFrame(
+                                    winnerRect,
+                                    displayFrame: self.frame,
+                                    menuBarHeight: fullscreenMenuBarHeight)
+                            completeDisplayCandidate = completeDisplayCandidate ||
+                                PreviewFlowGate.isFullscreenWindowFrame(
+                                    winnerRect,
+                                    displayFrame: self.frame)
                         }
                         else if !winOwnerChecked && winner == nil{
                             if rect != self.screen.frame{
@@ -1715,8 +1854,33 @@ public class Display : Equatable {
                     }
                 }
                 
-                // replicated belows, if this works remove it
+                if completeDisplayCandidate {
+                    fullscreenDetected = true
+                }
+                else if fullscreenGeometryCandidate {
+                    // If AX is temporarily unavailable, prefer the conservative historical
+                    // behavior and gate a display-filling candidate until the next fresh scan.
+                    fullscreenDetected = currentAppNativeFullscreenState() ?? true
+                }
+
+                let topologyNow = Date().timeIntervalSince1970
+                let wasFullscreen = isFullscreen
+                flowGate.updateFullscreen(fullscreenDetected, now: topologyNow)
+
+                if wasFullscreen && !isFullscreen {
+                    // Do not depend on a front-app change or later pointer movement: exiting
+                    // fullscreen must restore ScreenCaptureKit before overscreen can open.
+                    recordingPaused = false
+                    setRecorderProfile(lowProfile: true)
+                }
+
+                // A fullscreen Space has no placeholder by design. Accept that topology and do
+                // not run duplicate/missing repair while entering, inside, or leaving fullscreen.
                 if isFullscreen {
+                    flowGate.acceptFullscreenTopology(now: topologyNow)
+                    if !wasFullscreen {
+                        stopScreenRecordingIfNeeded()
+                    }
                     exitedFromFullscreen = 0
                     return
                 }
@@ -1730,108 +1894,57 @@ public class Display : Equatable {
                 ///#
                 ///# spaceHolder managent
                 ///#
-                DispatchQueue.main.async { // done on main thread
-                    //MARK: spaceHolder MGMT
-                    self.samePlaceholderSince += 1
-                    
-                    if (spaceHolderId == -1 || spaceHolderFound > -1 || spaceHolderFound == -2) {
-                        
-                        if true && (!self.spaceIsChanging && !self.activateNewApp) && spaceHolderId >= 0 && spaceHolderId != self.currentSpaceId && self.curPlaceholder?.stillValid() ?? false {
-                            DispatchQueue.main.async {
-                                for placeholder in self.placeholders {
-                                    if placeholder.stillValid() && self.curPlaceholder?.id != spaceHolderId {
-                                        if placeholder.numWindows == self.curPlaceholder?.numWindows && spaceHolderId != self.currentSpaceId {
-                                            self.removeDuplicatePlaceholder(idNew: spaceHolderId, idOld: self.currentSpaceId)
-                                            spaceHolderId = self.currentSpaceId
-                                            print("duplicate space holder removed")
-                                        }
-                                    }
-                                }
-                            }
+                let holdersOnScreen = scannedHolderIds
+                let wasChangingSpace = self.spaceIsChanging
+                let topologySettled = self.flowGate.observePlaceholderTopology(
+                    holdersOnScreen,
+                    now: topologyNow)
+
+                if !wasChangingSpace && self.spaceIsChanging {
+                    print("space changing — waiting for stable placeholder topology")
+                    self.spaceInChanging()
+                }
+
+                self.samePlaceholderSince = holdersOnScreen.count == 1 &&
+                    holdersOnScreen.first == self.currentSpaceId
+                    ? self.samePlaceholderSince + 1
+                    : 0
+
+                // Persistent duplicates are repairable, but only after the animation grace
+                // period measured by the gate. All mutation stays synchronous on the main actor
+                // so an old scan can never overwrite a newer topology.
+                if self.flowGate.noteDuplicatePlaceholderIDs(holdersOnScreen, now: topologyNow),
+                   self.resolveStalePlaceholders(onScreenIds: holdersOnScreen) {
+                    return
+                }
+
+                if topologySettled, let settledID = holdersOnScreen.first {
+                    self.currentSpaceId = settledID
+
+                    if let placeholder = self.placeholders.first(where: {
+                        $0.windowNumber == settledID || $0.id == settledID
+                    }) {
+                        if placeholder.id == -1 {
+                            placeholder.id = settledID
                         }
-                        
-                        if self.currentSpaceId != spaceHolderId || (spaceHolderFound < 0 && self.currentSpaceId > 0){
-                            if !self.currentSpaceIds.contains(spaceHolderId){
-                                self.samePlaceholderSince = 0
-                            }
-                            
-                            sameSpaceHolderId = spaceHolderId
-                        }
-                        
-                        // register the space holder in the list of "current space holders"
-                        // this is an ugly but realistic approach. the space holder managament is a mess
-                        if spaceHolderId > 0 {
-                            if !self.currentSpaceIds.contains(spaceHolderId){
-                                self.currentSpaceIds.append(spaceHolderId)
-                            }
-                        }
-                        
-                        
-                        if spaceHolderFound >= 0 {
-                            self.currentSpaceId = spaceHolderId
-                            print("unique space holder found", spaceHolderId)
-                        }
-                        
-                        //spaceHolderFound = -2 // force "space changing" status (it means that two space holders were found)
-                        if spaceHolderFound == -2 && !self.spaceIsChanging {
-                            print("space changing")
-                            self.spaceIsChanging = true
-                            self.spaceInChanging()
-                        }
-                        
-                        // after fullscreen: Thread 1: EXC_BAD_ACCESS (code=1, address=0x20)
-                        DispatchQueue.main.async {
-                            self.curPlaceholder = nil
-                        }
+                        self.curPlaceholder = placeholder
+                        self.spaces[settledID] = placeholder
+                    } else {
+                        // The window list can contain the just-closed stale panel for one pass.
+                        // Keep the prior reference until repair is independently authorized.
+                        self.curPlaceholder = nil
                     }
-                    
-                    if self.spaceIsChanging {
-                        if self.samePlaceholderSince > Static.WaitAfterSpaceChange {
-                            self.spaceIsChanging = false
-                            print("space no more changing due to timeout")
-                        }
-                        else {
-                            print("space is still changing because of ", self.samePlaceholderSince, " <= ", Static.WaitAfterSpaceChange)
-                        }
-                    }
-                    else {
-                        //TODO: Thread 1: EXC_BAD_ACCESS (code=1, address=0x20) (placeholders)
-                        DispatchQueue.main.async {
-                            if self.curPlaceholder == nil {
-                                let _placeholders = self.placeholders
-                                for placeholder in _placeholders {
-                                    if let pl = placeholder as? SwifterPlaceholder{
-                                        if(placeholder.id == -1){
-                                            placeholder.id = self.currentSpaceId
-                                        }
-                                        
-                                        if(placeholder.id == self.currentSpaceId){
-                                            self.curPlaceholder = placeholder
-                                            self.spaces[self.currentSpaceId] = self.curPlaceholder
-                                            break;
-                                        }
-                                    }
-                                }
+
+                    if !self.activateNewApp {
+                        for win in windows ?? [] {
+                            if let dict = win as? [String: AnyObject] {
+                                let winId = dict["kCGWindowNumber"] as? Int ?? -1
+                                getWindow(winId: winId)?.spaceId = settledID
                             }
                         }
                     }
-                    
-                    if spaceHolderFound == -1 {
-                        if !self.spaceIsChanging && !self.activateNewApp{
-                            for win in windows!{
-                                if let dict = win as? [String: AnyObject] {
-                                    let winId = dict["kCGWindowNumber"] as? Int ?? -1
-                                    
-                                    let appWin = getWindow(winId: winId)
-                                    appWin?.spaceId = self.curPlaceholder?.id ?? self.currentSpaceId // update every time
-                                }
-                            }
-                        }
-                    }
-                    
-                    if spaceHolderFound >= 0 {
-                        self.spaceIsChanging = false
-                    }
+
+                    print("stable unique space holder found", settledID)
                 }
             }
             
@@ -1868,8 +1981,45 @@ public class Display : Equatable {
 
             cycleWindows(windows: windows)
 
+            // A new normal Desktop has no holder yet, so its topology cannot clear
+            // spaceIsChanging by itself. Evaluate stable missing-holder repair before the
+            // transition guard returns. Fullscreen and transient empty snapshots remain gated.
+            if self.flowGate.shouldRepairMissingPlaceholder(now: Date().timeIntervalSince1970) {
+                print("repairing genuinely missing SwifterPlaceholder")
+                let winHolder = SwifterPlaceholder()
+                winHolder.numWindows = windows.count
+                winHolder.show()
+
+                self.curPlaceholder = winHolder
+                self.currentSpaceId = winHolder.windowNumber
+                if self.currentSpaceId == -1 {
+                    self.currentSpaceId = -2
+                }
+
+                // AppKit objects and this collection are main-thread confined. Tell the gate
+                // immediately so stale window-list snapshots cannot create another holder.
+                self.placeholders.append(winHolder)
+                self.flowGate.notePlaceholderCreated(
+                    id: winHolder.windowNumber,
+                    now: Date().timeIntervalSince1970)
+
+                // An empty Desktop can leave ScreenCaptureKit without a deliverable window and
+                // the stream may have stopped while its holder was missing. The new holder makes
+                // the Desktop capturable again; explicitly restore the low-profile stream instead
+                // of waiting for unrelated mouse movement or an app switch.
+                self.recordingPaused = false
+                self.setRecorderProfile(lowProfile: true)
+            }
+
             if spaceIsChanging {
-                return false
+                // Keep previews blocked during the visible Desktop animation so windows and
+                // holders from both Spaces cannot be registered together.
+                if flowGate.recoverStuckSpaceChange(now: Date().timeIntervalSince1970) {
+                    print("space no more changing due to wall-clock timeout")
+                }
+                else {
+                    return false
+                }
             }
 
             curPlaceholder?.numWindows = windows.count
@@ -1917,9 +2067,6 @@ public class Display : Equatable {
                 
                 //print("Current window rect: ", winnerRect)
                 
-                // Check for fullscreen
-                let isFullSize = winnerRect.size.width >= self.frame.width && winnerRect.size.height >= self.frame.height - self.menuHeight
-                
                 // "isFullscreen" check
                 let isFinderDragging = appWin.appTitle == "Finder" && appWin.winTitle == ""
                 
@@ -1935,36 +2082,6 @@ public class Display : Equatable {
                     self.currentSpaceId = self.curPlaceholder?.windowNumber ?? -2
                     if self.currentSpaceId == -1 {
                         self.currentSpaceId = -2
-                    }
-                }
-                
-                if !self.isFullscreen && !spaceIsChanging{
-                    if self.currentSpaceId == -1 {
-                        noSpaceholderFor += 1
-                        
-                        if noSpaceholderFor > (waitCyclesCoolDown) {
-                            print("creating new SwifterPlaceholder")
-                            let winHolder = SwifterPlaceholder()
-                            winHolder.numWindows = windows.count
-                            
-                            // It cause useless space change after fullscreen
-                            // check in case of opening a window in another space
-                            winHolder.show()
-                            
-                            self.curPlaceholder = winHolder
-                            self.currentSpaceId = winHolder.windowNumber
-                            
-                            if self.currentSpaceId == -1 {
-                                self.currentSpaceId  = -2
-                            }
-                            
-                            placeholdersQueue.async {
-                                self.placeholders.append(winHolder)
-                            }
-                        }
-                    }
-                    else {
-                        noSpaceholderFor = 0
                     }
                 }
                 
@@ -2019,7 +2136,9 @@ public class Display : Equatable {
                                         
                     if #available(macOS 12.3, *){
                         let screenRecorder = self.manager.contentView!.store.screenRecorder as! ScreenRecorder
-                        if let lf = screenRecorder.lastFrame,
+                        if screenRecorder.isRunning,
+                           screenRecorder.recordingOnDisplay == self.screen.displayID,
+                           let lf = screenRecorder.lastFrame,
                            lf.displayID == self.screen.displayID,
                            let pixelBuffer = lf.pixelBuffer {
                             
@@ -2410,16 +2529,12 @@ public class Display : Equatable {
 
     func shouldKeepScreenRecorderActive() -> Bool {
         ready = manager.curDekstop != nil
-        
-        if Static.ScreenRecordingUnauthorized && !Static.debugForceWorking {
-            return false
-        }
-        
-        if Static.ActivationStatus <= 0 || !ready {
-            return false
-        }
-        
-        return !disable && !isFullscreen
+
+        return flowGate.allowsRecorder(
+            authorized: !(Static.ScreenRecordingUnauthorized && !Static.debugForceWorking),
+            activated: Static.ActivationStatus > 0,
+            ready: ready,
+            disabled: disable)
     }
 
     func stopScreenRecordingIfNeeded() {
@@ -2460,6 +2575,55 @@ public class Display : Equatable {
         if !windowHidden {
             hideWindow(allowRecorderRestart: false)
         }
+    }
+
+    /// Immediately removes the overscreen from the window server before a blocking modal
+    /// alert is displayed. Unlike `hideWindow`, this intentionally does not deactivate the
+    /// app or restore the previous app: the modal alert needs to remain the active UI.
+    func dismissOverscreenForModalPresentation() {
+        precondition(Thread.isMainThread)
+
+        // Never leave the mouse loop in fullscreen mode after the window has disappeared.
+        outFullOverscreenMode()
+
+        guard aboveByPixels > 0 || !windowHidden || shortcutAnimationInProgress else {
+            return
+        }
+
+        let previousSide = side
+        shortcutOpenTimer?.invalidate()
+        shortcutOpenTimer = nil
+        shortcutAnimationInProgress = false
+
+        aboveBy = 0
+        aboveByPixels = 0
+        prevAboveByPixels = 0
+        forceAboveBy = 0
+        side = -1
+        sideToClose = -1
+        activateNewApp = false
+        checkedDragging = false
+        onMoreAboveBy = false
+        lastAcceleratedPointerPosition = nil
+        Static.isDraggingInside = false
+
+        if #available(macOS 12.3, *), previousSide != 3 {
+            (manager.capturePreview as? CapturePreview)?.captureView.unset()
+        }
+
+        manager.window?.orderOut(nil)
+        manager.window?.isOpaque = false
+        manager.window?.alphaValue = 0
+        windowHidden = true
+        Static.mainWindowInUsing = false
+
+        stopScreenRecordingIfNeeded()
+    }
+
+    /// Permission prompts are queued until this becomes false. Including fullscreen mode is
+    /// important because mouse events can belong to a native child WKWebView at that point.
+    var isOverscreenPresentationInProgress: Bool {
+        Static.mainWindowInUsing || aboveByPixels > 0 || shortcutAnimationInProgress || fullOverscreenMode
     }
 
     private func shouldPrewarmRecorder(side: Int, mouseDelta: CGPoint) -> Bool {
@@ -2627,6 +2791,50 @@ public class Display : Equatable {
     
     //MARK: Window show/hide
     var frontWinBefore : AppWindows.Window?
+    private var frontAppBefore : NSRunningApplication?
+    private var frontSpaceBefore = -1
+    fileprivate var pendingWindowAfterClose : AppWindows.Window?
+
+    private func restoreFocusAfterHiding() {
+        defer {
+            frontAppBefore = nil
+            frontSpaceBefore = -1
+        }
+
+        // A preview click deliberately replaces the previous window. Consume the exact target,
+        // not only its application: an application can own windows on multiple Spaces, and an
+        // app-only activation may return macOS to the previously active Space.
+        if let selectedWindow = pendingWindowAfterClose,
+           let selectedApp = selectedWindow.app?.runningApp,
+           !selectedApp.isTerminated {
+            pendingWindowAfterClose = nil
+            selectedWindow.activate()
+            return
+        }
+        pendingWindowAfterClose = nil
+
+        // On the first visit to a Desktop, currentSpaceId can still point at the Desktop we just
+        // left. Never let a no-selection close turn that stale ID into an automatic Space change.
+        guard flowGate.allowsAutomaticFocusRestore(toSpaceID: currentSpaceId) else {
+            return
+        }
+
+        if let currentWindow = curFrontWindow,
+           currentWindow.appearsInThiSpace,
+           currentWindow.spaceId == currentSpaceId {
+            currentWindow.activate()
+            return
+        }
+
+        if PreviewFlowGate.shouldRestorePreviousFocus(
+            openedSpaceID: frontSpaceBefore,
+            currentSpaceID: currentSpaceId),
+           let previousApp = frontAppBefore,
+           !previousApp.isTerminated {
+            previousApp.activate(options: [])
+        }
+    }
+
     func showWindow(){
         DispatchQueue.main.async {
             if self.checkWindowStatus(reclose: false){
@@ -2651,6 +2859,28 @@ public class Display : Equatable {
             }
             
             let dontPrioritizeRunningApp = self.spaceIsChanging || self.curFrontWindow?.app?.runningApp != NSRunningApplication.current
+
+            let focusCandidate = NSWorkspace.shared.frontmostApplication.flatMap { app in
+                app != NSRunningApplication.current && !app.isTerminated ? app : nil
+            } ?? self.curFrontApp.flatMap { app in
+                app != NSRunningApplication.current && !app.isTerminated ? app : nil
+            }
+
+            // FrontmostApplication may still report an app whose only window is on the previous
+            // Desktop. Save it for restoration only when its tracked window is visibly current.
+            if let focusCandidate,
+               let currentWindow = self.curFrontWindow,
+               currentWindow.app?.runningApp == focusCandidate,
+               currentWindow.appearsInThiSpace,
+               currentWindow.spaceId == self.currentSpaceId,
+               self.flowGate.allowsAutomaticFocusRestore(toSpaceID: self.currentSpaceId) {
+                self.frontAppBefore = focusCandidate
+                self.frontSpaceBefore = self.currentSpaceId
+            }
+            else {
+                self.frontAppBefore = nil
+                self.frontSpaceBefore = -1
+            }
             
             //change dimension
             //manager.window?.setFrame(frame, display: true)
@@ -2709,13 +2939,20 @@ public class Display : Equatable {
     }
     
     func hideWindow(allowRecorderRestart: Bool = true){
-        
+        // The native search WebView lives below the normal top zone. Moving the pointer into
+        // it must not trigger the regular "left the overscreen" close path.
+        if fullOverscreenMode {
+            return
+        }
+
         if windowHidden{
             return
         }
         
         DispatchQueue.main.async {
             Timer.scheduledTimer(withTimeInterval: 0.1, repeats: false) { timer in
+                // Search may have entered fullscreen after this close was scheduled.
+                guard !self.fullOverscreenMode else { return }
                 
                 // Force it elsewhere
                 //manager.window?.setFrame(NSRect(origin: NSPoint(x:self.screen.frame.minX-5000, y: self.screen.frame.minY-5000), size: NSSize(width: 0, height: 0)), display: false)
@@ -2726,13 +2963,8 @@ public class Display : Equatable {
                 }
                 
                 //TODO: check if spaceChanged is still an useful condition
-                if(!self.spaceIsChanging && !self.activateNewApp){
-                    if(self.curFrontWindow != nil /*&& frontWinBefore == curFrontWindow*/ && self.curFrontWindow?.spaceId == self.currentSpaceId){
-                        self.curFrontWindow?.activate()
-                    }
-                    /*else {
-                     curFrontApp?.activate(options: NSApplication.ActivationOptions.activateAllWindows)
-                     }*/
+                if !self.spaceIsChanging {
+                    self.restoreFocusAfterHiding()
                 }
                 
                 //curFrontApp = nil
@@ -2746,6 +2978,7 @@ public class Display : Equatable {
                 
                 Static.mainWindowInUsing = false
                 self.windowHidden = true
+                self.outFullOverscreenMode()
                 self.updatePerformanceActivity()
                 
                 if #available(macOS 12.3, *){
@@ -2987,6 +3220,11 @@ public class Display : Equatable {
         default:
             break
         }
+
+        return cursorEventPoint(fromAppKitPoint: appKitPoint)
+    }
+
+    private func cursorEventPoint(fromAppKitPoint appKitPoint: CGPoint) -> CGPoint {
         
         if let event = CGEvent(source: nil) {
             let currentEventPoint = event.location
@@ -3035,8 +3273,12 @@ public class Display : Equatable {
     
     func outFullOverscreenMode(){
         if fullOverscreenMode {
+            let normalTopOffsetY = (Static.OverscreenSizeTop - self.frame.height) / 2
+
             Task.init {
                 await Static.storeView?.view?.vars.navOverlayOffsetY = 10000;
+                await Static.storeView?.view?.vars.overlaySizeY = Static.OverscreenSizeTop
+                await Static.storeView?.view?.vars.overlayOffsetY = normalTopOffsetY
             }
             
             fullOverscreenMode = false
@@ -3059,7 +3301,10 @@ public class Display : Equatable {
     
     var disable = false
     
-    var spaceIsChanging : Bool = false
+    var spaceIsChanging : Bool {
+        get { flowGate.spaceIsChanging }
+        set { flowGate.setSpaceChanging(newValue, now: Date().timeIntervalSince1970) }
+    }
     var spaceChangedWin : AppWindows.Window?
     
     func spaceDidChange(){
@@ -3067,14 +3312,12 @@ public class Display : Equatable {
         
         aboveBy = 0
         aboveByPixels = 0
-        
-        curPlaceholder = nil
-        currentSpaceId = -1
         samePlaceholderSince = 0
-        
-        self.spaceIsChanging = false
-        
-        self.currentSpaceIds = []
+
+        // activeSpaceDidChange can fire in the middle of fullscreen/Space animation. Preserve
+        // the last valid placeholder mapping until this display observes one stable holder (or
+        // confirms a fullscreen topology, where no holder is expected).
+        flowGate.beginSpaceTransition(now: Date().timeIntervalSince1970)
     }
     
     func spaceInChanging(){
@@ -3108,6 +3351,13 @@ public class Display : Equatable {
     
     var prevMouse : CGPoint = CGPoint.zero
     var prevRelMouse : CGPoint = CGPoint.zero
+    var previousMotionSpeed: CGFloat = 0
+    var lastMotionSampleTime: TimeInterval = 0
+    var lastAcceleratedPointerPosition: CGPoint?
+    /// GravityMouse reads this every mouse tick. The axis already accelerated by
+    /// the overscreen keeps only a fraction of GravityMouse's force, preventing
+    /// two cursor-compensation mechanisms from fighting each other.
+    var gravityMouseAxisWeight = CGPoint(x: 1, y: 1)
     var prevMouseAboveBy : CGFloat = -1 // setted in init
     var lastMouseChanged = false
     
@@ -3130,6 +3380,7 @@ public class Display : Equatable {
     
     var mouseSpeed : CGFloat = 0
     var mouseSpeed_10s : CGFloat = 0
+    var edgeActivationPressure = [CGFloat](repeating: 0, count: 4)
     
     var compensateAboveByCursor : CGPoint = CGPoint.zero
     
@@ -3169,6 +3420,29 @@ public class Display : Equatable {
     }
         
     public var alongLine = AlongLine()
+
+    private func updateGravityMouseAxisWeight() {
+        let isAcceleratingPreviewAxis = aboveBy >= 1
+            && (side == 0 || side == 1 || side == 2)
+            && alterMouse == 0
+            && compensateAboveByCursor == .zero
+            && !justArrived
+
+        guard isAcceleratingPreviewAxis else {
+            gravityMouseAxisWeight = CGPoint(x: 1, y: 1)
+            return
+        }
+
+        // At the default 1.5x strip acceleration, retain 25% of gravity on
+        // that axis. The perpendicular axis remains fully available so gravity
+        // can still guide the pointer into a preview or icon.
+        let acceleration = max(1, Static.overScreenMouseAxisAcceleration)
+        let compensation = min(0.75, (acceleration - 1) * 1.5)
+        let acceleratedAxisWeight = 1 - compensation
+        gravityMouseAxisWeight = side == 2
+            ? CGPoint(x: acceleratedAxisWeight, y: 1)
+            : CGPoint(x: 1, y: acceleratedAxisWeight)
+    }
     
     func reSetDynamicSettings(){
         //self.scarfWeight = sensivityBaseConstant * Static.Sensivity
@@ -3206,10 +3480,106 @@ public class Display : Equatable {
     
     var overrideAboveByDiff : CGFloat = 0
     var ignoreMousePositionForAboveBy = 0
+
+    private func zoneCenterWeight(side: Int, point: CGPoint) -> CGFloat {
+        let position: CGFloat
+        if side < 2 {
+            position = point.y / max(1, frame.height)
+        }
+        else {
+            position = point.x / max(1, frame.width)
+        }
+
+        // Zero at corners makes the two adjacent zones intentionally
+        // ambiguous there; the middle of each edge gets the full weight.
+        return max(0, sin(.pi * min(1, max(0, position))))
+    }
+
+    @discardableResult
+    private func applySubtleEdgeResistance(side: Int,
+                                           mouse: CGPoint,
+                                           relativeMouse: inout CGPoint,
+                                           mouseDelta: CGPoint,
+                                           acceleration: Double,
+                                           frameScale: CGFloat) -> CGPoint? {
+        let pressureRetention = CGFloat(pow(0.68, Double(max(0.001, frameScale))))
+        for index in edgeActivationPressure.indices {
+            edgeActivationPressure[index] *= pressureRetention
+            if edgeActivationPressure[index] < 0.01 {
+                edgeActivationPressure[index] = 0
+            }
+        }
+
+        guard side >= 0,
+              side < 3,
+              activateSide[side],
+              aboveByPixels == 0,
+              sideToClose == -1 else {
+            return nil
+        }
+
+        var outsideEdgeProbe = mouse
+        switch side {
+        case 0: outsideEdgeProbe.x = frame.minX - 1
+        case 1: outsideEdgeProbe.x = frame.maxX + 1
+        default: outsideEdgeProbe.y = frame.minY - 1
+        }
+        if let adjacentDisplay = manager.getPointerDisplay(cursor: outsideEdgeProbe, justGet: true),
+           adjacentDisplay != self {
+            return nil
+        }
+
+        let distanceFromEdge = calcAboveBy(side: side, point: relativeMouse)
+        guard distanceFromEdge >= 0, distanceFromEdge < activateOnPixelsLimit else {
+            return nil
+        }
+
+        let outwardDelta: CGFloat
+        switch side {
+        case 0: outwardDelta = -mouseDelta.x
+        case 1: outwardDelta = mouseDelta.x
+        default: outwardDelta = -mouseDelta.y
+        }
+        guard outwardDelta > 0 else { return nil }
+
+        let centerWeight = zoneCenterWeight(side: side, point: relativeMouse)
+        let proximity = 1 - (distanceFromEdge / activateOnPixelsLimit)
+        // The menu-bar resistance can remove roughly half a movement. Other
+        // edges peak at 16%, and ramp in only near the physical edge.
+        let resistanceWeight = 0.16 * pow(proximity, 2) * centerWeight
+        let resistedDistance = min(activateOnPixelsLimit * 0.2,
+                                   outwardDelta * resistanceWeight)
+        guard resistedDistance >= 0.05 else { return nil }
+
+        let accelerationBaseline = max(0.1, avgAcceleration)
+        let accelerationLift = min(1, max(0, (acceleration - accelerationBaseline) / accelerationBaseline))
+        edgeActivationPressure[side] = min(activateOnPixelsLimit,
+                                           edgeActivationPressure[side]
+                                           + resistedDistance * CGFloat(1 + (0.5 * accelerationLift)))
+
+        var resistedMouse = mouse
+        switch side {
+        case 0:
+            resistedMouse.x += resistedDistance
+            relativeMouse.x += resistedDistance
+        case 1:
+            resistedMouse.x -= resistedDistance
+            relativeMouse.x -= resistedDistance
+        default:
+            resistedMouse.y += resistedDistance
+            relativeMouse.y += resistedDistance
+        }
+
+        return resistedMouse
+    }
     
     //MARK: Active area
     @MainActor func active(mouse: NSPoint, strictSample: StrictMotionSample? = nil){ // was @MainActor
-        
+        if Static.isExtensionApprovalPromptShowing {
+            dismissOverscreenForModalPresentation()
+            return
+        }
+
         if(Static.ScreenRecordingUnauthorized && !Static.debugForceWorking){            
             disableOverscreenAndStopRecording()
             return
@@ -3243,6 +3613,7 @@ public class Display : Equatable {
         self.menuHeight = NSApplication.shared.menu!.menuBarHeight
         
         reSetDynamicSettings()
+        updateGravityMouseAxisWeight()
         
         if #available(macOS 12.3, *){
             if !windowHidden {
@@ -3254,23 +3625,41 @@ public class Display : Equatable {
         
         let mouseDelta: CGPoint
         let acceleration: Double
+        let frameScale: CGFloat
         if let sample = strictSample {
             mouseDelta = sample.mouseDelta
             mouseSpeed = sample.mouseSpeed
             mouseSpeed_10s = sample.mouseSpeed10s
             avgSpeed = sample.avgSpeed
             avgAcceleration = sample.avgAcceleration
-            acceleration = Double(sample.mouseSpeed)
+            acceleration = sample.acceleration
+            frameScale = sample.frameScale
         }
         else {
-            mouseDelta = CGPoint(x: mouse.x - prevMouse.x, y: mouse.y - prevMouse.y)
-            
-            mouseSpeed = sqrt((pow(mouseDelta.x,2)+pow(mouseDelta.y,2)))
-            mouseSpeed_10s = ((mouseSpeed_10s*(Static.MouseHertz * 10))+mouseSpeed)/((Static.MouseHertz * 10)+1)
-            avgSpeed = ((avgSpeed*avgWeight)+mouseSpeed)/(avgWeight+1)
-            
-            acceleration = sqrt(pow((mouse.x - prevMouse.x),2)+pow((mouse.y - prevMouse.y),2))
-            avgAcceleration = ((avgAcceleration*avgWeight)+acceleration)/(avgWeight+1)
+            let sampleTime = ProcessInfo.processInfo.systemUptime
+            let nominalDuration = 1 / Static.MouseHertz
+            let frameDuration = lastMotionSampleTime > 0 ? sampleTime - lastMotionSampleTime : nominalDuration
+            frameScale = effectiveFrameScale(elapsed: frameDuration, referenceFPS: Static.MouseHertz)
+            let previousMouse = prevMouse == .zero ? mouse : prevMouse
+            mouseDelta = CGPoint(x: mouse.x - previousMouse.x, y: mouse.y - previousMouse.y)
+
+            mouseSpeed = hypot(mouseDelta.x, mouseDelta.y) / frameScale
+            mouseSpeed_10s = timeAdjustedAverage(current: mouseSpeed_10s,
+                                                 sample: mouseSpeed,
+                                                 referenceWeight: CGFloat(Static.MouseHertz * 10),
+                                                 frameScale: frameScale)
+            avgSpeed = timeAdjustedAverage(current: avgSpeed,
+                                           sample: Double(mouseSpeed),
+                                           referenceWeight: Double(avgWeight),
+                                           frameScale: frameScale)
+
+            acceleration = Double(abs(mouseSpeed - previousMotionSpeed) / frameScale)
+            avgAcceleration = timeAdjustedAverage(current: avgAcceleration,
+                                                  sample: acceleration,
+                                                  referenceWeight: Double(avgWeight),
+                                                  frameScale: frameScale)
+            previousMotionSpeed = mouseSpeed
+            lastMotionSampleTime = sampleTime
         }
         
         let s = abs((mouseDelta.x+mouseDelta.y)/2)
@@ -3302,6 +3691,7 @@ public class Display : Equatable {
         //
         
         var accMouse = mouse.clone
+        var mousePositionForNextSample = mouse.clone
         /*accMouse.x += accMouseMove.x
         accMouse.y += accMouseMove.y*/
         accMouseMove = CGPoint.zero
@@ -3340,6 +3730,18 @@ public class Display : Equatable {
         
         var curSide = checkSide(point: relMouse)
         prewarmRecorderIfNeeded(side: curSide, mouseDelta: mouseDelta)
+
+        if let resistedMouse = applySubtleEdgeResistance(side: curSide,
+                                                         mouse: accMouse,
+                                                         relativeMouse: &relMouse,
+                                                         mouseDelta: mouseDelta,
+                                                         acceleration: acceleration,
+                                                         frameScale: frameScale) {
+            accMouse = resistedMouse
+            mousePositionForNextSample = resistedMouse
+            manager.synchronizeStrictMotionOrigin(to: resistedMouse)
+            moveMouse(to: cursorEventPoint(fromAppKitPoint: resistedMouse))
+        }
         
         if recordingPaused && curSide == -1 {
             return
@@ -3376,14 +3778,20 @@ public class Display : Equatable {
         ///
 
         if(maxSpeed < avgSpeed){
-            maxSpeed = (maxSpeed + avgSpeed) / 2
+            maxSpeed = timeAdjustedAverage(current: maxSpeed,
+                                           sample: CGFloat(avgSpeed),
+                                           referenceWeight: 1,
+                                           frameScale: frameScale)
             
             weight *= 0.5 * (curSide == 3 ? 0.5 : 1.0)
         }
         else {
             if avgSpeed > 1 {
                 let scarfMaxSpeed = scarfWeight * 0.01
-                maxSpeed = (maxSpeed + (avgSpeed*scarfMaxSpeed))/(1+scarfMaxSpeed)
+                maxSpeed = timeAdjustedAverage(current: maxSpeed,
+                                               sample: CGFloat(avgSpeed),
+                                               referenceWeight: 1 / max(0.0001, scarfMaxSpeed),
+                                               frameScale: frameScale)
             }
         }
         
@@ -3391,8 +3799,14 @@ public class Display : Equatable {
         accDelta = mouseDelta.clone
         
         let scarfWeight = curSide == 3 ? scarfWeight * 0.25 : scarfWeight
-        mouseScarf.x = ((mouseScarf.x*scarfWeight)+relMouse.x)/(scarfWeight+1);
-        mouseScarf.y = ((mouseScarf.y*scarfWeight)+relMouse.y)/(scarfWeight+1);
+        mouseScarf.x = timeAdjustedAverage(current: mouseScarf.x,
+                                           sample: relMouse.x,
+                                           referenceWeight: scarfWeight,
+                                           frameScale: frameScale)
+        mouseScarf.y = timeAdjustedAverage(current: mouseScarf.y,
+                                           sample: relMouse.y,
+                                           referenceWeight: scarfWeight,
+                                           frameScale: frameScale)
         
         let mouseForecast = self.pointForecast(from: mouseScarf, to: relMouse, weight: weight)
         let absForecastMouse = NSPoint(x: mouseForecast.x + frame.origin.x, y: mouseForecast.y + frame.origin.y)
@@ -3608,6 +4022,12 @@ public class Display : Equatable {
             //let compMouse = self.getPointAccumulated(point: accMouse)
             var mouseAboveLimitBy = self.calcAboveBy(side: self.side, point: relMouse)
             var forecastAboveLimitBy = self.calcAboveBy(side: self.side, point: mouseForecast)
+            if self.side < 3 && aboveByPixels == 0 {
+                // Motion removed by the subtle resistance is still evidence of
+                // an outward push. Feeding it back into the forecast preserves
+                // acceleration intent after the cursor reaches a hard edge.
+                forecastAboveLimitBy -= edgeActivationPressure[self.side]
+            }
             
             if(aboveBy > 0.8){
                 forecastAboveLimitBy = mouseAboveLimitBy
@@ -3650,7 +4070,9 @@ public class Display : Equatable {
             var aboveAvgSpeed = mouseSpeed > (maxSpeed / Static.DivideMaxSpeedBy)
             
             if(Static.EnableRequiredAcceleration){
-                aboveAvgSpeed = aboveAvgSpeed && acceleration > avgAcceleration
+                let inferredEdgeAcceleration = self.side < 3
+                    && edgeActivationPressure[self.side] > Static.OverscreenAboveLimit * 0.3
+                aboveAvgSpeed = aboveAvgSpeed && (acceleration > avgAcceleration || inferredEdgeAcceleration)
             }
             
             let recordingAvailable = true
@@ -3847,7 +4269,7 @@ public class Display : Equatable {
             
             if(sideToClose != -1){
                 let s = sideToClose
-                aboveBy *= decelerateAboveBy
+                aboveBy *= CGFloat(pow(Double(decelerateAboveBy), Double(max(0.001, frameScale))))
             }
             else {
                 aboveBy = 0
@@ -3860,17 +4282,23 @@ public class Display : Equatable {
         
         if(forceAboveBy > 0 && aboveBy < 1 && sideToClose == -1){
             self.sideToClose = curSide
-            aboveBy = (prevAboveBy + forceAboveBy) / 2
+            aboveBy = timeAdjustedAverage(current: prevAboveBy,
+                                          sample: forceAboveBy,
+                                          referenceWeight: 1,
+                                          frameScale: frameScale)
             print("force aboveBy")
         }
         
-        prevMouse = mouse //move this on top(?)
+        prevMouse = mousePositionForNextSample //move this on top(?)
         
         //MARK: Update aboveByPixels
         prevAboveByPixels = aboveByPixels
         
         if ignoreMousePositionForAboveBy == 0 {
-            aboveByPixels = ((aboveBy * Static.OverscreenSize)+prevAboveByPixels)/2
+            aboveByPixels = timeAdjustedAverage(current: prevAboveByPixels,
+                                                sample: aboveBy * Static.OverscreenSize,
+                                                referenceWeight: 1,
+                                                frameScale: frameScale)
         }
         else {
             ignoreMousePositionForAboveBy -= 1
@@ -3892,7 +4320,7 @@ public class Display : Equatable {
         }
         
         if(prevAboveByPixels > aboveByPixels){ // why?
-            aboveByPixels -= 1 // force closing
+            aboveByPixels -= frameScale // force closing at the same pixels/second
         }
         
         if(prevAboveByPixels == 0 && aboveByPixels > 0){
@@ -3984,49 +4412,38 @@ public class Display : Equatable {
         }
 
         ///
-        /// Accelerate OverScreen axis pointer
+        /// Accelerate the pointer along the active previews strip.
+        /// The top side is the widgets zone, so it is deliberately excluded.
         ///
-        
-        //TODO: implement it effectively in future
-        let accelerateOverscreenEnabled = false // disabled because not working
-        if accelerateOverscreenEnabled && aboveBy == 1 && !onMoreAboveBy && curSide != 3 {
-            let axisCoord = curSide % 2 == 0 ? relMouse.y : relMouse.x
-            let counterAxisCoord = curSide % 2 == 0 ? relMouse.x : relMouse.y
-            
-            let prevAxisCoord = curSide % 2 == 0 ? prevRelMouse.y : prevRelMouse.x
-            let prevCounterAxisCoord = curSide % 2 == 1 ? prevRelMouse.y : prevRelMouse.x
-            
-            let diffAxis = axisCoord - prevAxisCoord
-            let diffCounterAxis = counterAxisCoord - prevCounterAxisCoord
-            
-            print("diffAxis > diffCounterAxis = ", diffAxis, " > ", diffCounterAxis)
-            if abs(diffAxis) > abs(diffCounterAxis) {
-                
-                let accelerateBy : Double = 1.5
-                let diff = diffAxis * accelerateBy
-                
-                var moveTo = relMouse
-                
-                if curSide % 2 == 1 {
-                    moveTo.y += diff
-                }
-                else {
-                    moveTo.x += diff
-                }
-                
-                let relativeSetCursor = true
-                if relativeSetCursor {
-                    CGDisplayMoveCursorToPoint(self.screen.displayID, moveTo)
-                }
-                else {
-                    moveTo.y = frame.height - moveTo.y
-                    moveTo.y += frame.minY
-                    
-                    moveMouse(to: moveTo)
-                }
-                
-                prevRelMouse = moveTo
+        let isInPreviewOverscreen = aboveBy >= 1 && (side == 0 || side == 1 || side == 2)
+        if isInPreviewOverscreen && alterMouse == 0 && compensateAboveByCursor == .zero && !justArrived {
+            let acceleration = max(1, Static.overScreenMouseAxisAcceleration)
+            let pointerDelta: CGPoint
+            if let baseline = lastAcceleratedPointerPosition {
+                pointerDelta = CGPoint(x: mouse.x - baseline.x, y: mouse.y - baseline.y)
             }
+            else {
+                pointerDelta = mouseDelta
+            }
+            var moveTo = mouse
+            
+            if side == 2 { // Bottom previews: accelerate horizontal movement.
+                moveTo.x += pointerDelta.x * (acceleration - 1)
+            }
+            else { // Left and right previews: accelerate vertical movement.
+                moveTo.y += pointerDelta.y * (acceleration - 1)
+            }
+
+            lastAcceleratedPointerPosition = moveTo
+            prevMouse = moveTo
+
+            if moveTo != mouse {
+                moveMouse(to: cursorEventPoint(fromAppKitPoint: moveTo))
+            }
+        }
+        else {
+            // Do not treat a cursor move made by another overscreen mechanic as input.
+            lastAcceleratedPointerPosition = nil
         }
         
         //MARK: alterMouse

@@ -37,24 +37,94 @@ public class Clipboard {
     }
     
     var ignoreThisPaste = false
+
+    // Bounds the re-copy retry loop so enforcement never fights the user's own
+    // clipboard activity for more than a fraction of a second.
+    private let clipboardWriteMaxAttempts = 3
+    private let clipboardWriteRetryDelay = 0.08
+    private var pendingClipboardEnforcement: DispatchWorkItem?
+
     func selectElement(id: Int){
-        for el in history{
-            if el.id == id {
-                
-                let pasteboard = NSPasteboard.general
-                pasteboard.clearContents()
+        guard let el = getElement(id: id) else { return }
+        writeElementToPasteboard(el, attempt: 0)
+    }
 
-                // Create a pasteboard item and set the image data
-                let item = el.getItem()
+    /// Writes the element to the OS pasteboard and then verifies the write
+    /// actually landed. WebKit sometimes drops the `selItem` bridge message on
+    /// rapid repeated clicks, and `writeObjects` can occasionally no-op, so we
+    /// confirm the pasteboard reflects the requested item and retry a small,
+    /// bounded number of times. The retry is abandoned the moment someone else
+    /// (typically the user copying directly) touches the pasteboard, so it never
+    /// clobbers an intentional copy.
+    private func writeElementToPasteboard(_ el: Element, attempt: Int){
+        // A fresh selection supersedes any retry still pending for a previous one.
+        pendingClipboardEnforcement?.cancel()
 
-                if item != nil{
-                    // Set the pasteboard item to the pasteboard
-                    pasteboard.writeObjects([item!])
-                    ignoreThisPaste = true
-                }
-            
-                return;
+        guard let item = el.getItem() else { return }
+
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        let written = pasteboard.writeObjects([item])
+        ignoreThisPaste = true
+
+        // Change count captured right after our write. If it still matches when we
+        // verify, nobody has copied over us; if it differs, the user won and we back off.
+        let expectedChangeCount = pasteboard.changeCount
+
+        let verify = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.pendingClipboardEnforcement = nil
+
+            let pasteboard = NSPasteboard.general
+
+            // The user (or another app) copied something after us: leave it alone.
+            if pasteboard.changeCount != expectedChangeCount {
+                return
             }
+
+            if self.pasteboardContains(el) {
+                return
+            }
+
+            if attempt + 1 < self.clipboardWriteMaxAttempts {
+                self.writeElementToPasteboard(el, attempt: attempt + 1)
+            }
+        }
+
+        // If the write itself reported failure there is no point waiting; retry now.
+        if !written && attempt + 1 < clipboardWriteMaxAttempts {
+            writeElementToPasteboard(el, attempt: attempt + 1)
+            return
+        }
+
+        pendingClipboardEnforcement = verify
+        DispatchQueue.main.asyncAfter(deadline: .now() + clipboardWriteRetryDelay, execute: verify)
+    }
+
+    /// Whether the general pasteboard currently holds the given element's content.
+    private func pasteboardContains(_ el: Element) -> Bool {
+        let pasteboard = NSPasteboard.general
+
+        switch el.type {
+        case "str":
+            if let rtf = el.rtf {
+                return pasteboard.string(forType: .rtf) == rtf
+            }
+            return pasteboard.string(forType: .string) == el.str
+        case "img":
+            // TIFF can be re-encoded by the pasteboard, so presence of image data
+            // (with the change count check already confirming it is our write) is
+            // a sufficient and stable signal.
+            return pasteboard.data(forType: .tiff) != nil
+        case "url":
+            let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL]
+            return urls?.first == el.url
+        default:
+            // Custom / raw-backed items: present if any captured flavor is on the
+            // pasteboard now.
+            guard let available = pasteboard.types else { return false }
+            let availableSet = Set(available.map { $0.rawValue })
+            return el.rawTypes.keys.contains { availableSet.contains($0) }
         }
     }
     
@@ -142,6 +212,10 @@ public class Clipboard {
     var prevRtf : String?
     var prevImage : Data?
     var prevFileUrl : URL?
+    // Tracks the pasteboard's change count so app-specific payloads that expose
+    // none of the standard flavors (e.g. a Blender object copy) can still be
+    // detected as "something new" and captured.
+    var prevChangeCount : Int = -1
 
     func setCaptureEnabled(_ enabled: Bool) {
         captureEnabled = enabled
@@ -162,6 +236,7 @@ public class Clipboard {
         prevString = pasteboard.string(forType: .string)
         prevRtf = pasteboard.string(forType: .rtf)
         prevImage = pasteboard.data(forType: .tiff)
+        prevChangeCount = pasteboard.changeCount
 
         if let fileURLs = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
            fileURLs.count == 1 {
@@ -222,6 +297,10 @@ public class Clipboard {
             }
         }
     
+        // Set when the copy is a set of files, which are recorded individually
+        // below and must not also be captured as a single custom payload.
+        var handledMultipleFiles = false
+
         if !jump, let fileURLs = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] {
            // Handle the copied file URLs
             if fileURLs.count == 1 {
@@ -237,24 +316,42 @@ public class Clipboard {
                 }
             }
             else {
-                if fileURLs.count < 10 { // limit to a maximum of 10 of files at the same time
+                if fileURLs.count > 1 && fileURLs.count < 10 { // limit to a maximum of 10 of files at the same time
+                    handledMultipleFiles = true
                     for fileURL in fileURLs {
                         let el = Element()
                         el.setUrl(url: fileURL)
                         checkElement(element: el)
-                        
+
                         something = false
                     }
                 }
             }
         }
-        
+
+        // None of the standard flavors changed, but the pasteboard did: this is an
+        // app-specific payload (e.g. a Blender object copy). Capture its raw
+        // representations so it appears in history and can be re-copied faithfully.
+        if !something && !jump && !handledMultipleFiles && pasteboard.changeCount != prevChangeCount {
+            el.captureRawTypes(from: pasteboard)
+            if !el.rawTypes.isEmpty {
+                el.setCustom()
+                something = true
+            }
+        }
+
         if something && !jump{
+            // Preserve every representation the OS pasteboard exposed so re-copy is
+            // byte-faithful for images and custom app types, not just the flavor we
+            // used for display.
+            if el.rawTypes.isEmpty {
+                el.captureRawTypes(from: pasteboard)
+            }
             el.sent = ignoreThisPaste
             ignoreThisPaste = false
             checkElement(element: el)
         }
-        
+
         if jump {
             if prevFileUrl != nil || prevImage != nil {
                 prevString = nil
@@ -262,7 +359,9 @@ public class Clipboard {
                 prevImage = nil
             }
         }
-        
+
+        prevChangeCount = pasteboard.changeCount
+
         checkElementsForSending()
     }
     
@@ -290,11 +389,62 @@ public class Clipboard {
         public var imgBase : String?
         public var imgData : Data?
         public var rtf : String?
-        
+
+        // Every representation the OS pasteboard exposed for this item, keyed by
+        // pasteboard type identifier. Replayed verbatim on re-copy so app-specific
+        // flavors (e.g. Blender) and all image encodings survive the round-trip.
+        public var rawTypes : [String: Data] = [:]
+
         public var wait = false
         public var sent = false
         public var alreadySent : Bool = false
-                 
+
+        /// Snapshots all raw representations of the pasteboard's first item.
+        public func captureRawTypes(from pasteboard: NSPasteboard){
+            guard let item = pasteboard.pasteboardItems?.first else { return }
+
+            var captured : [String: Data] = [:]
+            for type in item.types {
+                if let data = item.data(forType: type) {
+                    captured[type.rawValue] = data
+                }
+            }
+            rawTypes = captured
+        }
+
+        /// Marks this element as a generic app-specific payload (no standard
+        /// flavor). Requires `rawTypes` to already be populated.
+        public func setCustom(){
+            type = "custom"
+            str = friendlyCustomLabel()
+            hash = customHash()
+        }
+
+        private func friendlyCustomLabel() -> String {
+            // Name the source app from a reverse-DNS UTI (org.blender.* -> "Blender item").
+            for typeId in rawTypes.keys.sorted() {
+                let parts = typeId.split(separator: ".")
+                if parts.count >= 2,
+                   !typeId.hasPrefix("public."),
+                   !typeId.hasPrefix("com.apple.") {
+                    let name = String(parts[1])
+                    return name.prefix(1).uppercased() + name.dropFirst() + " item"
+                }
+            }
+            return "Clipboard item"
+        }
+
+        private func customHash() -> String {
+            // Content hash for de-duplication within the session (Hasher is seeded
+            // per run, which is all history de-dup needs).
+            var hasher = Hasher()
+            for (typeId, data) in rawTypes.sorted(by: { $0.key < $1.key }) {
+                hasher.combine(typeId)
+                hasher.combine(data)
+            }
+            return "custom:\(hasher.finalize())"
+        }
+
         public func setUrl(url: URL){
             self.url = url
             self.hash = url.absoluteString
@@ -322,30 +472,53 @@ public class Clipboard {
         }
         
         public func getItem() -> NSPasteboardItem? {
-            var item : NSPasteboardItem? = NSPasteboardItem()
-            
+            let item = NSPasteboardItem()
+
+            // Preferred path: replay the exact representations captured from the OS
+            // pasteboard. This preserves every flavor — app-specific/custom types
+            // (e.g. Blender) and all image encodings — so re-copy is faithful.
+            if !rawTypes.isEmpty {
+                var wroteSomething = false
+                for (typeId, data) in rawTypes {
+                    if item.setData(data, forType: NSPasteboard.PasteboardType(typeId)) {
+                        wroteSomething = true
+                    }
+                }
+                if wroteSomething {
+                    return item
+                }
+            }
+
+            // Fallback for synthetic elements without a raw capture (e.g. dropped files).
             switch(self.type){
                 case "img":
-                    item!.setData(self.imgData!, forType: NSPasteboard.PasteboardType.tiff)
-                    break;
-                
+                    guard let imgData = self.imgData else { return nil }
+                    item.setData(imgData, forType: NSPasteboard.PasteboardType.tiff)
+
                 case "str":
-                    if self.rtf != nil{
-                        item!.setString(self.rtf!, forType: NSPasteboard.PasteboardType.rtf)
+                    // Always provide a plain-text representation so the item can
+                    // be pasted into plain-text targets (terminals, search fields,
+                    // code editors). Rich-text items keep their .rtf flavor too, but
+                    // writing *only* rtf made those items paste as nothing in
+                    // plain-text contexts.
+                    if let plain = self.str {
+                        item.setString(plain, forType: NSPasteboard.PasteboardType.string)
                     }
-                    else {
-                        item!.setString(self.str!, forType: NSPasteboard.PasteboardType.string)
+                    if let rtf = self.rtf {
+                        item.setString(rtf, forType: NSPasteboard.PasteboardType.rtf)
                     }
-                    break;
-                
+                    if self.str == nil && self.rtf == nil {
+                        return nil
+                    }
+
                 case "url":
-                    item!.setData(self.url!.dataRepresentation, forType: NSPasteboard.PasteboardType.fileURL)
-                    break;
-                
+                    guard let url = self.url else { return nil }
+                    item.setData(url.dataRepresentation, forType: NSPasteboard.PasteboardType.fileURL)
+
             default:
                 return nil;
             }
-            
+
             return item
         }
     }

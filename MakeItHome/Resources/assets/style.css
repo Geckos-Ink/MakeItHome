@@ -493,18 +493,20 @@ input {
   opacity: 0;
 }
 
-#webSearchFrame {
+#webSearchWebView {
   width: 90vw;
   margin-left: auto;
   margin-right: auto;
 
   height: calc(100vh - var(--target-height));
 
-  border: 1px solid silver;
-  border-bottom-left-radius: 10px;
-  border-bottom-right-radius: 10px;
+  border: none;
 
-  background-color: white;
+  background-color: transparent;
+}
+
+.nativeWebViewPlaceholder {
+  box-sizing: border-box;
 }
 
 /*
@@ -775,7 +777,13 @@ ons-list-item label:nth-child(1) {
   display: none;
 }
 
-.myWidgetApp iframe {
+.myWidgetApp {
+  width: 84.5%;
+  padding: 4px;
+  overflow: hidden;
+}
+
+.myWidgetApp .myWidgetWebView {
   width: 100%;
   height: 100%;
 
@@ -785,22 +793,6 @@ ons-list-item label:nth-child(1) {
 
 .myWidgetsItem .img {
   text-shadow: rgb(255, 255, 255) 0px 0 5px !important;
-}
-
-.myWidgetApp .reload {
-  position: absolute;
-  right: 10px;
-  top: 10px;
-
-  padding: 10px;
-  border-radius: 100%;
-
-  background-color: orange;
-  border: 1px solid #ff6550;
-
-  cursor: pointer;
-
-  font-size: 20px;
 }
 
 #reloadWidgetsZone{
