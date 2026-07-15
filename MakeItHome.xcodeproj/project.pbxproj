@@ -365,17 +365,6 @@
 			path = MakeItHome;
 			sourceTree = "<group>";
 		};
-		C20000212F20000100ABCDEF /* StressTests */ = {
-			isa = PBXGroup;
-			children = (
-				C20000112F20000100ABCDEF /* StressTestSupport.swift */,
-				C20000122F20000100ABCDEF /* VirtualOverscreenStressTest.swift */,
-				C20000132F20000100ABCDEF /* AppExtensionStressTest.swift */,
-				C20000142F20000100ABCDEF /* README.md */,
-			);
-			path = StressTests;
-			sourceTree = "<group>";
-		};
 		8B74406528E6A89B00E7AD36 /* Preview Content */ = {
 			isa = PBXGroup;
 			children = (
@@ -531,6 +520,17 @@
 				C10001182F11A00100ABCDEF /* image-blob-reduce.js */,
 			);
 			path = ext_assets;
+			sourceTree = "<group>";
+		};
+		C20000212F20000100ABCDEF /* StressTests */ = {
+			isa = PBXGroup;
+			children = (
+				C20000112F20000100ABCDEF /* StressTestSupport.swift */,
+				C20000122F20000100ABCDEF /* VirtualOverscreenStressTest.swift */,
+				C20000132F20000100ABCDEF /* AppExtensionStressTest.swift */,
+				C20000142F20000100ABCDEF /* README.md */,
+			);
+			path = StressTests;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -899,7 +899,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.3;
-				MARKETING_VERSION = 2.0.9;
+				MARKETING_VERSION = 2.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ink.geckos.MakeItHome;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = NO;
@@ -936,7 +936,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.3;
-				MARKETING_VERSION = 2.0.9;
+				MARKETING_VERSION = 2.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = ink.geckos.MakeItHome;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = NO;
