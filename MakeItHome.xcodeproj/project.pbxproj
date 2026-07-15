@@ -92,6 +92,9 @@
 		C10000102F11A00100ABCDEF /* extension.chatgpt.v2.html in Resources */ = {isa = PBXBuildFile; fileRef = C10001162F11A00100ABCDEF /* extension.chatgpt.v2.html */; settings = {ASSET_TAGS = (Resources, ); }; };
 		C10000112F11A00100ABCDEF /* image-blob-reduce.js in Resources */ = {isa = PBXBuildFile; fileRef = C10001182F11A00100ABCDEF /* image-blob-reduce.js */; settings = {ASSET_TAGS = (Resources, ); }; };
 		C10000122F11A00100ABCDEF /* swiper.js in Resources */ = {isa = PBXBuildFile; fileRef = C10001122F11A00100ABCDEF /* swiper.js */; settings = {ASSET_TAGS = (Resources, ); }; };
+		C20000012F20000100ABCDEF /* StressTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000112F20000100ABCDEF /* StressTestSupport.swift */; };
+		C20000022F20000100ABCDEF /* VirtualOverscreenStressTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000122F20000100ABCDEF /* VirtualOverscreenStressTest.swift */; };
+		C20000032F20000100ABCDEF /* AppExtensionStressTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000132F20000100ABCDEF /* AppExtensionStressTest.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -212,6 +215,10 @@
 		C10001152F11A00100ABCDEF /* extension.chatgpt.v1.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = extension.chatgpt.v1.html; sourceTree = "<group>"; };
 		C10001162F11A00100ABCDEF /* extension.chatgpt.v2.html */ = {isa = PBXFileReference; lastKnownFileType = text.html; path = extension.chatgpt.v2.html; sourceTree = "<group>"; };
 		C10001182F11A00100ABCDEF /* image-blob-reduce.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = "image-blob-reduce.js"; sourceTree = "<group>"; };
+		C20000112F20000100ABCDEF /* StressTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StressTestSupport.swift; sourceTree = "<group>"; };
+		C20000122F20000100ABCDEF /* VirtualOverscreenStressTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VirtualOverscreenStressTest.swift; sourceTree = "<group>"; };
+		C20000132F20000100ABCDEF /* AppExtensionStressTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppExtensionStressTest.swift; sourceTree = "<group>"; };
+		C20000142F20000100ABCDEF /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfire.markdown; path = README.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -333,6 +340,7 @@
 		8B74405E28E6A89800E7AD36 /* MakeItHome */ = {
 			isa = PBXGroup;
 			children = (
+				C20000212F20000100ABCDEF /* StressTests */,
 				8B6B3A422F0F9B4D00D7D99C /* Helpers */,
 				8BF733042EC0D2CB003100D8 /* Extensions */,
 				8B6D5EBE2BF47DE0009012F8 /* Notes */,
@@ -355,6 +363,17 @@
 				8B557444292AA647009D645D /* Info.plist */,
 			);
 			path = MakeItHome;
+			sourceTree = "<group>";
+		};
+		C20000212F20000100ABCDEF /* StressTests */ = {
+			isa = PBXGroup;
+			children = (
+				C20000112F20000100ABCDEF /* StressTestSupport.swift */,
+				C20000122F20000100ABCDEF /* VirtualOverscreenStressTest.swift */,
+				C20000132F20000100ABCDEF /* AppExtensionStressTest.swift */,
+				C20000142F20000100ABCDEF /* README.md */,
+			);
+			path = StressTests;
 			sourceTree = "<group>";
 		};
 		8B74406528E6A89B00E7AD36 /* Preview Content */ = {
@@ -663,6 +682,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				C20000012F20000100ABCDEF /* StressTestSupport.swift in Sources */,
+				C20000022F20000100ABCDEF /* VirtualOverscreenStressTest.swift in Sources */,
+				C20000032F20000100ABCDEF /* AppExtensionStressTest.swift in Sources */,
 				8B11BBAC2C0900EC00E46355 /* AVScreenRecorder.swift in Sources */,
 				8BB0E387293DC881006DA326 /* TestView.swift in Sources */,
 				8BB0E388293DC881006DA326 /* Extensions.swift in Sources */,

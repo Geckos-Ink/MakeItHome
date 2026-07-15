@@ -14,10 +14,21 @@ struct MakeItHomeApp : App {
     
     var body: some Scene {
         WindowGroup {
+            #if DEBUG
+            if let stressConfiguration = StressLaunchConfiguration.current {
+                StressTestRootView(configuration: stressConfiguration)
+            } else {
+                ContentView()
+                    .onAppear(){
+                        Static.Init()
+                    }
+            }
+            #else
             ContentView()
                 .onAppear(){
                     Static.Init()
                 }
+            #endif
         }
     }
     
