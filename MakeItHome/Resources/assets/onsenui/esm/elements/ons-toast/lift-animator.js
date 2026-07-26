@@ -29,13 +29,8 @@ export default class LiftToastAnimator extends ToastAnimator {
   constructor({ timing = 'ease', delay = 0, duration = 0.35 } = {}) {
     super({ timing, delay, duration });
     this.bodyHeight = document.body.clientHeight; // avoid Forced Synchronous Layout
-    if (iPhoneXPatch.isIPhoneXPortraitPatchActive()) {
-      this.liftAmount = 'calc(100% + 34px)';
-    } else if (iPhoneXPatch.isIPhoneXLandscapePatchActive()) {
-      this.liftAmount = 'calc(100% + 21px)';
-    } else {
-      this.liftAmount = '100%';
-    }
+    const bottom = iPhoneXPatch.getSafeAreaLengths().bottom;
+    this.liftAmount = bottom > 0 ? `calc(100% + ${bottom}px)` : '100%';
   }
 
   /**

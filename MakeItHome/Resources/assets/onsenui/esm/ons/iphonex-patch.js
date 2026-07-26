@@ -15,6 +15,8 @@ limitations under the License.
 
 */
 
+import platform from './platform.js';
+
 // This object should not be exposed to users. Please keep this private.
 const iPhoneXPatch = {};
 
@@ -31,60 +33,29 @@ iPhoneXPatch.isIPhoneXLandscapePatchActive = () => {
  * Returns the safe area lengths based on the current state of the safe areas.
  */
 iPhoneXPatch.getSafeAreaLengths = () => {
-  let safeAreaLengths;
-  if (iPhoneXPatch.isIPhoneXPortraitPatchActive()) {
-    safeAreaLengths = {
-      top: 44,
-      right: 0,
-      bottom: 34,
-      left: 0
-    };
-  } else if (iPhoneXPatch.isIPhoneXLandscapePatchActive()) {
-    safeAreaLengths = {
-      top: 0,
-      right: 44,
-      bottom: 21,
-      left: 44
-    };
-  } else {
-    safeAreaLengths = {
-      top: 0,
-      right: 0,
-      bottom: 0,
-      left: 0
-    };
+  if (iPhoneXPatch.isIPhoneXPortraitPatchActive() || iPhoneXPatch.isIPhoneXLandscapePatchActive()) {
+    return platform.getSafeAreaInsets();
   }
 
-  return safeAreaLengths;
+  return {
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0
+  };
 };
 
 /**
  * Returns the safe area rect based on the current state of the safe areas.
  */
 iPhoneXPatch.getSafeAreaDOMRect = () => {
-  let safeAreaRect;
-  if (iPhoneXPatch.isIPhoneXPortraitPatchActive()) {
-    safeAreaRect = {
-      x: 0,
-      y: 44, /* 0 + 44 (top safe area) */
-      width: window.innerWidth,
-      height: window.innerHeight - 78 /* height - 44 (top safe area) - 34 (bottom safe area) */
-    };
-  } else if (iPhoneXPatch.isIPhoneXLandscapePatchActive()) {
-    safeAreaRect = {
-      x: 44, /* 0 + 44 (left safe area) */
-      y: 0,
-      width: window.innerWidth - 88, /* width - 44 (left safe area) - 34 (right safe area) */
-      height: window.innerHeight - 21 /* height - 21 (bottom safe area) */
-    };
-  } else {
-    safeAreaRect = {
-      x: 0,
-      y: 0,
-      width: window.innerWidth,
-      height: window.innerHeight
-    };
-  }
+  const insets = iPhoneXPatch.getSafeAreaLengths();
+  const safeAreaRect = {
+    x: insets.left,
+    y: insets.top,
+    width: window.innerWidth - insets.left - insets.right,
+    height: window.innerHeight - insets.top - insets.bottom
+  };
 
   return {
     ...safeAreaRect,

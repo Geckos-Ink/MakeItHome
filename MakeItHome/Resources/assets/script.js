@@ -349,6 +349,10 @@ let latestExtensionPermissions = null
 let toDoAtOpening = [] // events array
 let settingsState = {
     enableClipboardCapture: true,
+    widgetClipboardEnabled: true,
+    widgetNotesEnabled: false,
+    widgetTasksEnabled: false,
+    widgetCalendarEnabled: true,
 }
 
 ///
@@ -463,6 +467,12 @@ function applySettingToControls(setting) {
         $checkDragAndDropDetect.prop('checked', settingsState.detectDragAndDrop);
     if(setting == "enableClipboardCapture" && $checkEnableClipboardCapture)
         $checkEnableClipboardCapture.prop('checked', settingsState.enableClipboardCapture);
+
+    const widget = defaultWidgetDefinitions.find((item) => item.setting === setting)
+    if(widget) {
+        $('[data-widget-setting="' + setting + '"]').prop('checked', settingsState[setting] === true)
+        applyDefaultWidgetVisibility()
+    }
 }
 
 function receiveMessage(message){
@@ -725,21 +735,52 @@ function drag(ev){
 ///
 /// Apps
 ///
-let apps = [
-    'settings',
-    'clipboard',
-    'board-notes',
-    'board-tasks',
-    'calendar',
-    //'board-scrumboard'
+const defaultWidgetDefinitions = [
+    { setting: 'widgetClipboardEnabled', app: 'clipboard', menu: '#appItem-clipboard' },
+    { setting: 'widgetNotesEnabled', app: 'board-notes', menu: '#appItem-board-notes' },
+    { setting: 'widgetTasksEnabled', app: 'board-tasks', menu: '#appItem-board-tasks' },
+    { setting: 'widgetCalendarEnabled', app: 'calendar', menu: '#appItem-calendar' },
 ]
 
+function enabledDefaultWidgetApps() {
+    return defaultWidgetDefinitions
+        .filter((widget) => settingsState[widget.setting] === true)
+        .map((widget) => widget.app)
+}
+
+let apps = ['settings', ...enabledDefaultWidgetApps()]
 let baseApps = [...apps]
 
 let selApp = 1
 
 const appSwitchSpeed = 250
 let curApp = "clipboard"
+let disabledWidgetFallbackTimeout = null
+
+function applyDefaultWidgetVisibility() {
+    for(const widget of defaultWidgetDefinitions) {
+        $(widget.menu).toggle(settingsState[widget.setting] === true)
+    }
+
+    const customApps = apps.filter((app) => app.startsWith('myWidget'))
+    baseApps = ['settings', ...enabledDefaultWidgetApps()]
+    apps = [...baseApps, ...customApps]
+
+    const currentIndex = apps.indexOf(curApp)
+    if(currentIndex >= 0) {
+        selApp = currentIndex
+        return
+    }
+
+    clearTimeout(disabledWidgetFallbackTimeout)
+    disabledWidgetFallbackTimeout = setTimeout(() => {
+        if(apps.includes(curApp)) return
+        const fallback = apps.find((app) => app !== 'settings') || 'settings'
+        openApp(fallback, false)
+    }, appSwitchSpeed)
+}
+
+applyDefaultWidgetVisibility()
 
 let accumulateScrollCurAppBottom = null;
 function scrollCurAppBottom(){
@@ -1580,6 +1621,7 @@ let $sections = $("#sections")
 $sections.css("left", $setsList.width()+"px")
 
 renderParagraph(".section.general .paragraphs")
+renderParagraph(".section.widgets .paragraphs")
 renderParagraph(".section.guides .paragraphs")
 renderParagraph(".section.myWidgets .paragraphs")
 renderParagraph(".section.extensions .paragraphs")
@@ -1610,6 +1652,10 @@ $("ons-list-item.guides").on('click', ()=>{
     showSettingsSection("guides")
 })
 
+$("ons-list-item.widgets").on('click', () => {
+    showSettingsSection("widgets")
+})
+
 $("ons-list-item.myWidgets").on('click', () => {
     showSettingsSection("myWidgets")
 })
@@ -1636,6 +1682,7 @@ function clearClipboard(){
 
 let $checkDragAndDropDetect = null
 let $checkEnableClipboardCapture = null
+let $defaultWidgetToggles = null
 let $extensionPermissionsList = null
 
 function retrieveSetting(setting, val){
@@ -1655,6 +1702,14 @@ function setSettings_enableClipboardCapture(val){
     sendMessage({
         type: 'setSetting',
         setting: 'enableClipboardCapture',
+        valBool: val
+    })
+}
+
+function setDefaultWidgetSetting(setting, val){
+    sendMessage({
+        type: 'setSetting',
+        setting: setting,
         valBool: val
     })
 }
@@ -1791,6 +1846,20 @@ $(document).ready(function() {
         setSettings_enableClipboardCapture(checked)
     });
 
+    $defaultWidgetToggles = $('[data-widget-setting]')
+    $defaultWidgetToggles.each(function() {
+        applySettingToControls($(this).attr('data-widget-setting'))
+    })
+    $defaultWidgetToggles.on('change', function() {
+        const setting = $(this).attr('data-widget-setting')
+        const checked = typeof this.checked === 'boolean'
+            ? this.checked
+            : $(this).find('input[type="checkbox"]').prop('checked') === true
+        settingsState[setting] = checked
+        applyDefaultWidgetVisibility()
+        setDefaultWidgetSetting(setting, checked)
+    })
+
     $extensionPermissionsList = $('#extensionPermissionsList')
     $extensionPermissionsList.on('click', '.action.request', function() {
         let identity = $(this).data('identity')
@@ -1814,7 +1883,9 @@ function loadComponent(componentName, $targetElementSelector) {
     $.get("components/" + componentName + ".html", function(data) {
         $targetElementSelector.html(data);
 
-        if (apps.indexOf(componentName) == -1)
+        const defaultWidget = defaultWidgetDefinitions.find((widget) => widget.app === componentName)
+        const defaultWidgetIsEnabled = !defaultWidget || settingsState[defaultWidget.setting] === true
+        if (defaultWidgetIsEnabled && apps.indexOf(componentName) == -1)
             apps.push(componentName)
     }).fail(function() {
         console.error("Error loading component: " + componentName);

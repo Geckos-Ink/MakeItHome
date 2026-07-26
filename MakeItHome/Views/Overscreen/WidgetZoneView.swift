@@ -16,6 +16,68 @@ import SwiftUI
 import WebKit
 import Cocoa
 
+private enum WidgetZoneDefaultWidgetSettings {
+    private struct Definition {
+        let setting: String
+        let defaultsKey: String
+        let defaultValue: Bool
+    }
+
+    private static let definitions = [
+        Definition(
+            setting: "widgetClipboardEnabled",
+            defaultsKey: "WidgetZoneDefaultWidgetClipboardEnabled",
+            defaultValue: true
+        ),
+        Definition(
+            setting: "widgetNotesEnabled",
+            defaultsKey: "WidgetZoneDefaultWidgetNotesEnabled",
+            defaultValue: false
+        ),
+        Definition(
+            setting: "widgetTasksEnabled",
+            defaultsKey: "WidgetZoneDefaultWidgetTasksEnabled",
+            defaultValue: false
+        ),
+        Definition(
+            setting: "widgetCalendarEnabled",
+            defaultsKey: "WidgetZoneDefaultWidgetCalendarEnabled",
+            defaultValue: true
+        )
+    ]
+
+    static func value(for setting: String) -> Bool? {
+        guard let definition = definitions.first(where: { $0.setting == setting }) else {
+            return nil
+        }
+
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: definition.defaultsKey) != nil else {
+            return definition.defaultValue
+        }
+
+        return defaults.bool(forKey: definition.defaultsKey)
+    }
+
+    @discardableResult
+    static func set(_ value: Bool, for setting: String) -> Bool? {
+        guard let definition = definitions.first(where: { $0.setting == setting }) else {
+            return nil
+        }
+
+        UserDefaults.standard.set(value, forKey: definition.defaultsKey)
+        return value
+    }
+
+    static var persistedValues: [(setting: String, value: Bool)] {
+        definitions.compactMap { definition in
+            value(for: definition.setting).map {
+                (setting: definition.setting, value: $0)
+            }
+        }
+    }
+}
+
 struct WidgetZoneView: View {
     @State private var isDropTargeted = false
     
@@ -318,10 +380,10 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
             case "enableClipboardCapture":
                 Static.EnableClipboardCapture = json.valBool!
                 settingReply.valBool = Static.EnableClipboardCapture
-            case .none:
-                break
-            case .some(_):
-                break
+            default:
+                if let setting = json.setting, let value = json.valBool {
+                    settingReply.valBool = WidgetZoneDefaultWidgetSettings.set(value, for: setting)
+                }
             }
 
             if settingReply.valBool != nil {
@@ -408,7 +470,9 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
     }
 
     public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        (webView as? TopWKWV)?.detectPageMessageReceiver()
+        guard let topWebView = webView as? TopWKWV else { return }
+        topWebView.detectPageMessageReceiver()
+        topWebView.sendCurrentSettings()
     }
 
 
@@ -1005,6 +1069,22 @@ public class TopWKWV : WKWebView, NSDraggingSource{
         )
     }
 
+    func sendCurrentSettings() {
+        var settings = [
+            (setting: "detectDragAndDrop", value: Static.EnableDragDropDetection),
+            (setting: "enableClipboardCapture", value: Static.EnableClipboardCapture)
+        ]
+        settings.append(contentsOf: WidgetZoneDefaultWidgetSettings.persistedValues)
+
+        for setting in settings {
+            var jsMessage = JSMessage()
+            jsMessage.type = "setSetting"
+            jsMessage.setting = setting.setting
+            jsMessage.valBool = setting.value
+            sendMessage(obj: jsMessage)
+        }
+    }
+
     private func enqueuePageMessage(_ message: Any) {
         let enqueue = { [weak self] in
             guard let self else { return }
@@ -1327,18 +1407,7 @@ public class TopWKWV : WKWebView, NSDraggingSource{
                     Static.topBarWebViewRepresentable?.sendMessage(str: "opening")
                     
                     self.firstOpening = false
-                    
-                    var jsMessage = JSMessage()
-                    jsMessage.type = "setSetting"
-                    jsMessage.setting = "detectDragAndDrop"
-                    jsMessage.valBool = Static.EnableDragDropDetection
-                    self.sendMessage(obj: jsMessage)
-
-                    jsMessage = JSMessage()
-                    jsMessage.type = "setSetting"
-                    jsMessage.setting = "enableClipboardCapture"
-                    jsMessage.valBool = Static.EnableClipboardCapture
-                    self.sendMessage(obj: jsMessage)
+                    self.sendCurrentSettings()
                 }
                 
                 //NSRunningApplication.current.activate(options: .activateAllWindows)

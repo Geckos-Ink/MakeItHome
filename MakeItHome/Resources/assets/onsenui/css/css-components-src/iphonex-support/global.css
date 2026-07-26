@@ -9,3 +9,23 @@
   --iphonex-safe-area-inset-bottom-landscape: 21px;
   --iphonex-safe-area-inset-left-landscape: 44px;
 }
+
+@supports (padding: max(env(safe-area-inset-top, 0px), 0px)) {
+  @media (orientation: portrait) {
+    :root {
+      --iphonex-safe-area-inset-top-portrait: max(env(safe-area-inset-top, 0px), 44px);
+      --iphonex-safe-area-inset-right-portrait: env(safe-area-inset-right, 0px);
+      --iphonex-safe-area-inset-bottom-portrait: max(env(safe-area-inset-bottom, 0px), 34px);
+      --iphonex-safe-area-inset-left-portrait: env(safe-area-inset-left, 0px);
+    }
+  }
+
+  @media (orientation: landscape) {
+    :root {
+      --iphonex-safe-area-inset-top-landscape: env(safe-area-inset-top, 0px);
+      --iphonex-safe-area-inset-right-landscape: max(env(safe-area-inset-right, 0px), 44px);
+      --iphonex-safe-area-inset-bottom-landscape: max(env(safe-area-inset-bottom, 0px), 21px);
+      --iphonex-safe-area-inset-left-landscape: max(env(safe-area-inset-left, 0px), 44px);
+    }
+  }
+}

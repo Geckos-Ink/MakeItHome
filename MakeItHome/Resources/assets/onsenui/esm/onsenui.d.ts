@@ -260,6 +260,12 @@ declare namespace ons {
     function isIPhone(): boolean;
 
     /**
+     * @description Returns the safe area insets for the current device and orientation in pixels
+     * @return {{ top: number; right: number; bottom: number; left: number }}
+     */
+    function getSafeAreaInsets(): { top: number; right: number; bottom: number; left: number };
+
+    /**
      * @description Returns whether the device is iPhone X
      * @return {Boolean}
      */

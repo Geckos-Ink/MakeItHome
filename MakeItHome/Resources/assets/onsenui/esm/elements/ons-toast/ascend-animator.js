@@ -34,13 +34,7 @@ export default class AscendToastAnimator extends ToastAnimator {
     if (platform.isAndroid()) {
       this.ascension = 48; // Toasts are always 1 line
     } else {
-      if (iPhoneXPatch.isIPhoneXPortraitPatchActive()) {
-        this.ascension = 98; // 64 + 34
-      } else if (iPhoneXPatch.isIPhoneXLandscapePatchActive()) {
-        this.ascension = 85; // 64 + 21
-      } else {
-        this.ascension = 64;
-      }
+      this.ascension = 64 + iPhoneXPatch.getSafeAreaLengths().bottom;
     }
   }
 

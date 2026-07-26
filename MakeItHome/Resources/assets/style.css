@@ -564,7 +564,7 @@ input {
   overflow-y: scroll;
 }
 
-.paragraphs .left {
+.paragraphs > .left {
   position: absolute;
 
   /*padding-top: 25px;*/ /* Compensate the Mac webcam thing */
@@ -575,7 +575,7 @@ input {
   right: 25%;
 }
 
-.paragraphs .right {
+.paragraphs > .right {
   position: relative;
 
   top: 0;
@@ -698,6 +698,15 @@ ons-list-item label:nth-child(2) {
 
 ons-list-item label:nth-child(1) {
   padding-left: 20px !important;
+}
+
+#app-settings .defaultWidgetsSettingsList .list-item__left {
+  padding-left: 24px !important;
+  padding-right: 18px !important;
+}
+
+#app-settings .defaultWidgetsSettingsList .list-item__center {
+  padding-left: 10px !important;
 }
 
 /*

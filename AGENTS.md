@@ -215,10 +215,10 @@ Loopback HTTP server for packaged widget resources, board JSON APIs, and the App
 
 Native owner of the Widgets Zone. Hosts the shared parent `WKWebView`, translates bridge messages, manages reliable native-to-page delivery, creates persistent native child web views for My Widgets/search, and starts the local resource server.
 
-- **Key symbols:** `loadTopWKWB`, `TopWebView`, `TopWebViewCoordinator.handleJSMessage`, `PersistentNativeWebViewHost`, `NativeWebViewStateStore`, `TopWKWV.syncNativeWebViews`, and `JSMessage`.
+- **Key symbols:** `loadTopWKWB`, `WidgetZoneDefaultWidgetSettings`, `TopWebView`, `TopWebViewCoordinator.handleJSMessage`, `PersistentNativeWebViewHost`, `NativeWebViewStateStore`, `TopWKWV.sendCurrentSettings`, `TopWKWV.syncNativeWebViews`, and `JSMessage`.
 - **Depends on:** [`widgets.html`](MakeItHome/Resources/assets/widgets.html), [`script.js`](MakeItHome/Resources/assets/script.js), clipboard/calendar/extension managers, and [`SimpleHTTPServer`](MakeItHome/Managers/SimpleHttpServer.swift).
 - **Tests:** No automated WebKit bridge or persistence tests.
-- **Common mistakes:** Do not reload on ordinary SwiftUI updates. Keep child web views alive when only geometry/visibility changes, queue native-to-page messages across navigation, and use dedicated handlers for large localization/sync payloads.
+- **Common mistakes:** Do not reload on ordinary SwiftUI updates. Keep child web views alive when only geometry/visibility changes, queue native-to-page messages across navigation, use dedicated handlers for large localization/sync payloads, and persist built-in widget visibility through `WidgetZoneDefaultWidgetSettings` rather than page storage.
 
 ### [`MakeItHome/Resources/assets/widgets.html`](MakeItHome/Resources/assets/widgets.html)
 
@@ -227,16 +227,23 @@ Semantic DOM and English fallbacks for navigation, clipboard, notes/tasks, calen
 - **Key subparts:** `data-i18n*` collection/dispatch; native web-view placeholders; settings sections; `widgetLocalization` request.
 - **Called by:** `TopWKWV` through the local server; behavior comes from [`script.js`](MakeItHome/Resources/assets/script.js).
 - **Tests:** Build validates the string catalog; UI behavior is manual.
-- **Common mistakes:** Keep visible fallbacks in English and add every semantic key to `Localizable.xcstrings`.
+- **Common mistakes:** Keep visible fallbacks in English and add every semantic key to `Localizable.xcstrings`. Keep paragraph column CSS scoped to direct children so Onsen’s `.left`/`.right` form labels remain interactive.
 
 ### [`MakeItHome/Resources/assets/script.js`](MakeItHome/Resources/assets/script.js)
 
 Widgets Zone client controller: bridge messages, clipboard DOM, section switching, settings, localization registration, search state/gestures, native-web-view geometry sync, extension permission rendering, and custom-widget persistence.
 
-- **Key functions:** `sendMessage`, `receiveMessage`, `registerLocalizations`, `localizedString`, `syncNativeWebViews`, `openApp`, search handlers, extension permission handlers, and My Widgets creation/update.
+- **Key functions:** `sendMessage`, `receiveMessage`, `registerLocalizations`, `localizedString`, `syncNativeWebViews`, `applyDefaultWidgetVisibility`, `openApp`, search handlers, extension permission handlers, and My Widgets creation/update.
 - **Depends on:** DOM from [`widgets.html`](MakeItHome/Resources/assets/widgets.html) and `JSMessage` decoding in Swift.
 - **Tests:** No JavaScript test runner is configured.
 - **Common mistakes:** Escape untrusted strings before HTML insertion, keep bridge `type`/field names synchronized with `JSMessage`, and do not pre-arm search exit.
+
+### [`MakeItHome/Resources/assets/onsenui/`](MakeItHome/Resources/assets/onsenui/)
+
+Vendored Onsen UI 2.12.9 distribution from the official `onsenui` npm package. The Widgets Zone loads its packaged CSS and JavaScript directly, so it remains available without an external network dependency.
+
+- **Called by:** [`widgets.html`](MakeItHome/Resources/assets/widgets.html).
+- **Common mistakes:** Replace the distribution coherently from a verified official package rather than editing minified output independently. Preserve the package license and keep `package.json`, source modules, stylesheets, type declarations, and bundles on the same version.
 
 ### [`Localizable.xcstrings`](Localizable.xcstrings)
 
@@ -387,7 +394,7 @@ Angular/Fuse source templates and built distributions used for the Notes/Tasks e
 
 ### Widgets Zone, My Widgets, and search — Shipped
 
-- **Behavior:** The top edge exposes clipboard, notes/tasks, calendar, custom web widgets, settings, and full-screen web search. Native child web views persist sessions/navigation.
+- **Behavior:** The top edge exposes configurable built-in widgets (Clipboard and Calendar enabled by default; Notes and Tasks disabled by default), custom web widgets, settings, and full-screen web search. Native child web views persist sessions/navigation.
 - **Flow and owners:** `WidgetZoneView` → shared `TopWKWV` → local assets → three WebKit handlers → native managers/child web views.
 - **Constraints:** Do not reload the parent during normal transitions; preserve search geometry/pointer rules; custom URLs can load remote websites in default persistent WebKit stores.
 - **Tests and gaps:** No automated WebKit or JavaScript suite.
