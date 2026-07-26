@@ -2,105 +2,141 @@
 <link rel="stylesheet" href="jqueries/jquery.datetimepicker.min.css">
 
 <style>
-    .body {
-        font-family: 'Arial', sans-serif;
-        background-color: rgba(64,64,64, 0.4);
-        color: white;
+    #app-calendar .body {
+        box-sizing: border-box;
         display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100%;
+        height: 95%;
+        min-height: 0;
+        padding: 0;
         width: 100%;
-        margin: 0;
+        color: #f7f8fc;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
     }
 
-    .calendar {
-        /*width: 80%;
-        max-width: 600px;*/
-        border: 1px solid rgba(100,100,100, 0.4);
-
-        border-radius: 5px;
-    }
-
-    .month-header {
+    #app-calendar .calendar {
         display: flex;
-        justify-content: space-between;
+        flex: 1;
+        height: 100%;
+        min-width: 0;
+        flex-direction: column;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 16px;
+        background: rgba(24, 28, 38, 0.72);
+        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+        -webkit-backdrop-filter: blur(18px) saturate(1.15);
+        backdrop-filter: blur(18px) saturate(1.15);
+    }
+
+    #app-calendar .month-header {
+        display: flex;
         align-items: center;
-        padding: 5px;
-        background-color: rgba(80,80,80, 0.4);
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 14px;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04));
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
     }
 
-    .month-year {
-        font-size: 20px;
+    #app-calendar .month-year {
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
     }
 
-    .navigation .nav-button {
-        background-color: #555;
-        border: none;
-        color: white;
-        padding: 5px 10px;
+    #app-calendar .navigation {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    #app-calendar .navigation .nav-button {
+        min-height: 30px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.1);
+        color: inherit;
+        padding: 4px 9px;
         cursor: pointer;
-    }
-
-    .navigation .nav-button:focus {
-        outline: none;
-    }
-
-    :root {
-        --height-fraction: 0px; /* Set the height you want to match here */
-        --width-fraction: 0px
-    }
-
-    .weekdays {
-        display: grid;
-        grid-template-columns: repeat(7, var(--width-fraction));
-        background-color: #555;
-        padding: 5px 0;
-        text-align: center;
+        font: inherit;
         font-size: 12px;
+        font-weight: 600;
+        transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
     }
 
-    .days-grid {
+    #app-calendar .navigation .nav-button:hover {
+        border-color: rgba(255, 255, 255, 0.3);
+        background: rgba(255, 255, 255, 0.2);
+        transform: translateY(-1px);
+    }
+
+    #app-calendar .navigation .nav-button:focus-visible {
+        outline: 2px solid rgba(129, 182, 255, 0.95);
+        outline-offset: 2px;
+    }
+
+    #app-calendar .weekdays,
+    #app-calendar .days-grid {
         display: grid;
-        grid-template-columns: repeat(7, var(--width-fraction));
-        grid-template-rows: repeat(5, calc(var(--height-fraction) - 13px));
+        grid-template-columns: repeat(7, minmax(0, 1fr));
     }
 
-    .day {
-        padding: 5px;
-        border-bottom: 1px solid #555;
-        border-right: 1px solid #555;
-        text-align: right;
+    #app-calendar .weekdays {
+        padding: 9px 0 8px;
+        background: rgba(6, 9, 16, 0.18);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        color: rgba(247, 248, 252, 0.65);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.07em;
+        text-align: center;
+        text-transform: uppercase;
+    }
+
+    #app-calendar .weekdays div:nth-last-child(-n + 2) {
+        color: rgba(177, 207, 255, 0.9);
+    }
+
+    #app-calendar .days-grid {
+        flex: 1;
+        grid-template-rows: repeat(var(--calendar-weeks, 6), minmax(0, 1fr));
+        background: rgba(255, 255, 255, 0.04);
+    }
+
+    #app-calendar .day {
         position: relative;
+        min-width: 0;
+        min-height: 0;
+        border-right: 1px solid rgba(255, 255, 255, 0.08);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.025);
+        transition: background-color 150ms ease;
     }
 
-    .day:last-child {
+    #app-calendar .day:nth-child(7n) {
         border-right: none;
     }
 
-    .day.other-month {
-        background-color: rgba(29, 29, 29, 0.75);
+    #app-calendar .day.last-row {
+        border-bottom: none;
     }
 
-    .day:not(.other-month):hover {
-        background-color: rgba(72, 72, 72, 0.5);
+    #app-calendar .day.is-hidden {
+        display: none;
+    }
+
+    #app-calendar .day.other-month {
+        background: rgba(0, 0, 0, 0.12);
+        color: rgba(247, 248, 252, 0.38);
+    }
+
+    #app-calendar .day:not(.other-month):hover {
+        background: rgba(132, 179, 255, 0.14);
         cursor: pointer;
     }
 
-    /*.day::after {
-        content: '';
-        display: block;
-        margin-top: 100%;
-    }*/
-
-    .day.today {
-        background-color: red;
-        border-radius: 50%;
-        color: white;
-    }
-
     /* Special days with events */
-    .day.special-day::before {
+    #app-calendar .day.special-day::before {
         content: attr(data-event);
         display: block;
         position: absolute;
@@ -117,42 +153,56 @@
         max-width: calc(100% - 10px);
     }
 
-    .dayNumber {
+    #app-calendar .dayNumber {
         position: absolute;
-        top: 5px;
-        right: 5px;
+        z-index: 1;
+        top: 7px;
+        right: 7px;
+        min-width: 20px;
+        min-height: 20px;
+        box-sizing: border-box;
+        padding: 2px 5px;
+        border-radius: 999px;
+        color: inherit;
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+        font-weight: 600;
+        line-height: 16px;
+        text-align: center;
     }
 
-    .dayNumber.isToday {
-        background-color: rgba(255,0,0,1);
-        border-radius: 10px;
-
-        padding:5px;
+    #app-calendar .dayNumber.isToday {
+        background: linear-gradient(135deg, #ff6b73, #ed3e54);
+        box-shadow: 0 3px 10px rgba(237, 62, 84, 0.42);
         font-weight: bold;
     }
 
-    .dayContent {
+    #app-calendar .dayContent {
         position: absolute;
-        top: 0px;
-        left: 0px;
-        right: 0px;
-        bottom: 0px;
-
+        top: 31px;
+        right: 4px;
+        bottom: 4px;
+        left: 4px;
         text-align: left;
-
-        overflow-y:scroll;
+        overflow-y: auto;
+        scrollbar-width: thin;
     }
 
-    .event {
-        display:block;
-        width:fit-content;
-
-        background-color: rgba(64,64,64,0.6);
-        border-radius: 5px;
+    #app-calendar .event {
+        display: block;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 6px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.16);
+        color: rgba(8, 12, 20, 0.88);
         font-size: 12px;
-        padding: 3px;
-        margin: 2px;
+        font-weight: 600;
+        line-height: 1.25;
+        padding: 3px 5px;
+        margin: 0 0 3px;
         text-align: left;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     /*
@@ -414,6 +464,14 @@
             <div class="day"></div>
             <div class="day"></div>
             <div class="day"></div>
+
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
         </div>
     </div>
 
@@ -625,13 +683,16 @@
             return $(".calendar .days-grid .day:eq("+n+")")
         }
 
-        const gridDays = 7*5
+        const daysPerWeek = 7
+        const maximumWeeksInGrid = 6
+        const maximumGridDays = daysPerWeek * maximumWeeksInGrid
+        let gridDays = maximumGridDays
 
         function clearCalendar(){
             days = []
-            for(let i=0; i<gridDays; i++){
+            for(let i=0; i<maximumGridDays; i++){
                 let div = getDay(i);
-                div.removeClass("other-month")
+                div.removeClass("other-month is-hidden last-row")
             }
         }
 
@@ -651,7 +712,7 @@
 
         function generateDay(div, date){
             const now = new Date()
-            let isToday = (now.getDate()==date.getDate() && now.getMonth()==date.getMonth() && now.getFullYear() == now.getFullYear()) ? ' isToday' : ''
+            let isToday = (now.getDate() == date.getDate() && now.getMonth() == date.getMonth() && now.getFullYear() == date.getFullYear()) ? ' isToday' : ''
 
             let set = '<div class="dayNumber'+isToday+'">'+formatDateToCustomFormat(date, 'd')+'</div><div class="dayContent"></div>'
             div.html(set)            
@@ -670,69 +731,39 @@
         function generateMonth(year, month){
             clearCalendar()
 
-            let firstDay = new Date(year,month,1)
-            let iday = firstDay.getDay() - 1            
-
-            //let headerHeight = $(".month-header").height() + $(".weekdays").height()
+            const firstDay = new Date(year, month, 1)
+            // Date#getDay is Sunday-first. The UI is Monday-first, so move Sunday
+            // to the final column and shift every other weekday back one column.
+            const leadingDays = (firstDay.getDay() + daysPerWeek - 1) % daysPerWeek
+            const daysInMonth = new Date(year, month + 1, 0).getDate()
+            const weeksInGrid = Math.ceil((leadingDays + daysInMonth) / daysPerWeek)
+            gridDays = daysPerWeek * weeksInGrid
+            const gridStart = new Date(year, month, 1 - leadingDays)
 
             $(".calendar .month-year").html(monthsFull[firstDay.getMonth()] + " " + firstDay.getFullYear())
+            $(".calendar .days-grid").css("--calendar-weeks", weeksInGrid)
 
-            let lastDay = new Date(year, month+1, 0)
-            const totalDays = lastDay.getDate();         
+            for(let day = gridDays; day < maximumGridDays; day++)
+                getDay(day).addClass("is-hidden")
 
             firstDate = lastDate = null
 
-            let day = 0
+            for(let day = 0; day < gridDays; day++){
+                const div = getDay(day)
+                const date = new Date(gridStart)
+                date.setDate(gridStart.getDate() + day)
 
-            for(let i=0; i<=iday; i++){
-                let div = getDay(day)
-                div.addClass("other-month")
+                if(date.getMonth() != month)
+                    div.addClass("other-month")
+                if(day >= gridDays - daysPerWeek)
+                    div.addClass("last-row")
 
-                let date = new Date(firstDay);
-                days.push(date)
-                date.setDate(Math.abs(iday - day)*-1);
-
-                console.log("calendar other month", date, iday, day)
-
-                generateDay(div, date)
-
-                if(firstDate == null) firstDate = date                 
-
-                day++
-            }
-
-            //firstDateIndex = day == 0 ? 0 : (day * 2)-1
-
-            for(let d=0; d<totalDays; d++){
-                let div = getDay(day)
-
-                let date = new Date(firstDay);
-                date.setDate(firstDay.getDate()+d);
                 days.push(date)
                 generateDay(div, date)
 
-                if(firstDate == null) firstDate = date  
-                lastDate = date
-
-                day++
+                if(day == 0) firstDate = new Date(date)
+                if(day == gridDays - 1) lastDate = new Date(date)
             }
-
-            const nextMonth = new Date(year, month + 1, 1);
-            const curDay = day
-        
-            for(let i=day; day<gridDays; i++){
-                let div = getDay(day)
-                div.addClass("other-month")
-                
-                let date = new Date(nextMonth);
-                date.setDate(nextMonth.getDate()+(day-curDay));     
-                days.push(date)           
-                generateDay(div, date)
-
-                lastDate = date
-
-                day++
-            }            
         }
 
         let lastToday = null
@@ -779,17 +810,6 @@
             retrieveMonth()
         }
 
-        function updateTableSize(){
-            // Get the root element (usually <html>)
-            const root = document.documentElement;
-            
-            let widthFraction = $("#app-calendar").width()/7
-            let heightFraction = $("#app-calendar").height()/5
-
-            root.style.setProperty('--width-fraction', `${widthFraction}px`);
-            root.style.setProperty('--height-fraction', `${heightFraction}px`);
-        }
-
         let events = []
         function retrieveMonth(){
             $(".calendar .dayContent").each(function(){
@@ -812,7 +832,6 @@
 
         function openApp_calendar(){
             setTimeout(()=>{
-                updateTableSize()
                 retrieveMonth()
             },100)
         }
@@ -822,17 +841,11 @@
         }, 60*1000)
 
         function getDateIndex(date){
-            const currentDate = new Date(firstDate);
-
-            for(let d=0; d<gridDays; d++){
-                if(date.getFullYear() == currentDate.getFullYear() && date.getMonth() == currentDate.getMonth() && date.getDate() == currentDate.getDate())
-                    return d
-
-                // Add 24 hours to the current date
-                currentDate.setHours(currentDate.getHours() + 24);
-            }
-
-            return -1
+            return days.findIndex((currentDate) =>
+                date.getFullYear() == currentDate.getFullYear() &&
+                date.getMonth() == currentDate.getMonth() &&
+                date.getDate() == currentDate.getDate()
+            )
         }
              
         function appReceive_calendar(obj){

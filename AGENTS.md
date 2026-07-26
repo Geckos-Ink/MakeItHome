@@ -80,6 +80,7 @@ No nested `AGENTS.md` files exist at this revision. This root file applies to th
 - **HTTP isolation and bounds:** [`SimpleHTTPServer.start`](MakeItHome/Managers/SimpleHttpServer.swift) sets `acceptLocalOnly`; request bodies are capped at 15 MiB; App Extension handling is dispatched synchronously to main because it touches UI-owned state. Do not expose this server beyond loopback or remove body bounds.
 - **Widget bridge reliability:** Page-to-native operational messages use the `widgetMessage` WebKit handler. The legacy `myapp://` URL bridge remains compatibility-only because repeated identical navigations can coalesce. Localization and native child-web-view sync use their dedicated handlers.
 - **Widget localization:** Every user-facing fallback in [`widgets.html`](MakeItHome/Resources/assets/widgets.html) needs a semantic `widgets.…` key and an English value in [`Localizable.xcstrings`](Localizable.xcstrings). Dynamic strings in [`script.js`](MakeItHome/Resources/assets/script.js) must be registered through `registerLocalizations` and rendered through `localizedString`. Send the collected dictionary through `widgetLocalization`, never the custom URL bridge.
+- **Calendar grid:** [`calendar.html`](MakeItHome/Resources/assets/components/calendar.html) is Monday-first, so its `Date#getDay()` offset must map Sunday to the final column with `(getDay() + 6) % 7`. Render only the required five or six weeks; do not reserve a sixth row made entirely of next-month days. Keep the 42-cell maximum capacity, `days`, event lookup, and the visible grid derived from the same start date.
 - **Clipboard round-trip fidelity:** [`Clipboard.Element.rawTypes`](MakeItHome/Managers/New%20Group/Clipboard.swift) preserves every pasteboard representation. Re-copying must replay raw types before falling back to display-oriented string/image/file data.
 
 ## Architecture and Data/Control Flow
@@ -237,6 +238,15 @@ Widgets Zone client controller: bridge messages, clipboard DOM, section switchin
 - **Depends on:** DOM from [`widgets.html`](MakeItHome/Resources/assets/widgets.html) and `JSMessage` decoding in Swift.
 - **Tests:** No JavaScript test runner is configured.
 - **Common mistakes:** Escape untrusted strings before HTML insertion, keep bridge `type`/field names synchronized with `JSMessage`, and do not pre-arm search exit.
+
+### [`MakeItHome/Resources/assets/components/calendar.html`](MakeItHome/Resources/assets/components/calendar.html)
+
+The dynamically loaded Calendar widget's DOM, presentation, month grid, event placement, and event-editing form.
+
+- **Key functions:** `generateMonth`, `getDateIndex`, `retrieveMonth`, `prevMonth`, and `nextMonth`.
+- **Called by:** `loadComponent("calendar", $("#app-calendar"))` in [`widgets.html`](MakeItHome/Resources/assets/widgets.html); calendar bridge messages are handled in [`Calendar.swift`](MakeItHome/Managers/Widgets/Calendar.swift).
+- **Tests:** Manual WebKit verification; check Monday-, Sunday-, and Saturday-starting months plus February and six-week months.
+- **Common mistakes:** JavaScript weekdays are Sunday-first while the UI labels are Monday-first. Render only the five or six rows required by the selected month from the 42-cell maximum, retain the visible trailing dates for event-range and lookup consistency, and keep styles scoped to `#app-calendar`.
 
 ### [`MakeItHome/Resources/assets/onsenui/`](MakeItHome/Resources/assets/onsenui/)
 
