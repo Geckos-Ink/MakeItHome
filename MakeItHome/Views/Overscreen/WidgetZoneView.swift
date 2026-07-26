@@ -473,6 +473,7 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
         guard let topWebView = webView as? TopWKWV else { return }
         topWebView.detectPageMessageReceiver()
         topWebView.sendCurrentSettings()
+        Static.clipboard?.sendHistorySnapshot()
     }
 
 
@@ -1027,7 +1028,18 @@ public class TopWKWV : WKWebView, NSDraggingSource{
     private var pageCanReceiveMessages = false
     private var pageMessageDeliveryInFlight = false
     private var pageMessageGeneration = 0
-    private var pendingPageMessages: [Any] = []
+    private var pageMessageDeliveryToken: UInt64 = 0
+    private var pageMessageSequence: UInt64 = 0
+
+    private struct QueuedPageMessage {
+        let sequence: UInt64
+        let payload: Any
+    }
+
+    // Clipboard traffic is batched before it reaches this queue. The fixed
+    // capacity is a final safety net for a terminated or repeatedly navigating
+    // WebContent process so native memory cannot grow without bound.
+    private var pendingPageMessages = BoundedFIFOQueue<QueuedPageMessage>(capacity: 128)
 
     public override func layout() {
         super.layout()
@@ -1040,6 +1052,8 @@ public class TopWKWV : WKWebView, NSDraggingSource{
     func prepareForContentReload() {
         pageCanReceiveMessages = false
         pageMessageGeneration += 1
+        pageMessageDeliveryToken &+= 1
+        pageMessageDeliveryInFlight = false
 
         nativeWebViews.values.forEach {
             $0.isHidden = true
@@ -1088,7 +1102,10 @@ public class TopWKWV : WKWebView, NSDraggingSource{
     private func enqueuePageMessage(_ message: Any) {
         let enqueue = { [weak self] in
             guard let self else { return }
-            self.pendingPageMessages.append(message)
+            self.pageMessageSequence &+= 1
+            self.pendingPageMessages.append(
+                QueuedPageMessage(sequence: self.pageMessageSequence, payload: message)
+            )
             self.deliverNextPageMessage()
         }
 
@@ -1102,11 +1119,13 @@ public class TopWKWV : WKWebView, NSDraggingSource{
     private func deliverNextPageMessage() {
         guard pageCanReceiveMessages,
               !pageMessageDeliveryInFlight,
-              let message = pendingPageMessages.first else {
+              let queuedMessage = pendingPageMessages.first else {
             return
         }
 
         pageMessageDeliveryInFlight = true
+        pageMessageDeliveryToken &+= 1
+        let deliveryToken = pageMessageDeliveryToken
         let generation = pageMessageGeneration
         callAsyncJavaScript(
             """
@@ -1116,16 +1135,19 @@ public class TopWKWV : WKWebView, NSDraggingSource{
             }
             return false;
             """,
-            arguments: ["message": message],
+            arguments: ["message": queuedMessage.payload],
             in: nil,
             in: .page,
             completionHandler: { [weak self] result in
                 guard let self else { return }
+                guard deliveryToken == self.pageMessageDeliveryToken else {
+                    return
+                }
                 self.pageMessageDeliveryInFlight = false
 
                 if generation != self.pageMessageGeneration {
                     if case .success(let value) = result, value as? Bool == true {
-                        self.pendingPageMessages.removeFirst()
+                        self.removePendingPageMessage(ifSequenceMatches: queuedMessage.sequence)
                     }
                     self.deliverNextPageMessage()
                     return
@@ -1133,7 +1155,7 @@ public class TopWKWV : WKWebView, NSDraggingSource{
 
                 switch result {
                 case .success(let value) where value as? Bool == true:
-                    self.pendingPageMessages.removeFirst()
+                    self.removePendingPageMessage(ifSequenceMatches: queuedMessage.sequence)
                     self.deliverNextPageMessage()
                 case .success:
                     // Navigation may have replaced the page after readiness was
@@ -1141,12 +1163,22 @@ public class TopWKWV : WKWebView, NSDraggingSource{
                     self.pageCanReceiveMessages = false
                 case .failure(let error):
                     // A broken handler must not block unrelated messages behind it.
-                    self.pendingPageMessages.removeFirst()
+                    self.removePendingPageMessage(ifSequenceMatches: queuedMessage.sequence)
                     print("Unable to deliver widget page message: \(error.localizedDescription)")
                     self.deliverNextPageMessage()
                 }
             }
         )
+    }
+
+    private func removePendingPageMessage(ifSequenceMatches sequence: UInt64) {
+        guard pendingPageMessages.first?.sequence == sequence else {
+            // The fixed-capacity queue may have evicted an old in-flight value
+            // while WebKit was unavailable. Never pop a newer message for an
+            // older completion callback.
+            return
+        }
+        pendingPageMessages.popFirst()
     }
 
     func syncNativeWebViews(from messageBody: Any) {
@@ -1461,6 +1493,9 @@ public struct JSMessage: Codable {
     var url : URL?
     var str : String?
     var imgBase : String?
+    var html : String?
+    var ids : [Int]?
+    var clipboardItems : [ClipboardItemMessage]?
     
     var id : Int?
     var strId : String?
@@ -1500,6 +1535,16 @@ public struct JSMessage: Codable {
     // Calendars
     var calendarsTitles : [String]?
     var calendarsColors : [[CGFloat]]?
+}
+
+public struct ClipboardItemMessage: Codable {
+    var id: Int
+    var format: String
+    var url: URL?
+    var str: String?
+    var imgBase: String?
+    var html: String?
+    var replacesID: Int?
 }
 
 extension URL {

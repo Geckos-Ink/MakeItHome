@@ -1,11 +1,9 @@
 #!/bin/bash
 #
-# Fast unit tests for the preview/recording gate.
+# Fast dependency-free regression tests.
 #
-# Compiles the REAL MakeItHome/Helpers/PreviewFlowGate.swift together with the test file and
-# runs it — no Xcode, no simulator, no screen-recording permission. Finishes in well under a
-# second, so it is the quick way to check the fullscreen / idle / space-change recovery flow
-# without manually reproducing "leave the computer idle, open a fullscreen app, come back".
+# Compiles real production helpers together with their focused test files and
+# runs them — no Xcode, simulator, or privacy permissions required.
 #
 # Usage:  ./Tests/run.sh
 # Exit status is non-zero if any check fails.
@@ -14,10 +12,15 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 GATE="$ROOT/MakeItHome/Helpers/PreviewFlowGate.swift"
-TESTS="$ROOT/Tests/PreviewFlowGateTests.swift"
-BIN="$(mktemp -t previewflowgate-tests)"
+GATE_TESTS="$ROOT/Tests/PreviewFlowGateTests.swift"
+CLIPBOARD_BOUNDS="$ROOT/MakeItHome/Helpers/ClipboardResourceBounds.swift"
+CLIPBOARD_TESTS="$ROOT/Tests/ClipboardResourceStressTests.swift"
+TEST_DIR="$(mktemp -d -t makeithome-tests)"
 
-trap 'rm -f "$BIN"' EXIT
+trap 'rm -rf "$TEST_DIR"' EXIT
 
-swiftc -O -parse-as-library "$GATE" "$TESTS" -o "$BIN"
-"$BIN"
+swiftc -O -parse-as-library "$GATE" "$GATE_TESTS" -o "$TEST_DIR/preview-flow-gate-tests"
+"$TEST_DIR/preview-flow-gate-tests"
+
+swiftc -O -parse-as-library "$CLIPBOARD_BOUNDS" "$CLIPBOARD_TESTS" -o "$TEST_DIR/clipboard-resource-stress-tests"
+"$TEST_DIR/clipboard-resource-stress-tests"

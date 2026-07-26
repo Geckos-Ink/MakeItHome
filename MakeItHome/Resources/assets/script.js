@@ -37,14 +37,108 @@ setTargetHeight(overscreenSize)
 /// Main (clipboard)
 ///
 
-function convertToPlain(rtf) {
-    return rtf.replace(/\\[a-z]+[0-9]?|\\'[0-9a-f]{2}|\\[0-9]+/gi, '')
-            .replace(/\{\*?\\[^{}]+}|[{}]|\\\n?[A-Za-z]+\n?(?:-?\d+)?[ ]?/g, '')
-            .trim();
-}
-
 function antiHtmlInjection(html){
     return html.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+const clipboardRichTextTags = new Set([
+    'a', 'b', 'blockquote', 'br', 'code', 'div', 'em', 'h1', 'h2', 'h3',
+    'h4', 'h5', 'h6', 'i', 'li', 'ol', 'p', 'pre', 's', 'span', 'strike',
+    'strong', 'sub', 'sup', 'u', 'ul'
+]);
+const clipboardRichTextBlockedTags = new Set([
+    'audio', 'embed', 'form', 'iframe', 'img', 'input', 'link', 'meta',
+    'object', 'script', 'style', 'svg', 'video'
+]);
+const clipboardRichTextCSSProperties = new Set([
+    'background-color', 'color', 'font', 'font-family', 'font-size',
+    'font-style', 'font-weight', 'letter-spacing', 'line-height', 'margin',
+    'margin-bottom', 'margin-left', 'margin-right', 'margin-top',
+    'text-align', 'text-decoration', 'text-indent', 'word-spacing'
+]);
+
+function sanitizedClipboardRichTextCSS(documentNode) {
+    const rules = [];
+    documentNode.querySelectorAll('head style').forEach((styleElement) => {
+        styleElement.textContent.split('}').forEach((rawRule) => {
+            const ruleParts = rawRule.split('{');
+            if(ruleParts.length !== 2) return;
+
+            const selectors = ruleParts[0].trim().split(',').map((selector) => selector.trim());
+            if(selectors.length === 0 || selectors.some((selector) =>
+                !/^(p|span|div|blockquote|pre|code|h[1-6]|ul|ol|li)\.[A-Za-z0-9_-]+$/.test(selector)
+            )) return;
+
+            const declarations = [];
+            ruleParts[1].split(';').forEach((rawDeclaration) => {
+                const separator = rawDeclaration.indexOf(':');
+                if(separator <= 0) return;
+
+                const property = rawDeclaration.slice(0, separator).trim().toLowerCase();
+                const value = rawDeclaration.slice(separator + 1).trim();
+                if(!clipboardRichTextCSSProperties.has(property) ||
+                   value.length > 256 ||
+                   /url\s*\(|expression\s*\(|@import|javascript:/i.test(value)) return;
+                declarations.push(property + ': ' + value);
+            });
+
+            if(declarations.length > 0)
+                rules.push(selectors.join(', ') + ' {' + declarations.join('; ') + '}');
+        });
+    });
+    return rules.join('\n');
+}
+
+function appendSanitizedClipboardRichTextNode(sourceNode, destination) {
+    if(sourceNode.nodeType === Node.TEXT_NODE) {
+        destination.appendChild(document.createTextNode(sourceNode.textContent || ''));
+        return;
+    }
+    if(sourceNode.nodeType !== Node.ELEMENT_NODE) return;
+
+    const tagName = sourceNode.tagName.toLowerCase();
+    if(clipboardRichTextBlockedTags.has(tagName)) return;
+
+    let nextDestination = destination;
+    if(clipboardRichTextTags.has(tagName)) {
+        const cleanElement = document.createElement(tagName);
+        const classNames = Array.from(sourceNode.classList)
+            .filter((className) => /^[A-Za-z0-9_-]+$/.test(className));
+        if(classNames.length > 0)
+            cleanElement.className = classNames.join(' ');
+        destination.appendChild(cleanElement);
+        nextDestination = cleanElement;
+    }
+
+    Array.from(sourceNode.childNodes).forEach((child) => {
+        appendSanitizedClipboardRichTextNode(child, nextDestination);
+    });
+}
+
+function renderClipboardRichText(host, html, plainText) {
+    if(!html || typeof host.attachShadow !== 'function') {
+        host.textContent = plainText || '';
+        return;
+    }
+
+    const parsed = new DOMParser().parseFromString(html, 'text/html');
+    const shadow = host.attachShadow({mode: 'open'});
+    const style = document.createElement('style');
+    style.textContent = `
+        :host { display: block; color: #17202b; overflow-wrap: anywhere; }
+        p, div, blockquote, pre, h1, h2, h3, h4, h5, h6 { margin: 0 0 .45em; }
+        p:last-child, div:last-child, blockquote:last-child, pre:last-child { margin-bottom: 0; }
+        ul, ol { margin: .25em 0; padding-left: 1.4em; }
+        pre, code { white-space: pre-wrap; overflow-wrap: anywhere; }
+    ` + sanitizedClipboardRichTextCSS(parsed);
+    shadow.appendChild(style);
+
+    Array.from(parsed.body.childNodes).forEach((child) => {
+        appendSanitizedClipboardRichTextNode(child, shadow);
+    });
+
+    if(shadow.childNodes.length === 1)
+        shadow.appendChild(document.createTextNode(plainText || ''));
 }
 
 function convertRelativeUrlsToAbsolute(htmlString, baseUrl) {
@@ -106,28 +200,6 @@ function fromBinary(encoded) {
 function bridgeUrl(url){
     return "https://geckos.ink/api/makeithome-bridge.php?url=" + encodeURIComponent(url);
 }
-
-$("#clipboard").on('mousemove', function (e) {
-    console.log(e.clientX, e.clientY)
-    let width = $("#clipboard").width()
-    let height = $("#clipboard").height()
-
-    let ratioX = ((e.clientX - width / 2) / width)
-    let ratioY = ((e.clientY - height / 2) / height)
-
-    let translateX = ratioX * 10
-    let translateY = ratioY * 10
-
-    let parallaxY = ratioX * 10 * 1
-    let parallaxX = ratioY * 10 * -1
-
-    $("#clipboard .item").css("-webkit-transform", " rotateX(" + parallaxX +"deg) rotateY("+parallaxY+"deg) translateX(" + translateX + "px) translateY(" + translateY + "px)")
-})
-
-$("#clipboard").on('mouseexit', function (e) {
-    //$("#clipboard .item").css("-webkit-transform", "rotateX(0deg) rotateY(0deg)")
-    //$("#clipboard .item").animate({ "-webkit-transform": "rotateX(0deg) rotateY(0deg)" }, 100)
-})
 
 ///
 /// Board app
@@ -323,25 +395,103 @@ let $extension = $(".extension")
 let $gridDown = $('#clipboard .down')
 let $grid = $('#clipboard .grid')
 
-$grid.masonry({
-    // set itemSelector so .grid-sizer is not used in layout
-    itemSelector: '.item',
-    // use element for option
-    columnWidth: 80,
-    gutter: 10,
-    percentPosition: true,
-    initLayout: true
-})   
-
-let pageShown = false
-
-$(document).ready(function() {
-    pageShown = true
-})
-
 let selEl = null
 let canDragOut = false
 let dontDrop = false // useless stuff (for the moment)
+
+function clipboardItemID(element) {
+    const value = element.dataset.clipboardId;
+    return value === undefined ? NaN : parseInt(value, 10);
+}
+
+function createClipboardItemElement(item) {
+    const element = document.createElement('div');
+    const itemID = Number(item.id);
+    const hasImage = typeof item.imgBase === 'string' && item.imgBase.length > 0;
+    const hasText = typeof item.str === 'string' && item.str.length > 0;
+    const hasRichText = typeof item.html === 'string' && item.html.length > 0;
+
+    element.id = 'paste-' + itemID;
+    element.dataset.clipboardId = String(itemID);
+    element.className = 'item ' + (hasImage ? 'clipboard-item--media' : 'clipboard-item--text');
+    element.setAttribute('role', 'listitem');
+    element.tabIndex = 0;
+
+    if(hasImage) {
+        const image = document.createElement('img');
+        image.src = 'data:image/png;base64,' + item.imgBase;
+        image.alt = hasText ? item.str : '';
+        image.loading = 'lazy';
+        element.appendChild(image);
+
+        if(hasText) {
+            const name = document.createElement('div');
+            name.className = 'name';
+            const label = document.createElement('div');
+            label.className = 'str';
+            label.textContent = item.str;
+            name.appendChild(label);
+            element.appendChild(name);
+        }
+    } else {
+        const content = document.createElement('div');
+        content.className = hasRichText ? 'rich-text' : 'plain-text';
+        if(hasRichText)
+            renderClipboardRichText(content, item.html, item.str);
+        else
+            content.textContent = hasText ? item.str : (item.value || '');
+        element.appendChild(content);
+    }
+
+    return element;
+}
+
+function appendClipboardItems(items, replaceExisting) {
+    if(!Array.isArray(items)) return;
+    if(replaceExisting) $grid.empty();
+
+    const fragment = document.createDocumentFragment();
+    items.forEach((item) => {
+        if(!item || !Number.isFinite(Number(item.id))) return;
+
+        if(Number.isFinite(Number(item.replacesID)))
+            document.getElementById('paste-' + Number(item.replacesID))?.remove();
+
+        document.getElementById('paste-' + Number(item.id))?.remove();
+        fragment.appendChild(createClipboardItemElement(item));
+    });
+    $grid.get(0)?.appendChild(fragment);
+
+    unselectAll();
+    scrollGridBottom();
+}
+
+$grid.on('click keydown', '.item', function(event) {
+    if(event.type === 'keydown' && event.key !== 'Enter' && event.key !== ' ') return;
+    if(event.type === 'keydown') event.preventDefault();
+
+    const $element = $(this);
+    const itemID = clipboardItemID(this);
+    if(!Number.isFinite(itemID)) return;
+
+    dontDrop = true;
+    selEl = $element;
+    unselectAll();
+    $element.addClass('is-selected');
+    canDragOut = true;
+    sendMessage({type: 'selItem', id: itemID});
+});
+
+$grid.on('mouseup', '.item', function() {
+    setTimeout(() => {
+        dontDrop = false;
+    }, 100);
+});
+
+$grid.on('contextmenu', '.item', function(event) {
+    event.preventDefault();
+    $(this).remove();
+});
 
 let $webSearchWebView = $("#webSearchWebView")
 let latestExtensionPermissions = null
@@ -505,126 +655,29 @@ function receiveMessage(message){
         }
 
         if(obj.type == 'removeUpTo'){
-            let upTo = parseInt(obj.value)
-            $grid.find('.item').each(function(i, e){
-                let $e = $(e)
-                let id = $e.attr('id').split('-')[1]
-                if(parseInt(id) < upTo){
-                    $e.remove()
-                }
-            })
+            const upTo = parseInt(obj.value, 10);
+            $grid.find('.item').each(function() {
+                if(clipboardItemID(this) <= upTo) this.remove();
+            });
         }
 
         if (obj.type == 'removeClipboardItem') {
-            let itemId = parseInt(obj.value)
-
-            $grid.find('.item').each(function (i, e) {
-                let $e = $(e)
-                let id = $e.attr('id').split('-')[1]
-                if (parseInt(id) == itemId) {
-                    $e.remove()
-                }
-            })
+            document.getElementById('paste-' + parseInt(obj.value, 10))?.remove();
         }
 
-        if(obj.type == 'newClipboardItem'){
-            if(settingsState.enableClipboardCapture === false){
-                return
-            }
+        if(obj.type == 'removeClipboardItems' && Array.isArray(obj.ids)) {
+            obj.ids.forEach((itemID) => {
+                document.getElementById('paste-' + Number(itemID))?.remove();
+            });
+        }
 
-            let item = obj.value
-            let format = obj.format
-
-            let isStr = false
-            if(obj.str){                    
-                item = obj.str
-
-                if(format == 'rtf'){
-                    item = convertToPlain(item)                        
-                    isStr = true
-                }
-            }
-
-            if(obj.imgBase && !isStr){
-                item = '<img src="data:image/png;base64,'+obj.imgBase+'">'
-
-                if(obj.str){
-                    item += '<div class="name"><div class="str">'+obj.str+'</div></div>'
-                }
-            }
-            else if(obj.str){
-                item = antiHtmlInjection(item);
-                isStr = true
-            }
-
-            let classes = ''
-            if (isStr) classes += ' str grid-sizer--width2'
-            else classes += ' grid-sizer--width1'
-
-            let elIdNum = obj.id
-            let elId = 'paste-' + elIdNum
-
-            let $item = $('<div id="'+elId+'" class="item'+classes+'">'+item+'</div>')
-            $grid.append( $item )
-            
-            var scrollBottomTimeout = null
-
-            let tryToSet = setInterval(()=>{
-                let $el = $('#'+elId)
-
-                if(!pageShown){
-                    return
-                }
-                clearInterval(tryToSet)
-
-                $grid.masonry( 'appended', $item );
-
-                // Improve label
-                let $img = $el.find('img')
-                let $name = $el.find(".name .str")
-                if($name.length > 0 && $img.length > 0){
-                    $img.css('margin-bottom', ($name.height()+10)+'px')                
-                }
-
-                clearTimeout(scrollBottomTimeout)
-                    scrollBottomTimeout = setTimeout(()=>{
-                        scrollGridBottom()
-                },100)        
-
-                $el.click(()=>{  
-                    dontDrop = true                      
-                    selEl = $el
-
-                    unselectAll()
-                    $el.css('border', '1.5px solid red')    
-
-                    canDragOut = true
-
-                    sendMessage({
-                        type: 'selItem',
-                        id: elIdNum
-                    })                        
-                })
-
-                $el.on('mouseup', (ev)=>{
-                    setTimeout(()=>{
-                        dontDrop = false
-                    }, 100)                        
-                })
-
-                // Right-click: item delete
-                $el.on('contextmenu', function(ev) {
-                    console.log("item right click")
-                    $el.fadeOut(250, ()=>{
-                        $el.remove()
-                    })                    
-                });
-
-                //$grid.append("newIt")
-
-                unselectAll()
-                scrollGridBottom()
-            },50)                                
+        if(settingsState.enableClipboardCapture !== false) {
+            if(obj.type == 'clipboardItems')
+                appendClipboardItems(obj.clipboardItems, false);
+            if(obj.type == 'replaceClipboardItems')
+                appendClipboardItems(obj.clipboardItems, true);
+            if(obj.type == 'newClipboardItem')
+                appendClipboardItems([obj], false);
         }
 
         if(obj.type == 'clearClipboardItems'){
@@ -638,7 +691,6 @@ function receiveMessage(message){
         onApp = true; // confirm that received a message that send only the app
         flushPendingMessagesBeforeApp()
 
-        pageShown = true
         canDragOut = false                        
         scrollGridBottom()
 
@@ -667,7 +719,7 @@ function receiveMessage(message){
 }
 
 function unselectAll(){
-    $grid.find(".item").css('border', '1.5px solid rgba(0,0,0,0)')
+    $grid.find(".item").removeClass('is-selected').css('border-color', '')
 }
 
 
@@ -676,16 +728,8 @@ function scrollGridBottom(){
     clearTimeout(accumulateScrollGridBottom)
 
     accumulateScrollGridBottom = setTimeout(()=>{
-        let scroll = $gridDown.prop("scrollHeight")
-        let maxHeight = $("#clipboard").height()
-
-        if(scroll > maxHeight)
-            scroll = maxHeight
-
-        $gridDown.outerHeight(scroll)
-
-        $gridDown.animate({ scrollTop: $gridDown.prop("scrollHeight")}, 500);    
-    }, 100)           
+        $gridDown.stop(true).animate({scrollTop: $gridDown.prop("scrollHeight")}, 180);
+    }, 40)
 }
 
 function style_dragEnd(){
@@ -1670,10 +1714,11 @@ $("ons-list-item.extensions").on('click', () => {
 ///
 
 function clearClipboard(){
-    $grid.animate({opacity: 0}, 500, ()=>{
-        $grid.html('')
-        $grid.css('opacity', '1')
-    })
+    // Stop an older clear animation first; otherwise its delayed callback can
+    // erase clipboard items that arrived after the user pressed Clear.
+    $grid.stop(true, true).empty().css('opacity', '1')
+    selEl = null
+    canDragOut = false
 }
 
 ///

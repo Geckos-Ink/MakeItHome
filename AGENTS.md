@@ -82,6 +82,8 @@ No nested `AGENTS.md` files exist at this revision. This root file applies to th
 - **Widget localization:** Every user-facing fallback in [`widgets.html`](MakeItHome/Resources/assets/widgets.html) needs a semantic `widgets.…` key and an English value in [`Localizable.xcstrings`](Localizable.xcstrings). Dynamic strings in [`script.js`](MakeItHome/Resources/assets/script.js) must be registered through `registerLocalizations` and rendered through `localizedString`. Send the collected dictionary through `widgetLocalization`, never the custom URL bridge.
 - **Calendar grid:** [`calendar.html`](MakeItHome/Resources/assets/components/calendar.html) is Monday-first, so its `Date#getDay()` offset must map Sunday to the final column with `(getDay() + 6) % 7`. Render only the required five or six weeks; do not reserve a sixth row made entirely of next-month days. Keep the 42-cell maximum capacity, `days`, event lookup, and the visible grid derived from the same start date.
 - **Clipboard round-trip fidelity:** [`Clipboard.Element.rawTypes`](MakeItHome/Managers/New%20Group/Clipboard.swift) preserves every pasteboard representation. Re-copying must replay raw types before falling back to display-oriented string/image/file data.
+- **Clipboard resource bounds and ordering:** Native clipboard history is newest-first and capped by `Static.ClipboardForgetElementsOlderThan`; page updates are batched oldest-first so CSS Grid appends the newest item at the visual bottom. [`BoundedFIFOQueue`](MakeItHome/Helpers/ClipboardResourceBounds.swift) caps native-to-page messages while WebKit is unavailable. Do not reintroduce unbounded history/queues, one timer per item, Masonry transform ownership, or collection mutation during iteration.
+- **Clipboard rich text:** RTF is decoded and converted to Cocoa-generated HTML in [`Clipboard.Element.setRtf`](MakeItHome/Managers/New%20Group/Clipboard.swift). [`script.js`](MakeItHome/Resources/assets/script.js) renders only an allowlisted subset inside a Shadow DOM, with sanitized Cocoa CSS. Never inject raw clipboard strings or unscoped rich-text CSS into the Widgets Zone document.
 
 ## Architecture and Data/Control Flow
 
@@ -218,8 +220,8 @@ Native owner of the Widgets Zone. Hosts the shared parent `WKWebView`, translate
 
 - **Key symbols:** `loadTopWKWB`, `WidgetZoneDefaultWidgetSettings`, `TopWebView`, `TopWebViewCoordinator.handleJSMessage`, `PersistentNativeWebViewHost`, `NativeWebViewStateStore`, `TopWKWV.sendCurrentSettings`, `TopWKWV.syncNativeWebViews`, and `JSMessage`.
 - **Depends on:** [`widgets.html`](MakeItHome/Resources/assets/widgets.html), [`script.js`](MakeItHome/Resources/assets/script.js), clipboard/calendar/extension managers, and [`SimpleHTTPServer`](MakeItHome/Managers/SimpleHttpServer.swift).
-- **Tests:** No automated WebKit bridge or persistence tests.
-- **Common mistakes:** Do not reload on ordinary SwiftUI updates. Keep child web views alive when only geometry/visibility changes, queue native-to-page messages across navigation, use dedicated handlers for large localization/sync payloads, and persist built-in widget visibility through `WidgetZoneDefaultWidgetSettings` rather than page storage.
+- **Tests:** Native queue capacity/order is covered by [`Tests/ClipboardResourceStressTests.swift`](Tests/ClipboardResourceStressTests.swift); WebKit bridge rendering and persistence remain manual.
+- **Common mistakes:** Do not reload on ordinary SwiftUI updates. Keep child web views alive when only geometry/visibility changes, bound and queue native-to-page messages across navigation, invalidate stale in-flight delivery callbacks, use dedicated handlers for large localization/sync payloads, and persist built-in widget visibility through `WidgetZoneDefaultWidgetSettings` rather than page storage.
 
 ### [`MakeItHome/Resources/assets/widgets.html`](MakeItHome/Resources/assets/widgets.html)
 
@@ -234,10 +236,10 @@ Semantic DOM and English fallbacks for navigation, clipboard, notes/tasks, calen
 
 Widgets Zone client controller: bridge messages, clipboard DOM, section switching, settings, localization registration, search state/gestures, native-web-view geometry sync, extension permission rendering, and custom-widget persistence.
 
-- **Key functions:** `sendMessage`, `receiveMessage`, `registerLocalizations`, `localizedString`, `syncNativeWebViews`, `applyDefaultWidgetVisibility`, `openApp`, search handlers, extension permission handlers, and My Widgets creation/update.
+- **Key functions:** `sendMessage`, `receiveMessage`, `appendClipboardItems`, `renderClipboardRichText`, `registerLocalizations`, `localizedString`, `syncNativeWebViews`, `applyDefaultWidgetVisibility`, `openApp`, search handlers, extension permission handlers, and My Widgets creation/update.
 - **Depends on:** DOM from [`widgets.html`](MakeItHome/Resources/assets/widgets.html) and `JSMessage` decoding in Swift.
 - **Tests:** No JavaScript test runner is configured.
-- **Common mistakes:** Escape untrusted strings before HTML insertion, keep bridge `type`/field names synchronized with `JSMessage`, and do not pre-arm search exit.
+- **Common mistakes:** Build clipboard elements with DOM APIs, keep rich text inside its sanitized Shadow DOM, append batches oldest-first, keep bridge `type`/field names synchronized with `JSMessage`, and do not pre-arm search exit.
 
 ### [`MakeItHome/Resources/assets/components/calendar.html`](MakeItHome/Resources/assets/components/calendar.html)
 
@@ -267,10 +269,10 @@ Canonical native and Widgets Zone string catalog for all configured localization
 
 In-memory clipboard history, pasteboard polling, deduplication, multi-representation capture/replay, file previews, drag-in, and page message production.
 
-- **Key symbols:** `Clipboard.checkClipboard`, `setCaptureEnabled`, `selectElement`, `checkElementsForSending`, and `Element.rawTypes`/`getItem`.
+- **Key symbols:** `Clipboard.checkClipboard`, `setCaptureEnabled`, `selectElement`, `checkElementsForSending`, `sendHistorySnapshot`, and `Element.rawTypes`/`setRtf`/`getItem`.
 - **Called by:** `DisplaysManager`, `Static.EnableClipboardCapture`, and widget bridge messages.
-- **Tests:** No focused clipboard tests.
-- **Common mistakes:** Disabled capture must synchronize a baseline so re-enabling does not import stale content. Preserve raw pasteboard representations and the bounded item/file behavior.
+- **Tests:** Collection bounds and FIFO behavior are stress-tested by [`Tests/ClipboardResourceStressTests.swift`](Tests/ClipboardResourceStressTests.swift); real pasteboard/Quick Look/WebKit behavior remains manual.
+- **Common mistakes:** Disabled capture must synchronize a baseline so re-enabling does not import stale content. Preserve raw pasteboard representations, mutate thumbnail state on main, batch oldest-first page updates, and retain the 30-item bound.
 
 ### [`MakeItHome/Managers/Widgets/Calendar.swift`](MakeItHome/Managers/Widgets/Calendar.swift)
 
@@ -379,6 +381,14 @@ Dependency-free executable regression suite that compiles the production `Previe
 - **Runner:** [`Tests/run.sh`](Tests/run.sh).
 - **Common mistakes:** Test the real production file, not a copied model. Keep scenarios deterministic and free of AppKit permissions.
 
+### [`Tests/ClipboardResourceStressTests.swift`](Tests/ClipboardResourceStressTests.swift)
+
+Dependency-free stress regression that compiles the production [`ClipboardResourceBounds.swift`](MakeItHome/Helpers/ClipboardResourceBounds.swift) helper and pushes 100,000 history inserts plus 100,000 queued page messages.
+
+- **Coverage:** newest-first 30-item history eviction, fixed 128-message queue capacity, overflow behavior, and FIFO drain order.
+- **Runner:** [`Tests/run.sh`](Tests/run.sh).
+- **Common mistakes:** Keep the stress inputs large enough to expose unbounded growth while leaving the production collection helper as the implementation under test.
+
 ### [`Podfile`](Podfile)
 
 Empty CocoaPods target scaffolding; no pods are declared and no workspace/lockfile is tracked.
@@ -484,7 +494,7 @@ Build the app and embedded Safari extension without signing:
 xcodebuild -project MakeItHome.xcodeproj -scheme MakeItHome -configuration Debug -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
 ```
 
-Fast focused tests:
+Fast focused and resource-bound stress tests:
 
 ```sh
 ./Tests/run.sh
@@ -513,8 +523,9 @@ There is no root lint/format task, CI workflow, automated UI suite, checked-in a
 - Recorder eligibility state → [`PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift); real ScreenCaptureKit lifecycle is manual.
 - SceneKit churn, virtual app counts, and frame updates → [`VirtualOverscreenStressTest.swift`](MakeItHome/StressTests/VirtualOverscreenStressTest.swift).
 - Authenticated server concurrency, payload bounds, memory, and thread growth → [`AppExtensionStressTest.swift`](MakeItHome/StressTests/AppExtensionStressTest.swift).
+- Clipboard history and native-to-WebKit queue resource bounds/order → [`ClipboardResourceStressTests.swift`](Tests/ClipboardResourceStressTests.swift).
 - Build/resource/localization integration → the code-signing-disabled Xcode build.
-- Known test gaps: App Extension auth decisions, HTTP parsing/path safety, WebKit bridges/state retention, JavaScript DOM behavior, clipboard fidelity, EventKit behavior, accessibility hotkeys, UI permission flows, and end-to-end signed Safari installation.
+- Known test gaps: App Extension auth decisions, HTTP parsing/path safety, WebKit bridges/state retention, JavaScript DOM behavior, clipboard pasteboard/RTF fidelity, EventKit behavior, accessibility hotkeys, UI permission flows, and end-to-end signed Safari installation.
 
 ## Data, Security, Privacy, and Compatibility Boundaries
 
