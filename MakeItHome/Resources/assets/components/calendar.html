@@ -7,6 +7,7 @@
         display: flex;
         height: 95%;
         min-height: 0;
+        position: relative;
         padding: 0;
         width: 100%;
         color: #f7f8fc;
@@ -18,6 +19,7 @@
         flex: 1;
         height: 100%;
         min-width: 0;
+        position: relative;
         flex-direction: column;
         overflow: hidden;
         border: 1px solid rgba(255, 255, 255, 0.16);
@@ -181,13 +183,15 @@
     #app-calendar .dayContent {
         position: absolute;
         inset: 0;
+        box-sizing: border-box;
+        padding: 3px 0 0 3px;
         text-align: left;
         overflow: hidden;
     }
 
     #app-calendar .event {
         display: block;
-        width: 100%;
+        width: calc(100% - 3px);
         box-sizing: border-box;
         overflow: hidden;
         border: 1px solid rgba(255, 255, 255, 0.22);
@@ -263,6 +267,37 @@
         overflow-y: auto;
     }
 
+    #app-calendar .day-agenda-all-day {
+        display: none;
+        grid-template-columns: 58px minmax(0, 1fr);
+        gap: 6px;
+        padding: 8px 8px 6px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    #app-calendar .day-agenda-all-day.is-visible {
+        display: grid;
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: rgba(30, 35, 47, 0.98);
+    }
+
+    #app-calendar .day-agenda-all-day-label {
+        padding: 4px 8px 0 0;
+        color: rgba(247, 248, 252, 0.52);
+        font-size: 11px;
+        font-weight: 700;
+        text-align: right;
+        text-transform: uppercase;
+    }
+
+    #app-calendar .day-agenda-all-day-events {
+        display: grid;
+        gap: 4px;
+        min-width: 0;
+    }
+
     #app-calendar .day-agenda-timeline {
         display: grid;
         grid-template-columns: 58px minmax(0, 1fr);
@@ -305,6 +340,94 @@
         line-height: 1.25;
         padding: 5px 7px;
         text-align: left;
+    }
+
+    #app-calendar .day-agenda-all-day-event {
+        min-height: 28px;
+        justify-content: flex-start;
+    }
+
+    #app-calendar .event-popover {
+        position: absolute;
+        z-index: 40;
+        inset: 0;
+        display: none;
+        box-sizing: border-box;
+        pointer-events: none;
+    }
+
+    #app-calendar .event-popover.is-visible {
+        display: block;
+        pointer-events: auto;
+    }
+
+    #app-calendar .event-popover-card {
+        position: absolute;
+        display: flex;
+        width: min(400px, calc(100% - 24px));
+        max-height: calc(100% - 24px);
+        flex-direction: column;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 14px;
+        background: rgba(35, 40, 53, 0.98);
+        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.42);
+        color: #f7f8fc;
+    }
+
+    #app-calendar .event-popover-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        font-size: 13px;
+        font-weight: 700;
+    }
+
+    #app-calendar .event-popover-close {
+        width: 26px;
+        height: 26px;
+        flex: 0 0 auto;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.1);
+        color: inherit;
+        cursor: pointer;
+        font: inherit;
+        font-size: 18px;
+        line-height: 1;
+    }
+
+    #app-calendar .event-popover-content {
+        overflow: auto;
+        padding: 6px;
+    }
+
+    #app-calendar .event-popover-table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+        font-size: 12px;
+    }
+
+    #app-calendar .event-popover-table td {
+        overflow-wrap: anywhere;
+        padding: 4px;
+        vertical-align: top;
+    }
+
+    #app-calendar .event-popover-table td:first-child {
+        width: 76px;
+        color: rgba(247, 248, 252, 0.64);
+        font-weight: 700;
+        text-align: right;
+    }
+
+    #app-calendar .event-popover-table #popoverEventTitle {
+        font-size: 14px;
+        font-weight: 700;
     }
 
     /*
@@ -459,34 +582,6 @@
         padding-right: 10px;
     }
 
-    #calendarEventPopover .popover--bottom__content{
-        width: 400px;
-    }
-
-    #calendarEventPopover table {
-        color: white !important;
-        font-size: 12px;  
-        width: 400px;     
-        
-        margin: 5px;
-    }
-
-    #calendarEventPopover table td:nth-child(1){
-        width: 20%;
-        text-align: right;
-        font-weight: bold;
-        padding-right: 5px;
-    }
-
-    #calendarEventPopover table td:nth-child(2){
-        width: 80%;
-    }
-
-    #calendarEventPopover #popoverEventTitle {
-        font-size: 14px;
-        font-weight: bold;
-    }
-
     /*::-webkit-datetime-edit {
         border-radius: 5px;
         padding: 5px;
@@ -584,6 +679,10 @@
                 <button type="button" class="day-agenda-close" aria-label="Close" onclick="hideDayAgenda()">×</button>
             </div>
             <div class="day-agenda-scroller">
+                <div class="day-agenda-all-day" id="dayAgendaAllDay">
+                    <div class="day-agenda-all-day-label">All day</div>
+                    <div class="day-agenda-all-day-events" id="dayAgendaAllDayEvents"></div>
+                </div>
                 <div class="day-agenda-timeline" id="dayAgendaTimeline"></div>
             </div>
         </div>
@@ -647,9 +746,14 @@
         </ons-list>
     </ons-popover>
 
-    <ons-popover id="calendarEventPopover">        
-        <div style="padding: 5px; max-width: 400px; max-height: 200px; overflow-y: scroll;">
-            <table style="width: 100%; border-collapse: collapse;">
+    <div class="event-popover" id="calendarEventPopover" aria-hidden="true">
+        <section class="event-popover-card" role="dialog" aria-modal="true" aria-labelledby="calendarEventPopoverHeading" tabindex="-1">
+            <div class="event-popover-header">
+                <span id="calendarEventPopoverHeading">Appointment details</span>
+                <button type="button" class="event-popover-close" aria-label="Close" onclick="hideCalendarEventPopover()">×</button>
+            </div>
+            <div class="event-popover-content">
+            <table class="event-popover-table">
                 <tr>
                     <td>Title:</td>
                     <td id="popoverEventTitle">Event Title</td>
@@ -682,8 +786,9 @@
                     <td><a href="#" id="popoverURL">URL</a></td>
                 </tr>
             </table>
-        </div>
-    </ons-popover>
+            </div>
+        </section>
+    </div>
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 
@@ -982,11 +1087,34 @@
 
         const dayAgenda = document.getElementById("dayAgenda")
         const dayAgendaTimeline = document.getElementById("dayAgendaTimeline")
+        const dayAgendaAllDay = document.getElementById("dayAgendaAllDay")
+        const dayAgendaAllDayEvents = document.getElementById("dayAgendaAllDayEvents")
 
         function eventsForCalendarDay(date){
             return Object.values(events)
                 .filter((event)=> event?.day && sameCalendarDate(new Date(event.day), date))
                 .sort((first, second)=> calendarEventMinutes(first.startTime) - calendarEventMinutes(second.startTime))
+        }
+
+        function isAllDayCalendarEvent(event){
+            return event?.allDay === true
+        }
+
+        function createAgendaAppointment(event, className){
+            const appointment = document.createElement("button")
+
+            appointment.type = "button"
+            appointment.className = className
+            appointment.style.backgroundColor = `rgba(${calendarsList[event.calendar]?.rgbColor || "128, 158, 220"}, 1)`
+            appointment.textContent = isAllDayCalendarEvent(event)
+                ? (event.title || "")
+                : `${event.startTime || ""} ${event.title || ""}`.trim()
+            appointment.addEventListener("click", (clickEvent)=>{
+                clickEvent.stopPropagation()
+                showCalendarEventPopover(event.strId, clickEvent)
+            })
+
+            return appointment
         }
 
         function renderDayAgenda(date){
@@ -1006,24 +1134,25 @@
             }
 
             const dayEvents = eventsForCalendarDay(selectedDay)
-            for(const event of dayEvents){
+            const allDayEvents = dayEvents.filter(isAllDayCalendarEvent)
+            const timedEvents = dayEvents.filter((event)=> !isAllDayCalendarEvent(event))
+            const allDayAppointments = document.createDocumentFragment()
+
+            for(const event of allDayEvents)
+                allDayAppointments.append(createAgendaAppointment(event, "day-agenda-event day-agenda-all-day-event"))
+
+            dayAgendaAllDayEvents.replaceChildren(allDayAppointments)
+            $(dayAgendaAllDay).toggleClass("is-visible", allDayEvents.length > 0)
+
+            for(const event of timedEvents){
                 const startMinute = calendarEventMinutes(event.startTime)
                 const endMinute = calendarEventMinutes(event.endTime)
                 const duration = Math.max(30, endMinute - startMinute)
                 const startSlot = Math.min(47, Math.floor(startMinute / 30))
                 const durationSlots = Math.max(1, Math.ceil(Math.min(duration, 24 * 60 - startMinute) / 30))
-                const appointment = document.createElement("button")
-
-                appointment.type = "button"
-                appointment.className = "day-agenda-event"
-                appointment.style.backgroundColor = `rgba(${calendarsList[event.calendar]?.rgbColor || "128, 158, 220"}, 1)`
+                const appointment = createAgendaAppointment(event, "day-agenda-event")
                 appointment.style.gridColumn = "2"
                 appointment.style.gridRow = `${startSlot + 1} / span ${durationSlots}`
-                appointment.textContent = `${event.startTime || ""} ${event.title || ""}`.trim()
-                appointment.addEventListener("click", (clickEvent)=>{
-                    clickEvent.stopPropagation()
-                    showCalendarEventPopover(event.strId, clickEvent)
-                })
 
                 timeline.append(appointment)
             }
@@ -1036,7 +1165,7 @@
                 year: "numeric"
             }))
 
-            const firstEventSlot = dayEvents.length ? Math.floor(calendarEventMinutes(dayEvents[0].startTime) / 30) : 16
+            const firstEventSlot = timedEvents.length ? Math.floor(calendarEventMinutes(timedEvents[0].startTime) / 30) : 16
             $(dayAgenda).find(".day-agenda-scroller").scrollTop(Math.max(0, firstEventSlot * 36 - 36))
         }
 
@@ -1102,6 +1231,7 @@
                 const appointment = document.createElement("button")
                 appointment.type = "button"
                 appointment.className = "event"
+                appointment.classList.toggle("event-all-day", isAllDayCalendarEvent(obj))
                 appointment.style.backgroundColor = `rgba(${calendarColor}, 1)`
                 appointment.textContent = obj.title || ""
                 appointment.addEventListener("click", (clickEvent)=>{
@@ -1158,62 +1288,84 @@
         /// Show event
         ///
         const calendarEventPopover = document.getElementById('calendarEventPopover')
+        const calendarEventPopoverCard = calendarEventPopover.querySelector('.event-popover-card')
+
+        function positionCalendarEventPopover(target){
+            const overlayRect = calendarEventPopover.getBoundingClientRect()
+            const targetRect = target.getBoundingClientRect()
+            const popoverRect = calendarEventPopoverCard.getBoundingClientRect()
+            const margin = 12
+            const maxLeft = Math.max(margin, overlayRect.width - popoverRect.width - margin)
+            const maxTop = Math.max(margin, overlayRect.height - popoverRect.height - margin)
+            const targetCenterX = targetRect.left - overlayRect.left + targetRect.width / 2
+            const preferredLeft = targetCenterX - popoverRect.width / 2
+            const belowTop = targetRect.bottom - overlayRect.top + 8
+            const aboveTop = targetRect.top - overlayRect.top - popoverRect.height - 8
+            const spaceBelow = overlayRect.bottom - targetRect.bottom
+            const spaceAbove = targetRect.top - overlayRect.top
+
+            let top = belowTop
+            if(spaceBelow < popoverRect.height + 8 && spaceAbove >= popoverRect.height + 8)
+                top = aboveTop
+            else if(spaceBelow < popoverRect.height + 8)
+                top = targetRect.top - overlayRect.top + targetRect.height / 2 - popoverRect.height / 2
+
+            calendarEventPopoverCard.style.left = `${Math.max(margin, Math.min(maxLeft, preferredLeft))}px`
+            calendarEventPopoverCard.style.top = `${Math.max(margin, Math.min(maxTop, top))}px`
+        }
+
         var showCalendarEventPopover = function(event, e) {     
             if(e) e.stopPropagation()
             
             event = events[event]
+            const trigger = e?.currentTarget
+            if(!event || !trigger)
+                return
+
             console.log('showCalendarEventPopover', event)
 
-            $(calendarEventPopover).show()
             showingCalendarPopOver = true
+            $(calendarEventPopover).addClass('is-visible').attr('aria-hidden', 'false')
 
-            $("#popoverEventTitle").html(event.title)
+            $("#popoverEventTitle").text(event.title || '')
 
             let calendar = calendarsList[event.calendar]
-            $("#popoverCalendarName").html(event.calendar)
-            $("#popoverCalendarColor").css('background-color', 'rgb('+calendar.rgbColor+')')
+            $("#popoverCalendarName").text(event.calendar || '')
+            $("#popoverCalendarColor").css('background-color', 'rgb('+(calendar?.rgbColor || '128, 158, 220')+')')
 
-            $("#popoverNotes").html(event.notes)
-            $("#popoverLocation").html(event.location)
+            $("#popoverNotes").text(event.notes || '')
+            $("#popoverLocation").text(event.location || '')
             
-            event.url = event.url || ''
-            $("#popoverURL").html(event.url)
-            $("#popoverURL").attr('src', event.url)
+            const eventURL = event.url ? String(event.url) : ''
+            $("#popoverURL").text(eventURL || '—')
+            $("#popoverURL").attr('href', eventURL || '#')
 
             let date = new Date(event.day)
 
-            date.setHours(event.startTime.split(':')[0])
-            date.setMinutes(event.startTime.split(':')[1])
-            $("#popoverStartDate").html(setCurrentDateTimeFormat(date))
+            if(isAllDayCalendarEvent(event)){
+                const allDayDate = setCurrentDateTimeFormat(date)
+                $("#popoverStartDate").text(`All day — ${allDayDate}`)
+                $("#popoverEndDate").text('All day')
+            }
+            else {
+                date.setHours(event.startTime.split(':')[0])
+                date.setMinutes(event.startTime.split(':')[1])
+                $("#popoverStartDate").text(setCurrentDateTimeFormat(date))
 
-            date.setHours(event.endTime.split(':')[0])
-            date.setMinutes(event.endTime.split(':')[1])
-            $("#popoverEndDate").html(setCurrentDateTimeFormat(date))
+                date.setHours(event.endTime.split(':')[0])
+                date.setMinutes(event.endTime.split(':')[1])
+                $("#popoverEndDate").text(setCurrentDateTimeFormat(date))
+            }
 
-            calendarEventPopover.show(e.target);   
-            
-            let $target = $(e.target)
-            let $popover = $(calendarEventPopover).find('.popover')
-
-            setTimeout(()=>{
-                let goToLeft = $target.offset().left - $popover.width()/2 + $target.width()/2
-                goToLeft -= $(".left").width()
-                if(goToLeft < 0) goToLeft = 0
-
-                console.log("popover correction", $popover, goToLeft)
-
-                $popover.animate({'left': goToLeft}, 100)
-                //$popover.css('left', goToLeft+'px')
-            }, 300)            
+            requestAnimationFrame(()=>{
+                positionCalendarEventPopover(trigger)
+                calendarEventPopoverCard.focus()
+            })
         };
 
         var hideCalendarEventPopover = function() {            
-            calendarEventPopover.hide();
             showingCalendarPopOver = false
-
-            setTimeout(()=>{
-                $(calendarEventPopover).hide()
-            }, 500)
+            $(calendarEventPopover).removeClass('is-visible').attr('aria-hidden', 'true')
         };
 
         ///
@@ -1385,7 +1537,6 @@
         
         let $selectCalendarsPopover = $("#selectCalendarsPopover .popover")
         let $newEventForm = $("#newEvent form")
-        let $calendarEventPopover = $("#calendarEventPopover .popover")
 
         $('body').on('click', (e)=>{
             let $target = $(e.target)
@@ -1401,7 +1552,7 @@
                 hideCalendarsPopover()
             }
 
-            if(!$.contains($calendarEventPopover[0], $target[0]) && !$target.is($calendarEventPopover[0])){        
+            if(calendarEventPopover.classList.contains('is-visible') && !calendarEventPopoverCard.contains(e.target)){
                 hideCalendarEventPopover()
             }
         })
