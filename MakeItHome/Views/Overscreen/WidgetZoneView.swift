@@ -15,6 +15,66 @@
 import SwiftUI
 import WebKit
 import Cocoa
+import ImageIO
+
+/// Bounds the image data handed to the Widgets Zone without changing the image
+/// retained by `Clipboard.Element` for pasteboard round-trips. WebKit decodes
+/// every data URL in the Clipboard grid, so a large source image is needlessly
+/// expensive even though the preview is rendered at card size.
+private enum ClipboardPreviewImage {
+    private static let maximumSourceBase64Characters = 2_000_000
+    private static let maximumEncodedBytes = 128 * 1024
+    private static let maximumPixelDimension = 160
+
+    static func boundedBase64(_ encodedImage: String) -> String? {
+        let payload: Substring
+        if let separator = encodedImage.firstIndex(of: ",") {
+            payload = encodedImage[encodedImage.index(after: separator)...]
+        } else {
+            payload = encodedImage[...]
+        }
+
+        // Refuse an unexpectedly huge data URL before allocating its decoded
+        // representation. This is a preview-only path; the original pasteboard
+        // bytes remain available in the native clipboard history.
+        guard payload.utf8.count <= maximumSourceBase64Characters,
+              let sourceData = Data(base64Encoded: String(payload)),
+              let source = CGImageSourceCreateWithData(sourceData as CFData, nil) else {
+            return nil
+        }
+
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        let width = (properties?[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue ?? 0
+        let height = (properties?[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue ?? 0
+
+        // Avoid re-encoding the normal clipboard thumbnail path. It is already
+        // within the browser budget and is frequently re-sent after navigation.
+        if sourceData.count <= maximumEncodedBytes,
+           width <= maximumPixelDimension,
+           height <= maximumPixelDimension {
+            return String(payload)
+        }
+
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maximumPixelDimension
+        ]
+
+        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            return nil
+        }
+
+        let preview = NSBitmapImageRep(cgImage: thumbnail)
+        guard let data = preview.representation(using: .png, properties: [:]),
+              data.count <= maximumEncodedBytes else {
+            return nil
+        }
+
+        return data.base64EncodedString()
+    }
+}
 
 private enum WidgetZoneDefaultWidgetSettings {
     private struct Definition {
@@ -1473,7 +1533,10 @@ public class TopWKWV : WKWebView, NSDraggingSource{
     
     public func sendMessage(obj: JSMessage){
         do {
-            let jsonData = try JSONEncoder().encode(obj)
+            var previewMessage = obj
+            previewMessage.boundClipboardImagePreviews()
+
+            let jsonData = try JSONEncoder().encode(previewMessage)
             let message = try JSONSerialization.jsonObject(with: jsonData)
             enqueuePageMessage(message)
         }
@@ -1545,6 +1608,23 @@ public struct ClipboardItemMessage: Codable {
     var imgBase: String?
     var html: String?
     var replacesID: Int?
+}
+
+private extension JSMessage {
+    /// Limits only image data that is about to enter the Widgets Zone. The
+    /// corresponding `Clipboard.Element` keeps its full raw pasteboard payload.
+    mutating func boundClipboardImagePreviews() {
+        if let imgBase {
+            self.imgBase = ClipboardPreviewImage.boundedBase64(imgBase)
+        }
+
+        guard var clipboardItems else { return }
+        for index in clipboardItems.indices {
+            guard let imgBase = clipboardItems[index].imgBase else { continue }
+            clipboardItems[index].imgBase = ClipboardPreviewImage.boundedBase64(imgBase)
+        }
+        self.clipboardItems = clipboardItems
+    }
 }
 
 extension URL {
