@@ -111,6 +111,16 @@ input {
   padding-bottom: 4px;
 }
 
+#clipboard .clipboard-notch-spacer {
+  grid-column: 1 / -1;
+  justify-self: center;
+  width: min(210px, 40vw);
+  height: 32px;
+  visibility: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
 #clipboard .item {
   position: relative;
   box-sizing: border-box;

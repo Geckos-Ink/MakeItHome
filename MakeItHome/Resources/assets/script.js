@@ -448,7 +448,7 @@ function createClipboardItemElement(item) {
 
 function appendClipboardItems(items, replaceExisting) {
     if(!Array.isArray(items)) return;
-    if(replaceExisting) $grid.empty();
+    if(replaceExisting) $grid.find('.item').remove();
 
     const fragment = document.createDocumentFragment();
     items.forEach((item) => {
@@ -1716,7 +1716,8 @@ $("ons-list-item.extensions").on('click', () => {
 function clearClipboard(){
     // Stop an older clear animation first; otherwise its delayed callback can
     // erase clipboard items that arrived after the user pressed Clear.
-    $grid.stop(true, true).empty().css('opacity', '1')
+    $grid.stop(true, true).find('.item').remove()
+    $grid.css('opacity', '1')
     selEl = null
     canDragOut = false
 }
