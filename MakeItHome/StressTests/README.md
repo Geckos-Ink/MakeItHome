@@ -36,4 +36,16 @@ Useful overrides:
 
 Use a free port. Keep the worker count bounded: the goal is to reveal unintended thread growth in MakeItHome, not to manufacture an unbounded number of client tasks in the test itself.
 
-For both modes, attach Instruments Allocations and System Trace. A healthy bounded run completes without request errors, continuously changes focus, and stops growing its thread count. The console prints a one-line final summary suitable for saving alongside an Instruments trace.
+## Runtime lifecycle
+
+Run the Debug `MakeItHome Test.app` target. Its `ink.geckos.MakeItHome.Test` bundle identity is distinct from the normal app, so it receives a separate macOS privacy decision. On first launch, the harness opens the standard Screen Recording prompt and waits up to one minute for the user to allow it:
+
+```text
+--stress runtime-lifecycle --stress-duration 1200 --stress-interval 2 --stress-auto-exit
+```
+
+This single, bounded harness continuously cycles the real `ScreenRecorder` through low-priority, high-priority, and stopped states; alternates the live `CaptureView` between SceneKit sleep and active rendering; and writes synthetic text, image, and uniquely linked bundled-video items through the native clipboard into the live Widgets Zone. The run restores the pre-test system clipboard only if it remains untouched after the final synthetic write, and removes its temporary video links on exit.
+
+`--stress-interval` controls each recorder phase and each clipboard write. Keep it at one second or above for sustained runs so Quick Look video previews and WebKit delivery remain bounded.
+
+For all modes, attach Instruments Allocations and System Trace. A healthy bounded run completes without request errors, continuously changes focus or lifecycle state, and stops growing its thread count. The console prints a one-line final summary suitable for saving alongside an Instruments trace.

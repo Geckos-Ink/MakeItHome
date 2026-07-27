@@ -95,6 +95,7 @@
 		C20000012F20000100ABCDEF /* StressTestSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000112F20000100ABCDEF /* StressTestSupport.swift */; };
 		C20000022F20000100ABCDEF /* VirtualOverscreenStressTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000122F20000100ABCDEF /* VirtualOverscreenStressTest.swift */; };
 		C20000032F20000100ABCDEF /* AppExtensionStressTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000132F20000100ABCDEF /* AppExtensionStressTest.swift */; };
+		C20000042F20000100ABCDEF /* RuntimeLifecycleStressTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000152F20000100ABCDEF /* RuntimeLifecycleStressTest.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -218,6 +219,7 @@
 		C20000112F20000100ABCDEF /* StressTestSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StressTestSupport.swift; sourceTree = "<group>"; };
 		C20000122F20000100ABCDEF /* VirtualOverscreenStressTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VirtualOverscreenStressTest.swift; sourceTree = "<group>"; };
 		C20000132F20000100ABCDEF /* AppExtensionStressTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppExtensionStressTest.swift; sourceTree = "<group>"; };
+		C20000152F20000100ABCDEF /* RuntimeLifecycleStressTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeLifecycleStressTest.swift; sourceTree = "<group>"; };
 		C20000142F20000100ABCDEF /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfire.markdown; path = README.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -528,6 +530,7 @@
 				C20000112F20000100ABCDEF /* StressTestSupport.swift */,
 				C20000122F20000100ABCDEF /* VirtualOverscreenStressTest.swift */,
 				C20000132F20000100ABCDEF /* AppExtensionStressTest.swift */,
+				C20000152F20000100ABCDEF /* RuntimeLifecycleStressTest.swift */,
 				C20000142F20000100ABCDEF /* README.md */,
 			);
 			path = StressTests;
@@ -685,6 +688,7 @@
 				C20000012F20000100ABCDEF /* StressTestSupport.swift in Sources */,
 				C20000022F20000100ABCDEF /* VirtualOverscreenStressTest.swift in Sources */,
 				C20000032F20000100ABCDEF /* AppExtensionStressTest.swift in Sources */,
+				C20000042F20000100ABCDEF /* RuntimeLifecycleStressTest.swift in Sources */,
 				8B11BBAC2C0900EC00E46355 /* AVScreenRecorder.swift in Sources */,
 				8BB0E387293DC881006DA326 /* TestView.swift in Sources */,
 				8BB0E388293DC881006DA326 /* Extensions.swift in Sources */,
@@ -891,7 +895,7 @@
 				EXCLUDED_ARCHS = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = MakeItHome/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = MakeItHome;
+				INFOPLIST_KEY_CFBundleDisplayName = "MakeItHome Test";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -900,8 +904,8 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.3;
 				MARKETING_VERSION = 2.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = ink.geckos.MakeItHome;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = ink.geckos.MakeItHome.Test;
+				PRODUCT_NAME = "MakeItHome Test";
 				SKIP_INSTALL = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_OBJC_BRIDGING_HEADER = "MakeItHome/Bridge-Header.h";
@@ -956,7 +960,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "MakeItHome/MakeItHome Web Extension/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "MakeItHome Web Extension";
+				INFOPLIST_KEY_CFBundleDisplayName = "MakeItHome Test Web Extension";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -969,8 +973,8 @@
 					"-framework",
 					SafariServices,
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = ink.geckos.MakeItHome.WebExtension;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = ink.geckos.MakeItHome.Test.WebExtension;
+				PRODUCT_NAME = "MakeItHome Test Web Extension";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;

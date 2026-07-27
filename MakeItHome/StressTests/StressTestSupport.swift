@@ -7,6 +7,7 @@ import SwiftUI
 enum StressTestMode: String {
     case virtualApps = "virtual-apps"
     case appExtension = "app-extension"
+    case runtimeLifecycle = "runtime-lifecycle"
 }
 
 struct StressLaunchConfiguration {
@@ -18,6 +19,7 @@ struct StressLaunchConfiguration {
     let workers: Int
     let payloadBytes: Int
     let port: UInt16
+    let intervalSeconds: TimeInterval
 
     static var current: StressLaunchConfiguration? {
         let arguments = ProcessInfo.processInfo.arguments
@@ -34,7 +36,8 @@ struct StressLaunchConfiguration {
             framesPerSecond: positiveInt("--stress-fps", arguments: arguments) ?? Static.ScreenRecorderHighPriorityFPS,
             workers: positiveInt("--stress-workers", arguments: arguments) ?? 12,
             payloadBytes: (positiveInt("--stress-payload-kb", arguments: arguments) ?? 512) * 1_024,
-            port: UInt16(positiveInt("--stress-port", arguments: arguments) ?? 19_494)
+            port: UInt16(positiveInt("--stress-port", arguments: arguments) ?? 19_494),
+            intervalSeconds: positiveDouble("--stress-interval", arguments: arguments) ?? 2
         )
     }
 
@@ -140,6 +143,8 @@ struct StressTestRootView: View {
             VirtualOverscreenStressView(configuration: configuration)
         case .appExtension:
             AppExtensionStressView(configuration: configuration)
+        case .runtimeLifecycle:
+            RuntimeLifecycleStressView(configuration: configuration)
         }
     }
 }

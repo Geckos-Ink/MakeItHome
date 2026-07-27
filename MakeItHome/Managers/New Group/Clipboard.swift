@@ -13,17 +13,26 @@ import QuickLookThumbnailing
 public class Clipboard {
     var history: [Element] = []    
     private var captureEnabled = true
+    private var pollingTimer: Timer?
     
-    init(){
+    /// Debug harnesses can drive `checkClipboard()` explicitly so they can stop
+    /// without leaving a RunLoop timer monitoring the user's pasteboard.
+    init(automaticallyPolls: Bool = true){
         captureEnabled = Static.EnableClipboardCapture
 
-        if Static.TopBarIsPreview { // for last 1.4.x versions, for the moment
+        if !automaticallyPolls || Static.TopBarIsPreview { // for last 1.4.x versions, for the moment
             return
         }               
         
-        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { timer in
+        pollingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            guard let self else { return }
             self.checkClipboard()
         }
+    }
+
+    func stopPolling() {
+        pollingTimer?.invalidate()
+        pollingTimer = nil
     }
     
     func getElement(id: Int) -> Element?{

@@ -111,7 +111,7 @@ Canonical persisted state is split between native `UserDefaults` (settings, trus
 
 Authoritative target, source/resource membership, Swift package dependency, deployment target, bundle IDs, versions, schemes, and signing configuration.
 
-- **Key subparts:** `MakeItHome` app target; embedded `MakeItHome Web Extension`; Swift Collections 1.0.3; macOS 12.3 target; app marketing version 2.1.0/build 161.
+- **Key subparts:** `MakeItHome` app target; embedded `MakeItHome Web Extension`; Swift Collections 1.0.3; macOS 12.3 target; app marketing version 2.1.0/build 161. Debug builds produce `MakeItHome Test.app` (`ink.geckos.MakeItHome.Test`) and its matching test Web Extension so TCC permissions and `UserDefaults` remain separate from the Release app.
 - **Depends on:** [`MakeItHome.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`](MakeItHome.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved).
 - **Common mistakes:** Add new manually grouped files to the correct target/resource phase. Keep parent and extension `CFBundleVersion` aligned before distribution; the current app build is 161 while the extension build is 1.
 
@@ -368,10 +368,10 @@ Small SwiftUI panels for activation, permissions, onboarding, updates, menu UI, 
 
 ### [`MakeItHome/StressTests/`](MakeItHome/StressTests/)
 
-Debug-only manual performance and lifecycle harnesses. [`StressTestSupport.swift`](MakeItHome/StressTests/StressTestSupport.swift) parses launch options and selects a root; [`VirtualOverscreenStressTest.swift`](MakeItHome/StressTests/VirtualOverscreenStressTest.swift) exercises SceneKit/app-count churn; [`AppExtensionStressTest.swift`](MakeItHome/StressTests/AppExtensionStressTest.swift) floods the real authenticated local server with bounded workers.
+Debug-only manual performance and lifecycle harnesses. [`StressTestSupport.swift`](MakeItHome/StressTests/StressTestSupport.swift) parses launch options and selects a root; [`VirtualOverscreenStressTest.swift`](MakeItHome/StressTests/VirtualOverscreenStressTest.swift) exercises SceneKit/app-count churn; [`AppExtensionStressTest.swift`](MakeItHome/StressTests/AppExtensionStressTest.swift) floods the real authenticated local server with bounded workers; [`RuntimeLifecycleStressTest.swift`](MakeItHome/StressTests/RuntimeLifecycleStressTest.swift) cycles the real recorder profiles, `CaptureView` sleep/restart, and native Clipboard-to-Widgets-Zone traffic together.
 
 - **Commands:** See [`MakeItHome/StressTests/README.md`](MakeItHome/StressTests/README.md).
-- **Common mistakes:** Never make stress mode reachable in Release and never turn bounded worker counts into unbounded task creation.
+- **Common mistakes:** Never make stress mode reachable in Release and never turn bounded worker counts into unbounded task creation. The runtime lifecycle mode must restore the pasteboard only when the user has not changed it since its final synthetic write, remove its temporary linked video fixtures, and keep synthetic clipboard payloads out of logs.
 
 ### [`Tests/PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift)
 
@@ -488,11 +488,13 @@ Inspect targets and schemes:
 xcodebuild -project MakeItHome.xcodeproj -list
 ```
 
-Build the app and embedded Safari extension without signing:
+Build the Debug-only test app and embedded Safari extension without signing:
 
 ```sh
 xcodebuild -project MakeItHome.xcodeproj -scheme MakeItHome -configuration Debug -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
 ```
+
+The Debug product is `MakeItHome Test.app`; grant permissions to that app only when exercising debug harnesses. Release builds continue to produce `MakeItHome.app`.
 
 Fast focused and resource-bound stress tests:
 
@@ -507,6 +509,7 @@ Debug stress modes are launch arguments on the Debug `MakeItHome` scheme:
 ```text
 --stress virtual-apps --stress-stage-seconds 5
 --stress app-extension --stress-duration 30 --stress-workers 12 --stress-payload-kb 512
+--stress runtime-lifecycle --stress-duration 1200 --stress-interval 2 --stress-auto-exit
 ```
 
 See [`MakeItHome/StressTests/README.md`](MakeItHome/StressTests/README.md) for bounded overrides and Instruments guidance. These modes launch real runtime components and may open a local listener; use a free port for overrides.
@@ -523,6 +526,7 @@ There is no root lint/format task, CI workflow, automated UI suite, checked-in a
 - Recorder eligibility state → [`PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift); real ScreenCaptureKit lifecycle is manual.
 - SceneKit churn, virtual app counts, and frame updates → [`VirtualOverscreenStressTest.swift`](MakeItHome/StressTests/VirtualOverscreenStressTest.swift).
 - Authenticated server concurrency, payload bounds, memory, and thread growth → [`AppExtensionStressTest.swift`](MakeItHome/StressTests/AppExtensionStressTest.swift).
+- Real ScreenCaptureKit profile transitions, SceneKit sleep/restart, and Clipboard-to-Widgets-Zone delivery → [`RuntimeLifecycleStressTest.swift`](MakeItHome/StressTests/RuntimeLifecycleStressTest.swift); requests the Debug app's separate Screen Recording permission and requires manual WebKit inspection.
 - Clipboard history and native-to-WebKit queue resource bounds/order → [`ClipboardResourceStressTests.swift`](Tests/ClipboardResourceStressTests.swift).
 - Build/resource/localization integration → the code-signing-disabled Xcode build.
 - Known test gaps: App Extension auth decisions, HTTP parsing/path safety, WebKit bridges/state retention, JavaScript DOM behavior, clipboard pasteboard/RTF fidelity, EventKit behavior, accessibility hotkeys, UI permission flows, and end-to-end signed Safari installation.
