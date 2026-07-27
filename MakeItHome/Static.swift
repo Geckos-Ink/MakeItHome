@@ -139,8 +139,8 @@ public class Static {
     public static let ActiveStrictModeEnabled = true
     public static let ActiveMouseTimerQoS: DispatchQoS = .userInteractive
     public static let ActiveMouseTimerLeewayMs: Int = 1
-    public static let SceneKitPreferredFPS = 40 // prev 45
-    public static let SceneKitSleepPreferredFPS = 20
+    public static let SceneKitPreferredFPS = 45 // prev 45
+    public static let SceneKitSleepPreferredFPS = 25
     public static let SceneKitContinuousRenderingWhenActive = true
     
     public static let EnableCloseMainWindowAfterInactivity = false
