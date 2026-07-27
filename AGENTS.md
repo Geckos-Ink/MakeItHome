@@ -111,18 +111,18 @@ Canonical persisted state is split between native `UserDefaults` (settings, trus
 
 Authoritative target, source/resource membership, Swift package dependency, deployment target, bundle IDs, versions, schemes, and signing configuration.
 
-- **Key subparts:** `MakeItHome` app target; embedded `MakeItHome Web Extension`; Swift Collections 1.0.3; macOS 12.3 target; app marketing version 2.1.0/build 161. Debug builds produce `MakeItHome Test.app` (`ink.geckos.MakeItHome.Test`) and its matching test Web Extension so TCC permissions and `UserDefaults` remain separate from the Release app.
+- **Key subparts:** `MakeItHome` app target; embedded `MakeItHome Web Extension`; separate Debug-only `MakeItHome Test` app target; Swift Collections 1.0.3; macOS 12.3 target; app marketing version 2.1.0/build 161. The Test target produces `MakeItHome Test.app` (`ink.geckos.MakeItHome.Test`) so TCC permissions and `UserDefaults` remain separate from normal app builds; it deliberately does not embed the Safari extension.
 - **Depends on:** [`MakeItHome.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`](MakeItHome.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved).
 - **Common mistakes:** Add new manually grouped files to the correct target/resource phase. Keep parent and extension `CFBundleVersion` aligned before distribution; the current app build is 161 while the extension build is 1.
 
 ### [`MakeItHome/MakeItHomeApp.swift`](MakeItHome/MakeItHomeApp.swift)
 
-The SwiftUI application entry point. Debug builds route explicit `--stress` launches to the stress root; normal builds create `ContentView` and call `Static.Init`.
+The SwiftUI application entry point. The dedicated `MakeItHome Test` target routes explicit `--stress` launches to the stress root; normal builds create `ContentView` and call `Static.Init`.
 
 - **Key symbols:** `MakeItHomeApp.body`; `StressLaunchConfiguration.current`.
 - **Called by / depends on:** Xcode app target; [`MakeItHome/StressTests/StressTestSupport.swift`](MakeItHome/StressTests/StressTestSupport.swift).
 - **Tests:** Manual stress modes only.
-- **Common mistakes:** Keep stress dispatch behind `#if DEBUG`; normal startup must not inherit stress arguments or state.
+- **Common mistakes:** Keep stress dispatch behind `#if STRESS_TEST_APP`; normal startup must not inherit stress arguments or state.
 
 ### [`MakeItHome/ContentView.swift`](MakeItHome/ContentView.swift)
 
@@ -368,7 +368,7 @@ Small SwiftUI panels for activation, permissions, onboarding, updates, menu UI, 
 
 ### [`MakeItHome/StressTests/`](MakeItHome/StressTests/)
 
-Debug-only manual performance and lifecycle harnesses. [`StressTestSupport.swift`](MakeItHome/StressTests/StressTestSupport.swift) parses launch options and selects a root; [`VirtualOverscreenStressTest.swift`](MakeItHome/StressTests/VirtualOverscreenStressTest.swift) exercises SceneKit/app-count churn; [`AppExtensionStressTest.swift`](MakeItHome/StressTests/AppExtensionStressTest.swift) floods the real authenticated local server with bounded workers; [`RuntimeLifecycleStressTest.swift`](MakeItHome/StressTests/RuntimeLifecycleStressTest.swift) cycles the real recorder profiles, `CaptureView` sleep/restart, and native Clipboard-to-Widgets-Zone traffic together.
+Debug-only manual performance and lifecycle harnesses, compiled only by the `MakeItHome Test` target. [`StressTestSupport.swift`](MakeItHome/StressTests/StressTestSupport.swift) parses launch options and selects a root; [`VirtualOverscreenStressTest.swift`](MakeItHome/StressTests/VirtualOverscreenStressTest.swift) exercises SceneKit/app-count churn; [`AppExtensionStressTest.swift`](MakeItHome/StressTests/AppExtensionStressTest.swift) floods the real authenticated local server with bounded workers; [`RuntimeLifecycleStressTest.swift`](MakeItHome/StressTests/RuntimeLifecycleStressTest.swift) cycles the real recorder profiles, `CaptureView` sleep/restart, and native Clipboard-to-Widgets-Zone traffic together.
 
 - **Commands:** See [`MakeItHome/StressTests/README.md`](MakeItHome/StressTests/README.md).
 - **Common mistakes:** Never make stress mode reachable in Release and never turn bounded worker counts into unbounded task creation. The runtime lifecycle mode must restore the pasteboard only when the user has not changed it since its final synthetic write, remove its temporary linked video fixtures, and keep synthetic clipboard payloads out of logs.
@@ -488,13 +488,19 @@ Inspect targets and schemes:
 xcodebuild -project MakeItHome.xcodeproj -list
 ```
 
-Build the Debug-only test app and embedded Safari extension without signing:
+Build the normal Debug app and embedded Safari extension without signing:
 
 ```sh
 xcodebuild -project MakeItHome.xcodeproj -scheme MakeItHome -configuration Debug -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
 ```
 
-The Debug product is `MakeItHome Test.app`; grant permissions to that app only when exercising debug harnesses. Release builds continue to produce `MakeItHome.app`.
+The normal Debug and Release products are `MakeItHome.app`. Build the isolated stress app explicitly with:
+
+```sh
+xcodebuild -project MakeItHome.xcodeproj -scheme 'MakeItHome Test' -configuration Debug -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO build
+```
+
+The `MakeItHome Test` scheme produces `MakeItHome Test.app`; grant permissions to that app only when exercising stress harnesses.
 
 Fast focused and resource-bound stress tests:
 
@@ -504,7 +510,7 @@ Fast focused and resource-bound stress tests:
 
 Normal development run: open [`MakeItHome.xcodeproj`](MakeItHome.xcodeproj) in Xcode, select the `MakeItHome` scheme, configure signing/entitlements locally, and Run. The main app entitlement file is tracked; the Safari extension entitlement file referenced by the project is locally required but ignored by `.gitignore`, so verify it exists before a signed build.
 
-Debug stress modes are launch arguments on the Debug `MakeItHome` scheme:
+Debug stress modes are launch arguments on the Debug `MakeItHome Test` scheme:
 
 ```text
 --stress virtual-apps --stress-stage-seconds 5

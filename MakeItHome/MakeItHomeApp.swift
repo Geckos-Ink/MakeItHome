@@ -14,7 +14,7 @@ struct MakeItHomeApp : App {
     
     var body: some Scene {
         WindowGroup {
-            #if DEBUG
+            #if STRESS_TEST_APP
             if let stressConfiguration = StressLaunchConfiguration.current {
                 StressTestRootView(configuration: stressConfiguration)
             } else {

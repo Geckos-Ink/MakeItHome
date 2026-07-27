@@ -1,4 +1,4 @@
-#if DEBUG
+#if STRESS_TEST_APP
 
 import AppKit
 import Foundation

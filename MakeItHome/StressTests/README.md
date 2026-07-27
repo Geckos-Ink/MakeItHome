@@ -4,7 +4,7 @@ These debug-only launch modes are deliberately separate from the normal app star
 
 ## Virtual overscreen
 
-Run the `MakeItHome` target in the Debug configuration with these scheme arguments:
+Run the `MakeItHome Test` scheme in the Debug configuration with these scheme arguments:
 
 ```text
 --stress virtual-apps --stress-stage-seconds 5
@@ -20,7 +20,7 @@ Useful overrides:
 
 ## AppExtension server flood
 
-Run the Debug target with:
+Run the `MakeItHome Test` scheme with:
 
 ```text
 --stress app-extension --stress-duration 30 --stress-workers 12 --stress-payload-kb 512
@@ -38,7 +38,7 @@ Use a free port. Keep the worker count bounded: the goal is to reveal unintended
 
 ## Runtime lifecycle
 
-Run the Debug `MakeItHome Test.app` target. Its `ink.geckos.MakeItHome.Test` bundle identity is distinct from the normal app, so it receives a separate macOS privacy decision. On first launch, the harness opens the standard Screen Recording prompt and waits up to one minute for the user to allow it:
+Run the Debug-only `MakeItHome Test.app` target. Its `ink.geckos.MakeItHome.Test` bundle identity is distinct from the normal app, so it receives a separate macOS privacy decision. On first launch, the harness opens the standard Screen Recording prompt and waits up to one minute for the user to allow it:
 
 ```text
 --stress runtime-lifecycle --stress-duration 1200 --stress-interval 2 --stress-auto-exit
