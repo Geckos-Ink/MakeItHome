@@ -26,7 +26,8 @@ final class VirtualOverscreenStressCoordinator: ObservableObject {
 
     private var timer: Timer?
     private var stageStartedAt = Date()
-    private var tickInCycle = 0
+    private var nextInteractionAt = Date.distantPast
+    private var interactionPhase = 0
     private var randomState: UInt64 = 0x4D_49_48_20_32_30_39
 
     init(configuration: StressLaunchConfiguration) {
@@ -70,16 +71,18 @@ final class VirtualOverscreenStressCoordinator: ObservableObject {
     private func advanceFrame() {
         precondition(Thread.isMainThread, "Virtual screen and SceneKit updates must remain on main")
         frameRevision &+= 1
-        tickInCycle += 1
 
-        let cycleLength = max(configuration.framesPerSecond, 3)
-        let phase = tickInCycle % cycleLength
-        if phase == 0 {
-            isOverscreenOpen = true
-        } else if phase == max(1, cycleLength / 3) {
-            selectNextApp()
-        } else if phase == max(2, (cycleLength * 2) / 3) {
-            isOverscreenOpen = false
+        if Date() >= nextInteractionAt {
+            switch interactionPhase {
+            case 0:
+                isOverscreenOpen = true
+            case 1:
+                selectNextApp()
+            default:
+                isOverscreenOpen = false
+            }
+            interactionPhase = (interactionPhase + 1) % 3
+            nextInteractionAt = Date().addingTimeInterval(nextCycleDelay())
         }
 
         if frameRevision % UInt64(max(configuration.framesPerSecond / 2, 1)) == 0 {
@@ -121,7 +124,8 @@ final class VirtualOverscreenStressCoordinator: ObservableObject {
         }
         focusedID = apps.first?.id
         isOverscreenOpen = false
-        tickInCycle = 0
+        interactionPhase = 0
+        nextInteractionAt = Date().addingTimeInterval(nextCycleDelay())
         stageStartedAt = Date()
         sampleProcess()
         print("[VirtualStress] MaxApps=\(maxApps), virtualApps=\(totalApps)")
@@ -141,6 +145,13 @@ final class VirtualOverscreenStressCoordinator: ObservableObject {
     private func nextRandomIndex(upperBound: Int) -> Int {
         randomState = randomState &* 6_364_136_223_846_793_005 &+ 1
         return Int(randomState % UInt64(upperBound))
+    }
+
+    private func nextCycleDelay() -> TimeInterval {
+        randomState = randomState &* 6_364_136_223_846_793_005 &+ 1
+        let unit = Double(randomState >> 11) / Double(1 << 53)
+        let range = configuration.cycleMaximumSeconds - configuration.cycleMinimumSeconds
+        return configuration.cycleMinimumSeconds + (unit * range)
     }
 
     private func makeFixedImage(index: Int, stage: Int) -> CGImage {
@@ -200,7 +211,12 @@ struct VirtualOverscreenStressView: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Virtual overscreen stress")
                         .font(.title2.weight(.bold))
-                    Text("Fixed 1280×720 frames at \(coordinator.configuration.framesPerSecond) FPS; open → select → close once per second")
+                    Text(
+                        "Fixed 1280×720 frames at \(coordinator.configuration.framesPerSecond) FPS; " +
+                        "open → select → close changes every " +
+                        "\(String(format: "%.2f", coordinator.configuration.cycleMinimumSeconds))–" +
+                        "\(String(format: "%.2f", coordinator.configuration.cycleMaximumSeconds)) seconds"
+                    )
                         .foregroundStyle(.secondary)
                 }
                 Spacer()

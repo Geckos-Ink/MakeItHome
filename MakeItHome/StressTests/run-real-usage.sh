@@ -8,12 +8,12 @@ repository_root="${script_directory:h:h}"
 mode_list="${MIH_STRESS_MODES:-virtual-apps app-extension runtime-lifecycle real-usage}"
 modes=(${=mode_list})
 
-virtual_stage_seconds="${MIH_STRESS_VIRTUAL_STAGE_SECONDS:-60}"
+virtual_stage_seconds="${MIH_STRESS_VIRTUAL_STAGE_SECONDS:-5}"
 app_extension_seconds="${MIH_STRESS_APP_EXTENSION_SECONDS:-90}"
 runtime_seconds="${MIH_STRESS_RUNTIME_SECONDS:-300}"
 real_usage_seconds="${MIH_STRESS_REAL_USAGE_SECONDS:-${MIH_STRESS_DURATION_SECONDS:-780}}"
-runtime_interval="${MIH_STRESS_RUNTIME_INTERVAL_SECONDS:-2}"
-action_interval="${MIH_STRESS_INTERVAL_SECONDS:-0.08}"
+cycle_min_seconds="${MIH_STRESS_CYCLE_MIN_SECONDS:-0.25}"
+cycle_max_seconds="${MIH_STRESS_CYCLE_MAX_SECONDS:-0.75}"
 sample_interval="${MIH_STRESS_SAMPLE_INTERVAL_SECONDS:-30}"
 attach_lldb="${MIH_STRESS_ATTACH_LLDB:-1}"
 stop_on_failure="${MIH_STRESS_STOP_ON_FAILURE:-0}"
@@ -117,11 +117,17 @@ require_positive_number MIH_STRESS_VIRTUAL_STAGE_SECONDS "$virtual_stage_seconds
 require_positive_number MIH_STRESS_APP_EXTENSION_SECONDS "$app_extension_seconds"
 require_positive_number MIH_STRESS_RUNTIME_SECONDS "$runtime_seconds"
 require_positive_number MIH_STRESS_REAL_USAGE_SECONDS "$real_usage_seconds"
-require_positive_number MIH_STRESS_RUNTIME_INTERVAL_SECONDS "$runtime_interval"
-require_positive_number MIH_STRESS_INTERVAL_SECONDS "$action_interval"
+require_positive_number MIH_STRESS_CYCLE_MIN_SECONDS "$cycle_min_seconds"
+require_positive_number MIH_STRESS_CYCLE_MAX_SECONDS "$cycle_max_seconds"
 require_positive_integer MIH_STRESS_SAMPLE_INTERVAL_SECONDS "$sample_interval"
 require_boolean MIH_STRESS_ATTACH_LLDB "$attach_lldb"
 require_boolean MIH_STRESS_STOP_ON_FAILURE "$stop_on_failure"
+
+if ! awk -v minimum="$cycle_min_seconds" -v maximum="$cycle_max_seconds" \
+    'BEGIN { exit !(maximum >= minimum) }'; then
+    print -u2 "MIH_STRESS_CYCLE_MAX_SECONDS must be greater than or equal to MIH_STRESS_CYCLE_MIN_SECONDS."
+    exit 2
+fi
 
 if (( ${#modes[@]} == 0 )); then
     print -u2 "MIH_STRESS_MODES selected no stress modes."
@@ -161,8 +167,8 @@ cd "$repository_root"
     print "appExtensionSeconds=$app_extension_seconds"
     print "runtimeSeconds=$runtime_seconds"
     print "realUsageSeconds=$real_usage_seconds"
-    print "runtimeIntervalSeconds=$runtime_interval"
-    print "realUsageIntervalSeconds=$action_interval"
+    print "cycleMinimumSeconds=$cycle_min_seconds"
+    print "cycleMaximumSeconds=$cycle_max_seconds"
     print "sampleIntervalSeconds=$sample_interval"
     print "attachLLDB=$attach_lldb"
     print "copySource=$copy_source_directory"
@@ -353,6 +359,8 @@ run_mode() {
         --stress "$mode"
         --stress-auto-exit
         --stress-result-file "$result_file"
+        --stress-cycle-min "$cycle_min_seconds"
+        --stress-cycle-max "$cycle_max_seconds"
     )
 
     case "$mode" in
@@ -376,7 +384,6 @@ run_mode() {
             watchdog_allowance=150
             app_arguments+=(
                 --stress-duration "$runtime_seconds"
-                --stress-interval "$runtime_interval"
             )
             ;;
         real-usage)
@@ -385,7 +392,6 @@ run_mode() {
             watchdog_allowance=210
             app_arguments+=(
                 --stress-duration "$real_usage_seconds"
-                --stress-interval "$action_interval"
                 --stress-copy-source "$staging_directory"
             )
             if [[ -n "${MIH_STRESS_SEED:-}" ]]; then

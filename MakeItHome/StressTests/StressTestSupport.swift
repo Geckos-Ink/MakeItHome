@@ -16,6 +16,13 @@ final class StressTestAppDelegate: NSObject, NSApplicationDelegate {
     private var hostingWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Production onboarding and start-at-login prompts are modal. They would
+        // suspend stress tasks indefinitely and turn a healthy run into a watchdog
+        // failure, so explicit stress launches suppress only this transient prompt.
+        if StressLaunchConfiguration.current != nil {
+            Static.thankYouDone = true
+        }
+
         let rootView: AnyView
         if let configuration = StressLaunchConfiguration.current {
             rootView = AnyView(StressTestRootView(configuration: configuration))
@@ -58,7 +65,8 @@ struct StressLaunchConfiguration {
     let workers: Int
     let payloadBytes: Int
     let port: UInt16
-    let intervalSeconds: TimeInterval
+    let cycleMinimumSeconds: TimeInterval
+    let cycleMaximumSeconds: TimeInterval
     let seed: UInt64
     let copySourcePath: String?
     let resultPath: String?
@@ -70,7 +78,10 @@ struct StressLaunchConfiguration {
             return nil
         }
 
-        let defaultInterval: TimeInterval = mode == .realUsage ? 0.08 : 2
+        let cycleMinimumSeconds =
+            positiveDouble("--stress-cycle-min", arguments: arguments) ?? 0.25
+        let requestedCycleMaximum =
+            positiveDouble("--stress-cycle-max", arguments: arguments) ?? 0.75
 
         return StressLaunchConfiguration(
             mode: mode,
@@ -81,7 +92,8 @@ struct StressLaunchConfiguration {
             workers: positiveInt("--stress-workers", arguments: arguments) ?? 12,
             payloadBytes: (positiveInt("--stress-payload-kb", arguments: arguments) ?? 512) * 1_024,
             port: UInt16(positiveInt("--stress-port", arguments: arguments) ?? 19_494),
-            intervalSeconds: positiveDouble("--stress-interval", arguments: arguments) ?? defaultInterval,
+            cycleMinimumSeconds: cycleMinimumSeconds,
+            cycleMaximumSeconds: max(cycleMinimumSeconds, requestedCycleMaximum),
             seed: positiveUInt64("--stress-seed", arguments: arguments) ?? UInt64.random(in: 1...UInt64.max),
             copySourcePath: value(for: "--stress-copy-source", in: arguments),
             resultPath: value(for: "--stress-result-file", in: arguments)

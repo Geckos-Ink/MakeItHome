@@ -154,7 +154,8 @@ final class RealUsageStressCoordinator: ObservableObject {
         let startedSummary =
             "[RealUsageStress] STARTED seed=\(configuration.seed) " +
             "duration=\(String(format: "%.1f", configuration.durationSeconds)) " +
-            "baseInterval=\(String(format: "%.3f", configuration.intervalSeconds))"
+            "cycleRange=\(String(format: "%.2f", configuration.cycleMinimumSeconds))..." +
+            "\(String(format: "%.2f", configuration.cycleMaximumSeconds))"
         print(startedSummary)
         writeStressResult(startedSummary, configuration: configuration)
 
@@ -265,7 +266,7 @@ final class RealUsageStressCoordinator: ObservableObject {
             guard let self else { return }
 
             self.postShortcut(side: 2)
-            await self.wait(seconds: 0.21)
+            await self.wait(seconds: self.nextCycleDelay())
             guard self.shouldContinue, !Task.isCancelled else {
                 self.selectionTask = nil
                 return
@@ -668,8 +669,12 @@ final class RealUsageStressCoordinator: ObservableObject {
     }
 
     private func nextActionDelay() -> TimeInterval {
-        let jitter = 0.35 + randomUnitInterval() * 1.65
-        return max(0.015, configuration.intervalSeconds * jitter)
+        nextCycleDelay()
+    }
+
+    private func nextCycleDelay() -> TimeInterval {
+        let range = configuration.cycleMaximumSeconds - configuration.cycleMinimumSeconds
+        return configuration.cycleMinimumSeconds + (randomUnitInterval() * range)
     }
 
     private func randomInt(upperBound: Int) -> Int {
