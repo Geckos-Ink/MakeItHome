@@ -160,6 +160,15 @@ Pure, AppKit-free state machine for preview/recorder gating and Space topology. 
 - **Tests:** [`Tests/PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift).
 - **Common mistakes:** Timestamp transitions only on a state edge; changing signatures restart grace periods. Do not convert wall-clock safety nets to tick counts.
 
+### [`MakeItHome/Helpers/PreviewTitleText.swift`](MakeItHome/Helpers/PreviewTitleText.swift)
+
+Pure preview-title wrapping used before SceneKit text creation. It clamps computed character limits to at least one and traverses Swift `Character`s safely so transient zero-width window geometry cannot crash title rendering.
+
+- **Key function:** `PreviewTitleText.wrapping`.
+- **Called by:** `CapturePreview.CaptureView.WindowPlane.setTitle`.
+- **Tests:** [`Tests/PreviewTitleTextTests.swift`](Tests/PreviewTitleTextTests.swift).
+- **Common mistakes:** Window geometry can briefly be zero or extremely narrow while the SceneKit graph is rebuilt. Never use a geometry-derived line length as a divisor without clamping it.
+
 ### [`MakeItHome/Managers/Displays.swift`](MakeItHome/Managers/Displays.swift)
 
 The primary overscreen domain owner: display discovery, high-frequency pointer motion, edge activation, WindowServer tracking, Space placeholders, screenshot cropping, recorder policy, window/focus activation, shortcut animation, and overscreen geometry.
@@ -193,8 +202,8 @@ SceneKit renderer and interaction surface for the desktop plane, app/window prev
 
 - **Key symbols:** `CapturePreview.updateFrame`; `CaptureView.prepareScene`, `setScreenApps`, `setWindowsPosition`, `mouseMove`, `unset`; `AppNode`; `WindowPlane`.
 - **Called by:** `ContentView`, `ScreenRecorder`, and `Display`.
-- **Tests:** Virtual overscreen stress harness; no automated SceneKit assertions.
-- **Common mistakes:** Release material/layer references when removing nodes, avoid redundant texture uploads, and perform SceneKit/CALayer mutations on main.
+- **Tests:** Title wrapping is covered by [`Tests/PreviewTitleTextTests.swift`](Tests/PreviewTitleTextTests.swift); the virtual overscreen stress harness exercises the SceneKit graph, but has no automated SceneKit assertions.
+- **Common mistakes:** Release material/layer references when removing nodes, avoid redundant texture uploads, perform SceneKit/CALayer mutations on main, and clamp geometry-derived title line lengths before wrapping.
 
 ### [`MakeItHome/Managers/AppExtension.swift`](MakeItHome/Managers/AppExtension.swift)
 
@@ -372,7 +381,7 @@ Debug-only manual performance and lifecycle harnesses, compiled only by the `Mak
 
 - **Commands:** See [`MakeItHome/StressTests/README.md`](MakeItHome/StressTests/README.md).
 - **Diagnostics:** The orchestrator retains a permission-restricted bundle under `~/Library/Logs/MakeItHomeStress/` containing the full build log/settings, dSYM and UUIDs, per-mode stdout/stderr and debug-level unified logs, LLDB crash-time all-thread backtraces/registers, periodic symbolized `sample` stacks, watchdog stacks, results/status, and new Test-bundle Diagnostic Reports. It never deletes these artifacts; sandbox staging is temporary.
-- **Common mistakes:** Never make stress mode reachable in Release and never turn bounded worker counts, sampling cadence, or the real-usage selection task into unbounded work. Preserve all result handshakes and diagnostic streams. The runtime lifecycle and real-usage modes must restore the pasteboard only when the user has not changed it since the final synthetic write, remove temporary linked fixtures, and keep synthetic clipboard payloads out of logs. Real-usage automation requires the Test app's Screen Recording and Accessibility permissions, takes control of the pointer/clipboard/window focus, and must remain isolated from the normal app identity.
+- **Common mistakes:** Never make stress mode reachable in Release and never turn bounded worker counts, sampling cadence, or the real-usage selection task into unbounded work. Preserve all result handshakes and diagnostic streams. The runtime lifecycle and real-usage modes must restore the pasteboard only when the user has not changed it since the final synthetic write, remove temporary linked fixtures, and keep synthetic clipboard payloads out of logs. Real-usage automation requires the Test app's Screen Recording and Accessibility permissions, reports each missing grant by name, takes control of the pointer/clipboard/window focus, and must remain isolated from the normal app identity.
 
 ### [`Tests/PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift)
 
@@ -389,6 +398,14 @@ Dependency-free stress regression that compiles the production [`ClipboardResour
 - **Coverage:** newest-first 30-item history eviction, fixed 128-message queue capacity, overflow behavior, and FIFO drain order.
 - **Runner:** [`Tests/run.sh`](Tests/run.sh).
 - **Common mistakes:** Keep the stress inputs large enough to expose unbounded growth while leaving the production collection helper as the implementation under test.
+
+### [`Tests/PreviewTitleTextTests.swift`](Tests/PreviewTitleTextTests.swift)
+
+Dependency-free regression suite that compiles the production [`PreviewTitleText.swift`](MakeItHome/Helpers/PreviewTitleText.swift) helper.
+
+- **Coverage:** empty and Unicode titles, punctuation wrapping, forced wrapping, and zero/negative character-limit clamping.
+- **Runner:** [`Tests/run.sh`](Tests/run.sh).
+- **Common mistakes:** Exercise the production helper directly and retain a zero-limit case because transient narrow window geometry triggered the original crash.
 
 ### [`Podfile`](Podfile)
 
@@ -538,6 +555,7 @@ There is no root lint/format task, CI workflow, automated UI suite, checked-in a
 - Space transition, placeholder stability/repair, and multi-display isolation → [`PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift).
 - Cross-Space activation and focus restoration → [`PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift).
 - Recorder eligibility state → [`PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift); real ScreenCaptureKit lifecycle is manual.
+- Preview-title wrapping and transient zero-width geometry → [`PreviewTitleTextTests.swift`](Tests/PreviewTitleTextTests.swift).
 - SceneKit churn, virtual app counts, and frame updates → [`VirtualOverscreenStressTest.swift`](MakeItHome/StressTests/VirtualOverscreenStressTest.swift).
 - Authenticated server concurrency, payload bounds, memory, and thread growth → [`AppExtensionStressTest.swift`](MakeItHome/StressTests/AppExtensionStressTest.swift).
 - Full production-runtime ScreenCaptureKit profile transitions, populated `CapturePreview` SceneKit sleep/restart, and Clipboard-to-Widgets-Zone delivery → [`RuntimeLifecycleStressTest.swift`](MakeItHome/StressTests/RuntimeLifecycleStressTest.swift); requests the Debug app's separate Screen Recording permission, reports peak SceneKit app/window nodes, and requires manual WebKit inspection.

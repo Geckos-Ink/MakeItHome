@@ -122,8 +122,13 @@ final class RealUsageStressCoordinator: ObservableObject {
         saveRuntimeState()
         Static.Init()
 
-        guard await waitForRequiredPermissions() else {
-            fail("Screen Recording and Accessibility permissions are required for real-usage stress.")
+        let missingPermissions = await waitForRequiredPermissions()
+        guard missingPermissions.isEmpty else {
+            let permissionNoun = missingPermissions.count == 1 ? "permission is" : "permissions are"
+            fail(
+                "\(missingPermissions.joined(separator: " and ")) " +
+                "\(permissionNoun) required for real-usage stress."
+            )
             await finish(completed: false)
             return
         }
@@ -176,7 +181,7 @@ final class RealUsageStressCoordinator: ObservableObject {
         originalClipboardCaptureEnabled = Static.EnableClipboardCapture
     }
 
-    private func waitForRequiredPermissions() async -> Bool {
+    private func waitForRequiredPermissions() async -> [String] {
         status = "Awaiting permissions"
 
         if !CGPreflightScreenCaptureAccess() {
@@ -191,12 +196,24 @@ final class RealUsageStressCoordinator: ObservableObject {
 
         let permissionDeadline = Date().addingTimeInterval(90)
         while Date() < permissionDeadline {
-            if CGPreflightScreenCaptureAccess(), AXIsProcessTrusted() {
-                return true
+            let missingPermissions = missingRequiredPermissions()
+            if missingPermissions.isEmpty {
+                return []
             }
             await wait(seconds: 0.25)
         }
-        return false
+        return missingRequiredPermissions()
+    }
+
+    private func missingRequiredPermissions() -> [String] {
+        var missingPermissions: [String] = []
+        if !CGPreflightScreenCaptureAccess() {
+            missingPermissions.append("Screen Recording")
+        }
+        if !AXIsProcessTrusted() {
+            missingPermissions.append("Accessibility")
+        }
+        return missingPermissions
     }
 
     private func waitForApplicationRuntime() async -> Bool {

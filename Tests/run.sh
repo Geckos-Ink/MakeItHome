@@ -15,6 +15,8 @@ GATE="$ROOT/MakeItHome/Helpers/PreviewFlowGate.swift"
 GATE_TESTS="$ROOT/Tests/PreviewFlowGateTests.swift"
 CLIPBOARD_BOUNDS="$ROOT/MakeItHome/Helpers/ClipboardResourceBounds.swift"
 CLIPBOARD_TESTS="$ROOT/Tests/ClipboardResourceStressTests.swift"
+PREVIEW_TITLE_TEXT="$ROOT/MakeItHome/Helpers/PreviewTitleText.swift"
+PREVIEW_TITLE_TESTS="$ROOT/Tests/PreviewTitleTextTests.swift"
 TEST_DIR="$(mktemp -d -t makeithome-tests)"
 
 trap 'rm -rf "$TEST_DIR"' EXIT
@@ -24,3 +26,6 @@ swiftc -O -parse-as-library "$GATE" "$GATE_TESTS" -o "$TEST_DIR/preview-flow-gat
 
 swiftc -O -parse-as-library "$CLIPBOARD_BOUNDS" "$CLIPBOARD_TESTS" -o "$TEST_DIR/clipboard-resource-stress-tests"
 "$TEST_DIR/clipboard-resource-stress-tests"
+
+swiftc -O -parse-as-library "$PREVIEW_TITLE_TEXT" "$PREVIEW_TITLE_TESTS" -o "$TEST_DIR/preview-title-text-tests"
+"$TEST_DIR/preview-title-text-tests"

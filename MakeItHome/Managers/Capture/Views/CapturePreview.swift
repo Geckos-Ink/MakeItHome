@@ -1380,8 +1380,6 @@ public struct CapturePreview: NSViewRepresentable {
             
             var _textNode : SCNNode?
             
-            var numLines = 0
-            
             var minAlpha : CGFloat = 0
             let maxEmissionIntensity = 0.2
             var emissionAlpha : CGFloat = 0
@@ -1473,52 +1471,18 @@ public struct CapturePreview: NSViewRepresentable {
                     return
                 }
                 
-                func newLineAfterTot(str: String, newLineAfter: Int) -> NSAttributedString{
-                    var ret = ""
-                    var newLineAsap = false
-                    var c = 0
-                    
-                    for i in  0 ... (str.count - 1) { //MARK: BUG HERE IF str is empty
-                        let m = (c % newLineAfter)+1
-                        if(m == newLineAfter){
-                            newLineAsap = true
-                        }
-                        
-                        var ch = str[i]
-                        
-                        ret += String(ch)
-                        
-                        if(newLineAsap){
-                            // Force new line
-                            if c > newLineAfter + 5 {
-                                ch = " "
-                            }
-                            
-                            switch(ch){
-                            case " ", "-", "|", ":", "/":
-                                ret += "\n"
-                                newLineAsap = false
-                                numLines += 1
-                                c = -1
-                                
-                                break;
-                                
-                            default:
-                                break;
-                            }
-                        }
-                        
-                        c += 1
-                    }
-                    
-                    return NSAttributedString(string: ret, attributes: [.foregroundColor : NSColor.clear, .font: NSFont(name: "ArialRoundedMTBold", size: 1) ?? NSFont(name: "Arial", size: 1)!])
-                }
-                
                 //MARK: Set text
                 // Calculated size 40 characters every 280px
                 let maxCharsPerLine = Int((self.geometry.width / (view.pixelsToScene(pixels: 280)))*35)
-                
-                let attrStr = newLineAfterTot(str: val, newLineAfter: maxCharsPerLine)
+                let wrappedTitle = PreviewTitleText.wrapping(val, after: maxCharsPerLine)
+                let attrStr = NSAttributedString(
+                    string: wrappedTitle,
+                    attributes: [
+                        .foregroundColor: NSColor.clear,
+                        .font: NSFont(name: "ArialRoundedMTBold", size: 1) ??
+                            NSFont(name: "Arial", size: 1)!
+                    ]
+                )
                 
                 let newText = SCNText(string: attrStr, extrusionDepth:view.windowsZ)
                 //newText.font = .menuBarFont(ofSize: 1)
