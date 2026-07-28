@@ -8,7 +8,7 @@ repository_root="${script_directory:h:h}"
 mode_list="${MIH_STRESS_MODES:-virtual-apps app-extension runtime-lifecycle real-usage}"
 modes=(${=mode_list})
 
-virtual_stage_seconds="${MIH_STRESS_VIRTUAL_STAGE_SECONDS:-5}"
+virtual_stage_seconds="${MIH_STRESS_VIRTUAL_STAGE_SECONDS:-60}"
 app_extension_seconds="${MIH_STRESS_APP_EXTENSION_SECONDS:-90}"
 runtime_seconds="${MIH_STRESS_RUNTIME_SECONDS:-300}"
 real_usage_seconds="${MIH_STRESS_REAL_USAGE_SECONDS:-${MIH_STRESS_DURATION_SECONDS:-780}}"
