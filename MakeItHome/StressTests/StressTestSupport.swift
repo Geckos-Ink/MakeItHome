@@ -8,6 +8,45 @@ enum StressTestMode: String {
     case virtualApps = "virtual-apps"
     case appExtension = "app-extension"
     case runtimeLifecycle = "runtime-lifecycle"
+    case realUsage = "real-usage"
+}
+
+@MainActor
+final class StressTestAppDelegate: NSObject, NSApplicationDelegate {
+    private var hostingWindow: NSWindow?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        let rootView: AnyView
+        if let configuration = StressLaunchConfiguration.current {
+            rootView = AnyView(StressTestRootView(configuration: configuration))
+        } else {
+            rootView = AnyView(
+                ContentView()
+                    .onAppear {
+                        Static.Init()
+                    }
+            )
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1_180, height: 760),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = StressLaunchConfiguration.current == nil ? "MakeItHome Test" : "MakeItHome Stress"
+        window.contentView = NSHostingView(rootView: rootView)
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+        hostingWindow = window
+
+        NSApplication.shared.setActivationPolicy(.regular)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
 }
 
 struct StressLaunchConfiguration {
@@ -20,6 +59,9 @@ struct StressLaunchConfiguration {
     let payloadBytes: Int
     let port: UInt16
     let intervalSeconds: TimeInterval
+    let seed: UInt64
+    let copySourcePath: String?
+    let resultPath: String?
 
     static var current: StressLaunchConfiguration? {
         let arguments = ProcessInfo.processInfo.arguments
@@ -27,6 +69,8 @@ struct StressLaunchConfiguration {
               let mode = StressTestMode(rawValue: rawMode) else {
             return nil
         }
+
+        let defaultInterval: TimeInterval = mode == .realUsage ? 0.08 : 2
 
         return StressLaunchConfiguration(
             mode: mode,
@@ -37,7 +81,10 @@ struct StressLaunchConfiguration {
             workers: positiveInt("--stress-workers", arguments: arguments) ?? 12,
             payloadBytes: (positiveInt("--stress-payload-kb", arguments: arguments) ?? 512) * 1_024,
             port: UInt16(positiveInt("--stress-port", arguments: arguments) ?? 19_494),
-            intervalSeconds: positiveDouble("--stress-interval", arguments: arguments) ?? 2
+            intervalSeconds: positiveDouble("--stress-interval", arguments: arguments) ?? defaultInterval,
+            seed: positiveUInt64("--stress-seed", arguments: arguments) ?? UInt64.random(in: 1...UInt64.max),
+            copySourcePath: value(for: "--stress-copy-source", in: arguments),
+            resultPath: value(for: "--stress-result-file", in: arguments)
         )
     }
 
@@ -61,6 +108,13 @@ struct StressLaunchConfiguration {
 
     private static func positiveDouble(_ option: String, arguments: [String]) -> Double? {
         guard let raw = value(for: option, in: arguments), let value = Double(raw), value > 0 else {
+            return nil
+        }
+        return value
+    }
+
+    private static func positiveUInt64(_ option: String, arguments: [String]) -> UInt64? {
+        guard let raw = value(for: option, in: arguments), let value = UInt64(raw), value > 0 else {
             return nil
         }
         return value
@@ -145,7 +199,21 @@ struct StressTestRootView: View {
             AppExtensionStressView(configuration: configuration)
         case .runtimeLifecycle:
             RuntimeLifecycleStressView(configuration: configuration)
+        case .realUsage:
+            RealUsageStressView(configuration: configuration)
         }
+    }
+}
+
+func writeStressResult(_ summary: String, configuration: StressLaunchConfiguration) {
+    guard let resultPath = configuration.resultPath else { return }
+    do {
+        try Data((summary + "\n").utf8).write(
+            to: URL(fileURLWithPath: resultPath),
+            options: .atomic
+        )
+    } catch {
+        print("[StressResult] unable to write result file: \(error.localizedDescription)")
     }
 }
 

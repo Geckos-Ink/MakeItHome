@@ -111,18 +111,18 @@ Canonical persisted state is split between native `UserDefaults` (settings, trus
 
 Authoritative target, source/resource membership, Swift package dependency, deployment target, bundle IDs, versions, schemes, and signing configuration.
 
-- **Key subparts:** `MakeItHome` app target; embedded `MakeItHome Web Extension`; separate Debug-only `MakeItHome Test` app target; Swift Collections 1.0.3; macOS 12.3 target; app marketing version 2.1.0/build 161. The Test target produces `MakeItHome Test.app` (`ink.geckos.MakeItHome.Test`) so TCC permissions and `UserDefaults` remain separate from normal app builds; it deliberately does not embed the Safari extension.
+- **Key subparts:** `MakeItHome` app target; embedded `MakeItHome Web Extension`; separate Debug-only `MakeItHome Test` app target; Swift Collections 1.0.3; macOS 12.3 target; app marketing version 2.1.0 with normal-app build 163 and Test build 161. The Test target produces `MakeItHome Test.app` (`ink.geckos.MakeItHome.Test`) so TCC permissions and `UserDefaults` remain separate from normal app builds; it deliberately does not embed the Safari extension and overrides `LSUIElement` to `NO` so its explicit stress host window starts reliably.
 - **Depends on:** [`MakeItHome.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`](MakeItHome.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved).
-- **Common mistakes:** Add new manually grouped files to the correct target/resource phase. Keep parent and extension `CFBundleVersion` aligned before distribution; the current app build is 161 while the extension build is 1.
+- **Common mistakes:** Add new manually grouped files to the correct target/resource phase. Keep parent and extension `CFBundleVersion` aligned before distribution; the current normal app build is 163 while the extension build is 1.
 
 ### [`MakeItHome/MakeItHomeApp.swift`](MakeItHome/MakeItHomeApp.swift)
 
-The SwiftUI application entry point. The dedicated `MakeItHome Test` target routes explicit `--stress` launches to the stress root; normal builds create `ContentView` and call `Static.Init`.
+The SwiftUI application entry point. The dedicated `MakeItHome Test` target uses `StressTestAppDelegate` to create and retain an explicit hosting window, routing `--stress` launches to the stress root; normal builds keep the existing `WindowGroup`, create `ContentView`, and call `Static.Init`.
 
-- **Key symbols:** `MakeItHomeApp.body`; `StressLaunchConfiguration.current`.
+- **Key symbols:** `MakeItHomeApp.body`; `StressTestAppDelegate`; `StressLaunchConfiguration.current`.
 - **Called by / depends on:** Xcode app target; [`MakeItHome/StressTests/StressTestSupport.swift`](MakeItHome/StressTests/StressTestSupport.swift).
 - **Tests:** Manual stress modes only.
-- **Common mistakes:** Keep stress dispatch behind `#if STRESS_TEST_APP`; normal startup must not inherit stress arguments or state.
+- **Common mistakes:** Keep the delegate, regular activation policy, explicit test window, and stress dispatch behind `#if STRESS_TEST_APP`; normal startup must not inherit stress arguments, Dock behavior, or state.
 
 ### [`MakeItHome/ContentView.swift`](MakeItHome/ContentView.swift)
 
@@ -368,10 +368,11 @@ Small SwiftUI panels for activation, permissions, onboarding, updates, menu UI, 
 
 ### [`MakeItHome/StressTests/`](MakeItHome/StressTests/)
 
-Debug-only manual performance and lifecycle harnesses, compiled only by the `MakeItHome Test` target. [`StressTestSupport.swift`](MakeItHome/StressTests/StressTestSupport.swift) parses launch options and selects a root; [`VirtualOverscreenStressTest.swift`](MakeItHome/StressTests/VirtualOverscreenStressTest.swift) exercises SceneKit/app-count churn; [`AppExtensionStressTest.swift`](MakeItHome/StressTests/AppExtensionStressTest.swift) floods the real authenticated local server with bounded workers; [`RuntimeLifecycleStressTest.swift`](MakeItHome/StressTests/RuntimeLifecycleStressTest.swift) cycles the real recorder profiles, `CaptureView` sleep/restart, and native Clipboard-to-Widgets-Zone traffic together.
+Debug-only manual performance and lifecycle harnesses, compiled only by the `MakeItHome Test` target. [`StressTestSupport.swift`](MakeItHome/StressTests/StressTestSupport.swift) parses launch options, owns the explicit test host window, selects a root, and writes atomic result handshakes; [`VirtualOverscreenStressTest.swift`](MakeItHome/StressTests/VirtualOverscreenStressTest.swift) exercises SceneKit/app-count churn; [`AppExtensionStressTest.swift`](MakeItHome/StressTests/AppExtensionStressTest.swift) floods the real authenticated local server with bounded workers; [`RuntimeLifecycleStressTest.swift`](MakeItHome/StressTests/RuntimeLifecycleStressTest.swift) cycles the real recorder profiles, `CaptureView` sleep/restart, and native Clipboard-to-Widgets-Zone traffic together; [`RealUsageStressTest.swift`](MakeItHome/StressTests/RealUsageStressTest.swift) runs the normal app runtime while seeded UI automation rapidly invokes the production top/bottom shortcut endpoint, clicks random preview or visible-window title-bar points, and copies image-heavy unique file URLs. Despite its legacy name, [`run-real-usage.sh`](MakeItHome/StressTests/run-real-usage.sh) builds once with a dSYM and runs all four modes sequentially for 20 active minutes by default, staging `/Users/riccardo/Pictures/instagramToReload` (or `MIH_STRESS_COPY_SOURCE`) inside the Test sandbox.
 
 - **Commands:** See [`MakeItHome/StressTests/README.md`](MakeItHome/StressTests/README.md).
-- **Common mistakes:** Never make stress mode reachable in Release and never turn bounded worker counts into unbounded task creation. The runtime lifecycle mode must restore the pasteboard only when the user has not changed it since its final synthetic write, remove its temporary linked video fixtures, and keep synthetic clipboard payloads out of logs.
+- **Diagnostics:** The orchestrator retains a permission-restricted bundle under `~/Library/Logs/MakeItHomeStress/` containing the full build log/settings, dSYM and UUIDs, per-mode stdout/stderr and debug-level unified logs, LLDB crash-time all-thread backtraces/registers, periodic symbolized `sample` stacks, watchdog stacks, results/status, and new Test-bundle Diagnostic Reports. It never deletes these artifacts; sandbox staging is temporary.
+- **Common mistakes:** Never make stress mode reachable in Release and never turn bounded worker counts, sampling cadence, or the real-usage selection task into unbounded work. Preserve all result handshakes and diagnostic streams. The runtime lifecycle and real-usage modes must restore the pasteboard only when the user has not changed it since the final synthetic write, remove temporary linked fixtures, and keep synthetic clipboard payloads out of logs. Real-usage automation requires the Test app's Screen Recording and Accessibility permissions, takes control of the pointer/clipboard/window focus, and must remain isolated from the normal app identity.
 
 ### [`Tests/PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift)
 
@@ -516,9 +517,16 @@ Debug stress modes are launch arguments on the Debug `MakeItHome Test` scheme:
 --stress virtual-apps --stress-stage-seconds 5
 --stress app-extension --stress-duration 30 --stress-workers 12 --stress-payload-kb 512
 --stress runtime-lifecycle --stress-duration 1200 --stress-interval 2 --stress-auto-exit
+--stress real-usage --stress-duration 1200 --stress-interval 0.08 --stress-auto-exit
 ```
 
-See [`MakeItHome/StressTests/README.md`](MakeItHome/StressTests/README.md) for bounded overrides and Instruments guidance. These modes launch real runtime components and may open a local listener; use a free port for overrides.
+Run the complete 20-minute Debug stress orchestration with its diagnostic wrapper:
+
+```sh
+./MakeItHome/StressTests/run-real-usage.sh
+```
+
+See [`MakeItHome/StressTests/README.md`](MakeItHome/StressTests/README.md) for permission requirements, safety boundaries, seeded replay, bounded overrides, and Instruments guidance. These modes launch real runtime components and may open a local listener; use a free port for overrides.
 
 Debug WebKit using Safari’s Develop inspector; the top view sets `isInspectable` on macOS 13.3+. Debug capture/overscreen performance with Instruments Allocations and System Trace.
 

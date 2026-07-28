@@ -11,25 +11,24 @@ import Foundation
 @main
 struct MakeItHomeApp : App {
     //@State var currentNumber: String = "0"
+
+    #if STRESS_TEST_APP
+    @NSApplicationDelegateAdaptor(StressTestAppDelegate.self) private var stressAppDelegate
+    #endif
     
     var body: some Scene {
+        #if STRESS_TEST_APP
+        SwiftUI.Settings {
+            SwiftUI.EmptyView()
+        }
+        #else
         WindowGroup {
-            #if STRESS_TEST_APP
-            if let stressConfiguration = StressLaunchConfiguration.current {
-                StressTestRootView(configuration: stressConfiguration)
-            } else {
-                ContentView()
-                    .onAppear(){
-                        Static.Init()
-                    }
-            }
-            #else
             ContentView()
                 .onAppear(){
                     Static.Init()
                 }
-            #endif
         }
+        #endif
     }
     
 }

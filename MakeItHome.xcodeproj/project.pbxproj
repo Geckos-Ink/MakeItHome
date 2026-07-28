@@ -165,6 +165,7 @@
 		C20000022F20000100ABCDEF /* VirtualOverscreenStressTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000122F20000100ABCDEF /* VirtualOverscreenStressTest.swift */; };
 		C20000032F20000100ABCDEF /* AppExtensionStressTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000132F20000100ABCDEF /* AppExtensionStressTest.swift */; };
 		C20000042F20000100ABCDEF /* RuntimeLifecycleStressTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000152F20000100ABCDEF /* RuntimeLifecycleStressTest.swift */; };
+		C20000052F20000100ABCDEF /* RealUsageStressTest.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20000162F20000100ABCDEF /* RealUsageStressTest.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -290,6 +291,8 @@
 		C20000132F20000100ABCDEF /* AppExtensionStressTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppExtensionStressTest.swift; sourceTree = "<group>"; };
 		C20000142F20000100ABCDEF /* README.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfire.markdown; path = README.md; sourceTree = "<group>"; };
 		C20000152F20000100ABCDEF /* RuntimeLifecycleStressTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RuntimeLifecycleStressTest.swift; sourceTree = "<group>"; };
+		C20000162F20000100ABCDEF /* RealUsageStressTest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealUsageStressTest.swift; sourceTree = "<group>"; };
+		C20000172F20000100ABCDEF /* run-real-usage.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "run-real-usage.sh"; sourceTree = "<group>"; };
 		D20000012F30000100ABCDEF /* MakeItHome Test.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "MakeItHome Test.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -619,6 +622,8 @@
 				C20000122F20000100ABCDEF /* VirtualOverscreenStressTest.swift */,
 				C20000132F20000100ABCDEF /* AppExtensionStressTest.swift */,
 				C20000152F20000100ABCDEF /* RuntimeLifecycleStressTest.swift */,
+				C20000162F20000100ABCDEF /* RealUsageStressTest.swift */,
+				C20000172F20000100ABCDEF /* run-real-usage.sh */,
 				C20000142F20000100ABCDEF /* README.md */,
 			);
 			path = StressTests;
@@ -884,6 +889,7 @@
 				C20000022F20000100ABCDEF /* VirtualOverscreenStressTest.swift in Sources */,
 				C20000032F20000100ABCDEF /* AppExtensionStressTest.swift in Sources */,
 				C20000042F20000100ABCDEF /* RuntimeLifecycleStressTest.swift in Sources */,
+				C20000052F20000100ABCDEF /* RealUsageStressTest.swift in Sources */,
 				8B835449301819A300CDB560 /* AVScreenRecorder.swift in Sources */,
 				8B83544A301819A300CDB560 /* TestView.swift in Sources */,
 				8B83544B301819A300CDB560 /* Extensions.swift in Sources */,
@@ -1229,6 +1235,7 @@
 				INFOPLIST_FILE = MakeItHome/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "MakeItHome Test";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_LSUIElement = NO;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

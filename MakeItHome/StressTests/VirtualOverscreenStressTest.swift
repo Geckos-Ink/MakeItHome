@@ -42,6 +42,10 @@ final class VirtualOverscreenStressCoordinator: ObservableObject {
 
     func start() {
         guard timer == nil else { return }
+        writeStressResult(
+            "[VirtualStress] STARTED stageSeconds=\(configuration.stageSeconds)",
+            configuration: configuration
+        )
         configureStage(maxApps: 5)
         status = "Running"
 
@@ -95,7 +99,9 @@ final class VirtualOverscreenStressCoordinator: ObservableObject {
             status = "Completed"
             let expected = maxApps + Int(ceil(Double(maxApps) * 0.5))
             let failed = apps.count != expected || focusedImage == nil
-            printSummary(failed: failed)
+            let summary = summary(failed: failed)
+            print(summary)
+            writeStressResult(summary, configuration: configuration)
             finishStressRun(autoExit: configuration.autoExit, failed: failed)
         }
     }
@@ -174,8 +180,10 @@ final class VirtualOverscreenStressCoordinator: ObservableObject {
         peakThreads = max(peakThreads, sample.threadCount)
     }
 
-    private func printSummary(failed: Bool) {
-        print("[VirtualStress] \(failed ? "FAILED" : "COMPLETED") frames=\(frameRevision) selections=\(selectionCount) peakMemoryMB=\(String(format: "%.1f", peakResidentMB)) peakThreads=\(peakThreads)")
+    private func summary(failed: Bool) -> String {
+        "[VirtualStress] \(failed ? "FAILED" : "COMPLETED") frames=\(frameRevision) " +
+            "selections=\(selectionCount) peakMemoryMB=\(String(format: "%.1f", peakResidentMB)) " +
+            "peakThreads=\(peakThreads)"
     }
 }
 

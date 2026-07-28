@@ -84,6 +84,10 @@ final class RuntimeLifecycleStressCoordinator: ObservableObject {
 
     func start() {
         guard runTask == nil else { return }
+        writeStressResult(
+            "[RuntimeLifecycleStress] STARTED duration=\(configuration.durationSeconds)",
+            configuration: configuration
+        )
         runTask = Task { [weak self] in
             await self?.run()
         }
@@ -340,14 +344,15 @@ final class RuntimeLifecycleStressCoordinator: ObservableObject {
             recorderTransitions < 3 || sceneSleepTransitions == 0 || sceneRestartTransitions == 0 ||
             textWrites == 0 || imageWrites == 0 || videoWrites == 0
         status = failed ? "Failed" : "Completed"
-        print(
+        let summary =
             "[RuntimeLifecycleStress] \(failed ? "FAILED" : "COMPLETED") recorderTransitions=\(recorderTransitions) " +
             "sceneSleeps=\(sceneSleepTransitions) sceneRestarts=\(sceneRestartTransitions) clipboardWrites=\(clipboardWrites) " +
             "text=\(textWrites) images=\(imageWrites) videos=\(videoWrites) peakMemoryMB=\(String(format: "%.1f", peakResidentMB)) peakThreads=\(peakThreads)"
-        )
+        print(summary)
         if let lastError {
             print("[RuntimeLifecycleStress] firstError=\(lastError)")
         }
+        writeStressResult(summary, configuration: configuration)
         finishStressRun(autoExit: configuration.autoExit, failed: failed)
     }
 
