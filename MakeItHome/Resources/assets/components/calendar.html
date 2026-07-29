@@ -2,105 +2,144 @@
 <link rel="stylesheet" href="jqueries/jquery.datetimepicker.min.css">
 
 <style>
-    .body {
-        font-family: 'Arial', sans-serif;
-        background-color: rgba(64,64,64, 0.4);
-        color: white;
+    #app-calendar .body {
+        box-sizing: border-box;
         display: flex;
-        justify-content: center;
-        align-items: center;
-        height: 100%;
-        width: 100%;
-        margin: 0;
-    }
-
-    .calendar {
-        /*width: 80%;
-        max-width: 600px;*/
-        border: 1px solid rgba(100,100,100, 0.4);
-
-        border-radius: 5px;
-    }
-
-    .month-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 5px;
-        background-color: rgba(80,80,80, 0.4);
-    }
-
-    .month-year {
-        font-size: 20px;
-    }
-
-    .navigation .nav-button {
-        background-color: #555;
-        border: none;
-        color: white;
-        padding: 5px 10px;
-        cursor: pointer;
-    }
-
-    .navigation .nav-button:focus {
-        outline: none;
-    }
-
-    :root {
-        --height-fraction: 0px; /* Set the height you want to match here */
-        --width-fraction: 0px
-    }
-
-    .weekdays {
-        display: grid;
-        grid-template-columns: repeat(7, var(--width-fraction));
-        background-color: #555;
-        padding: 5px 0;
-        text-align: center;
-        font-size: 12px;
-    }
-
-    .days-grid {
-        display: grid;
-        grid-template-columns: repeat(7, var(--width-fraction));
-        grid-template-rows: repeat(5, calc(var(--height-fraction) - 13px));
-    }
-
-    .day {
-        padding: 5px;
-        border-bottom: 1px solid #555;
-        border-right: 1px solid #555;
-        text-align: right;
+        height: 95%;
+        min-height: 0;
         position: relative;
+        padding: 0;
+        width: 100%;
+        color: #f7f8fc;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
     }
 
-    .day:last-child {
+    #app-calendar .calendar {
+        display: flex;
+        flex: 1;
+        height: 100%;
+        min-width: 0;
+        position: relative;
+        flex-direction: column;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 16px;
+        background: rgba(24, 28, 38, 0.72);
+        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+        -webkit-backdrop-filter: blur(18px) saturate(1.15);
+        backdrop-filter: blur(18px) saturate(1.15);
+    }
+
+    #app-calendar .month-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 14px;
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.04));
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    #app-calendar .month-year {
+        font-size: 18px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+    }
+
+    #app-calendar .navigation {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    #app-calendar .navigation .nav-button {
+        min-height: 30px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.1);
+        color: inherit;
+        padding: 4px 9px;
+        cursor: pointer;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        transition: background-color 150ms ease, border-color 150ms ease, transform 150ms ease;
+    }
+
+    #app-calendar .navigation .nav-button:hover {
+        border-color: rgba(255, 255, 255, 0.3);
+        background: rgba(255, 255, 255, 0.2);
+        transform: translateY(-1px);
+    }
+
+    #app-calendar .navigation .nav-button:focus-visible {
+        outline: 2px solid rgba(129, 182, 255, 0.95);
+        outline-offset: 2px;
+    }
+
+    #app-calendar .weekdays,
+    #app-calendar .days-grid {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+    }
+
+    #app-calendar .weekdays {
+        padding: 9px 0 8px;
+        background: rgba(6, 9, 16, 0.18);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        color: rgba(247, 248, 252, 0.65);
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.07em;
+        text-align: center;
+        text-transform: uppercase;
+    }
+
+    #app-calendar .weekdays div:nth-last-child(-n + 2) {
+        color: rgba(177, 207, 255, 0.9);
+    }
+
+    #app-calendar .days-grid {
+        flex: 1;
+        grid-template-rows: repeat(var(--calendar-weeks, 6), minmax(0, 1fr));
+        background: rgba(255, 255, 255, 0.04);
+        transition: grid-template-rows 280ms ease;
+    }
+
+    #app-calendar .day {
+        position: relative;
+        min-width: 0;
+        min-height: 0;
+        border-right: 1px solid rgba(255, 255, 255, 0.08);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.025);
+        transition: background-color 150ms ease;
+    }
+
+    #app-calendar .day:nth-child(7n) {
         border-right: none;
     }
 
-    .day.other-month {
-        background-color: rgba(29, 29, 29, 0.75);
+    #app-calendar .day.last-row {
+        border-bottom: none;
     }
 
-    .day:not(.other-month):hover {
-        background-color: rgba(72, 72, 72, 0.5);
+    #app-calendar .day.is-hidden {
+        display: none;
+    }
+
+    #app-calendar .day.other-month {
+        background: rgba(0, 0, 0, 0.12);
+        color: rgba(247, 248, 252, 0.38);
+    }
+
+    #app-calendar .day:not(.other-month):hover {
+        background: rgba(132, 179, 255, 0.14);
         cursor: pointer;
     }
 
-    /*.day::after {
-        content: '';
-        display: block;
-        margin-top: 100%;
-    }*/
-
-    .day.today {
-        background-color: red;
-        border-radius: 50%;
-        color: white;
-    }
-
     /* Special days with events */
-    .day.special-day::before {
+    #app-calendar .day.special-day::before {
         content: attr(data-event);
         display: block;
         position: absolute;
@@ -117,42 +156,285 @@
         max-width: calc(100% - 10px);
     }
 
-    .dayNumber {
+    #app-calendar .dayNumber {
         position: absolute;
-        top: 5px;
-        right: 5px;
+        z-index: 1;
+        top: 7px;
+        right: 7px;
+        min-width: 20px;
+        min-height: 20px;
+        box-sizing: border-box;
+        padding: 2px 5px;
+        border-radius: 999px;
+        color: inherit;
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+        font-weight: 600;
+        line-height: 16px;
+        text-align: center;
     }
 
-    .dayNumber.isToday {
-        background-color: rgba(255,0,0,1);
-        border-radius: 10px;
-
-        padding:5px;
+    #app-calendar .dayNumber.isToday {
+        background: linear-gradient(135deg, #ff6b73, #ed3e54);
+        box-shadow: 0 3px 10px rgba(237, 62, 84, 0.42);
         font-weight: bold;
     }
 
-    .dayContent {
+    #app-calendar .dayContent {
         position: absolute;
-        top: 0px;
-        left: 0px;
-        right: 0px;
-        bottom: 0px;
-
+        inset: 0;
+        box-sizing: border-box;
+        padding: 3px 0 0 3px;
         text-align: left;
-
-        overflow-y:scroll;
+        overflow: hidden;
     }
 
-    .event {
-        display:block;
-        width:fit-content;
-
-        background-color: rgba(64,64,64,0.6);
-        border-radius: 5px;
+    #app-calendar .event {
+        display: block;
+        width: calc(100% - 3px);
+        box-sizing: border-box;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        border-radius: 6px;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.16);
+        color: rgba(8, 12, 20, 0.88);
+        cursor: pointer;
         font-size: 12px;
-        padding: 3px;
-        margin: 2px;
+        font-weight: 600;
+        line-height: 1.25;
+        padding: 3px 5px;
+        margin: 0 0 3px;
         text-align: left;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    #app-calendar .day-agenda {
+        position: absolute;
+        z-index: 20;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 14px;
+        box-sizing: border-box;
+        background: rgba(5, 8, 14, 0.58);
+        -webkit-backdrop-filter: blur(8px);
+        backdrop-filter: blur(8px);
+    }
+
+    #app-calendar .day-agenda.is-visible {
+        display: flex;
+    }
+
+    #app-calendar .day-agenda-panel {
+        display: flex;
+        width: min(620px, 100%);
+        max-height: 100%;
+        flex-direction: column;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 16px;
+        background: rgba(30, 35, 47, 0.96);
+        box-shadow: 0 24px 55px rgba(0, 0, 0, 0.38);
+    }
+
+    #app-calendar .day-agenda-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 12px 14px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        font-size: 15px;
+        font-weight: 700;
+    }
+
+    #app-calendar .day-agenda-close {
+        width: 28px;
+        height: 28px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.1);
+        color: inherit;
+        cursor: pointer;
+        font: inherit;
+        font-size: 20px;
+        line-height: 1;
+    }
+
+    #app-calendar .day-agenda-scroller {
+        overflow-y: auto;
+    }
+
+    #app-calendar .day-agenda-all-day {
+        display: none;
+        grid-template-columns: 58px minmax(0, 1fr);
+        gap: 6px;
+        padding: 8px 8px 6px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    #app-calendar .day-agenda-all-day.is-visible {
+        display: grid;
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: rgba(30, 35, 47, 0.98);
+    }
+
+    #app-calendar .day-agenda-all-day-label {
+        padding: 4px 8px 0 0;
+        color: rgba(247, 248, 252, 0.52);
+        font-size: 11px;
+        font-weight: 700;
+        text-align: right;
+        text-transform: uppercase;
+    }
+
+    #app-calendar .day-agenda-all-day-events {
+        display: grid;
+        gap: 4px;
+        min-width: 0;
+    }
+
+    #app-calendar .day-agenda-timeline {
+        display: grid;
+        grid-template-columns: 58px minmax(0, 1fr);
+        grid-template-rows: repeat(48, 36px);
+        position: relative;
+    }
+
+    #app-calendar .day-agenda-time,
+    #app-calendar .day-agenda-slot {
+        min-height: 0;
+        box-sizing: border-box;
+    }
+
+    #app-calendar .day-agenda-time {
+        padding: 6px 8px 0 0;
+        color: rgba(247, 248, 252, 0.52);
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+    }
+
+    #app-calendar .day-agenda-slot {
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    #app-calendar .day-agenda-event {
+        z-index: 1;
+        display: flex;
+        min-height: 0;
+        align-items: flex-start;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        border-radius: 7px;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+        color: rgba(8, 12, 20, 0.9);
+        cursor: pointer;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.25;
+        padding: 5px 7px;
+        text-align: left;
+    }
+
+    #app-calendar .day-agenda-all-day-event {
+        min-height: 28px;
+        justify-content: flex-start;
+    }
+
+    #app-calendar .event-popover {
+        position: absolute;
+        z-index: 40;
+        inset: 0;
+        display: none;
+        box-sizing: border-box;
+        pointer-events: none;
+    }
+
+    #app-calendar .event-popover.is-visible {
+        display: block;
+        pointer-events: auto;
+    }
+
+    #app-calendar .event-popover-card {
+        position: absolute;
+        display: flex;
+        width: min(400px, calc(100% - 24px));
+        max-height: calc(100% - 24px);
+        flex-direction: column;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 14px;
+        background: rgba(35, 40, 53, 0.98);
+        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.42);
+        color: #d9dce4;
+    }
+
+    #app-calendar .event-popover-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 12px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        font-size: 13px;
+        font-weight: 700;
+    }
+
+    #app-calendar .event-popover-close {
+        width: 26px;
+        height: 26px;
+        flex: 0 0 auto;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.1);
+        color: inherit;
+        cursor: pointer;
+        font: inherit;
+        font-size: 18px;
+        line-height: 1;
+    }
+
+    #app-calendar .event-popover-content {
+        overflow: auto;
+        padding: 6px;
+    }
+
+    #app-calendar .event-popover-table {
+        width: 100%;
+        border-collapse: collapse;
+        table-layout: fixed;
+        font-size: 12px;
+    }
+
+    #app-calendar .event-popover-table td {
+        color: #d9dce4 !important;
+        overflow-wrap: anywhere;
+        padding: 4px;
+        vertical-align: top;
+    }
+
+    #app-calendar .event-popover-table td:first-child {
+        width: 76px;
+        color: rgba(247, 248, 252, 0.64);
+        font-weight: 700;
+        text-align: right;
+    }
+
+    #app-calendar .event-popover-table #popoverEventTitle {
+        color: #f7f8fc !important;
+        font-size: 14px;
+        font-weight: 700;
+    }
+
+    #app-calendar .event-popover-table a {
+        color: #c7d9ff !important;
+        text-decoration: underline;
     }
 
     /*
@@ -307,34 +589,6 @@
         padding-right: 10px;
     }
 
-    #calendarEventPopover .popover--bottom__content{
-        width: 400px;
-    }
-
-    #calendarEventPopover table {
-        color: white !important;
-        font-size: 12px;  
-        width: 400px;     
-        
-        margin: 5px;
-    }
-
-    #calendarEventPopover table td:nth-child(1){
-        width: 20%;
-        text-align: right;
-        font-weight: bold;
-        padding-right: 5px;
-    }
-
-    #calendarEventPopover table td:nth-child(2){
-        width: 80%;
-    }
-
-    #calendarEventPopover #popoverEventTitle {
-        font-size: 14px;
-        font-weight: bold;
-    }
-
     /*::-webkit-datetime-edit {
         border-radius: 5px;
         padding: 5px;
@@ -414,6 +668,30 @@
             <div class="day"></div>
             <div class="day"></div>
             <div class="day"></div>
+
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+            <div class="day"></div>
+        </div>
+    </div>
+
+    <div class="day-agenda" id="dayAgenda" aria-hidden="true">
+        <div class="day-agenda-panel" role="dialog" aria-modal="true" aria-labelledby="dayAgendaTitle">
+            <div class="day-agenda-header">
+                <span id="dayAgendaTitle"></span>
+                <button type="button" class="day-agenda-close" aria-label="Close" onclick="hideDayAgenda()">×</button>
+            </div>
+            <div class="day-agenda-scroller">
+                <div class="day-agenda-all-day" id="dayAgendaAllDay">
+                    <div class="day-agenda-all-day-label">All day</div>
+                    <div class="day-agenda-all-day-events" id="dayAgendaAllDayEvents"></div>
+                </div>
+                <div class="day-agenda-timeline" id="dayAgendaTimeline"></div>
+            </div>
         </div>
     </div>
 
@@ -475,9 +753,14 @@
         </ons-list>
     </ons-popover>
 
-    <ons-popover id="calendarEventPopover">        
-        <div style="padding: 5px; max-width: 400px; max-height: 200px; overflow-y: scroll;">
-            <table style="width: 100%; border-collapse: collapse;">
+    <div class="event-popover" id="calendarEventPopover" aria-hidden="true">
+        <section class="event-popover-card" role="dialog" aria-modal="true" aria-labelledby="calendarEventPopoverHeading" tabindex="-1">
+            <div class="event-popover-header">
+                <span id="calendarEventPopoverHeading">Appointment details</span>
+                <button type="button" class="event-popover-close" aria-label="Close" onclick="hideCalendarEventPopover()">×</button>
+            </div>
+            <div class="event-popover-content">
+            <table class="event-popover-table">
                 <tr>
                     <td>Title:</td>
                     <td id="popoverEventTitle">Event Title</td>
@@ -510,8 +793,9 @@
                     <td><a href="#" id="popoverURL">URL</a></td>
                 </tr>
             </table>
-        </div>
-    </ons-popover>
+            </div>
+        </section>
+    </div>
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 
@@ -625,13 +909,18 @@
             return $(".calendar .days-grid .day:eq("+n+")")
         }
 
-        const gridDays = 7*5
+        const daysPerWeek = 7
+        const maximumWeeksInGrid = 6
+        const maximumGridDays = daysPerWeek * maximumWeeksInGrid
+        let gridDays = maximumGridDays
+        let calendarWeeksInGrid = maximumWeeksInGrid
+        let dayHoverExpansionTimer = null
 
         function clearCalendar(){
             days = []
-            for(let i=0; i<gridDays; i++){
+            for(let i=0; i<maximumGridDays; i++){
                 let div = getDay(i);
-                div.removeClass("other-month")
+                div.removeClass("other-month is-hidden last-row")
             }
         }
 
@@ -651,7 +940,7 @@
 
         function generateDay(div, date){
             const now = new Date()
-            let isToday = (now.getDate()==date.getDate() && now.getMonth()==date.getMonth() && now.getFullYear() == now.getFullYear()) ? ' isToday' : ''
+            let isToday = (now.getDate() == date.getDate() && now.getMonth() == date.getMonth() && now.getFullYear() == date.getFullYear()) ? ' isToday' : ''
 
             let set = '<div class="dayNumber'+isToday+'">'+formatDateToCustomFormat(date, 'd')+'</div><div class="dayContent"></div>'
             div.html(set)            
@@ -668,71 +957,43 @@
         let days = []
 
         function generateMonth(year, month){
+            clearCalendarDayExpansion()
             clearCalendar()
 
-            let firstDay = new Date(year,month,1)
-            let iday = firstDay.getDay() - 1            
-
-            //let headerHeight = $(".month-header").height() + $(".weekdays").height()
+            const firstDay = new Date(year, month, 1)
+            // Date#getDay is Sunday-first. The UI is Monday-first, so move Sunday
+            // to the final column and shift every other weekday back one column.
+            const leadingDays = (firstDay.getDay() + daysPerWeek - 1) % daysPerWeek
+            const daysInMonth = new Date(year, month + 1, 0).getDate()
+            const weeksInGrid = Math.ceil((leadingDays + daysInMonth) / daysPerWeek)
+            calendarWeeksInGrid = weeksInGrid
+            gridDays = daysPerWeek * weeksInGrid
+            const gridStart = new Date(year, month, 1 - leadingDays)
 
             $(".calendar .month-year").html(monthsFull[firstDay.getMonth()] + " " + firstDay.getFullYear())
+            $(".calendar .days-grid").css("--calendar-weeks", weeksInGrid)
 
-            let lastDay = new Date(year, month+1, 0)
-            const totalDays = lastDay.getDate();         
+            for(let day = gridDays; day < maximumGridDays; day++)
+                getDay(day).addClass("is-hidden")
 
             firstDate = lastDate = null
 
-            let day = 0
+            for(let day = 0; day < gridDays; day++){
+                const div = getDay(day)
+                const date = new Date(gridStart)
+                date.setDate(gridStart.getDate() + day)
 
-            for(let i=0; i<=iday; i++){
-                let div = getDay(day)
-                div.addClass("other-month")
+                if(date.getMonth() != month)
+                    div.addClass("other-month")
+                if(day >= gridDays - daysPerWeek)
+                    div.addClass("last-row")
 
-                let date = new Date(firstDay);
-                days.push(date)
-                date.setDate(Math.abs(iday - day)*-1);
-
-                console.log("calendar other month", date, iday, day)
-
-                generateDay(div, date)
-
-                if(firstDate == null) firstDate = date                 
-
-                day++
-            }
-
-            //firstDateIndex = day == 0 ? 0 : (day * 2)-1
-
-            for(let d=0; d<totalDays; d++){
-                let div = getDay(day)
-
-                let date = new Date(firstDay);
-                date.setDate(firstDay.getDate()+d);
                 days.push(date)
                 generateDay(div, date)
 
-                if(firstDate == null) firstDate = date  
-                lastDate = date
-
-                day++
+                if(day == 0) firstDate = new Date(date)
+                if(day == gridDays - 1) lastDate = new Date(date)
             }
-
-            const nextMonth = new Date(year, month + 1, 1);
-            const curDay = day
-        
-            for(let i=day; day<gridDays; i++){
-                let div = getDay(day)
-                div.addClass("other-month")
-                
-                let date = new Date(nextMonth);
-                date.setDate(nextMonth.getDate()+(day-curDay));     
-                days.push(date)           
-                generateDay(div, date)
-
-                lastDate = date
-
-                day++
-            }            
         }
 
         let lastToday = null
@@ -779,18 +1040,151 @@
             retrieveMonth()
         }
 
-        function updateTableSize(){
-            // Get the root element (usually <html>)
-            const root = document.documentElement;
-            
-            let widthFraction = $("#app-calendar").width()/7
-            let heightFraction = $("#app-calendar").height()/5
+        let events = []
 
-            root.style.setProperty('--width-fraction', `${widthFraction}px`);
-            root.style.setProperty('--height-fraction', `${heightFraction}px`);
+        function clearCalendarDayExpansion(){
+            if(dayHoverExpansionTimer){
+                clearTimeout(dayHoverExpansionTimer)
+                dayHoverExpansionTimer = null
+            }
+
+            $(".calendar .days-grid").css("grid-template-rows", "")
         }
 
-        let events = []
+        function expandCalendarDay(dayElement){
+            const dayIndex = $(".calendar .days-grid .day").index(dayElement)
+            if(dayIndex < 0 || dayIndex >= gridDays)
+                return
+
+            const selectedRow = Math.floor(dayIndex / daysPerWeek)
+            const rowSizes = Array.from({ length: calendarWeeksInGrid }, (_, row) =>
+                `minmax(0, ${row == selectedRow ? 4 : 1}fr)`
+            ).join(" ")
+
+            $(".calendar .days-grid").css("grid-template-rows", rowSizes)
+        }
+
+        function scheduleCalendarDayExpansion(dayElement){
+            if($(dayElement).hasClass("is-hidden"))
+                return
+
+            if(dayHoverExpansionTimer)
+                clearTimeout(dayHoverExpansionTimer)
+
+            dayHoverExpansionTimer = setTimeout(()=>{
+                dayHoverExpansionTimer = null
+                if(dayElement.matches(":hover"))
+                    expandCalendarDay(dayElement)
+            }, 1000)
+        }
+
+        function sameCalendarDate(first, second){
+            return first.getFullYear() == second.getFullYear() &&
+                first.getMonth() == second.getMonth() &&
+                first.getDate() == second.getDate()
+        }
+
+        function calendarEventMinutes(time){
+            const [hour, minute] = String(time || "00:00").split(":").map(Number)
+            if(!Number.isFinite(hour) || !Number.isFinite(minute))
+                return 0
+
+            return Math.max(0, Math.min(24 * 60, hour * 60 + minute))
+        }
+
+        const dayAgenda = document.getElementById("dayAgenda")
+        const dayAgendaTimeline = document.getElementById("dayAgendaTimeline")
+        const dayAgendaAllDay = document.getElementById("dayAgendaAllDay")
+        const dayAgendaAllDayEvents = document.getElementById("dayAgendaAllDayEvents")
+
+        function eventsForCalendarDay(date){
+            return Object.values(events)
+                .filter((event)=> event?.day && sameCalendarDate(new Date(event.day), date))
+                .sort((first, second)=> calendarEventMinutes(first.startTime) - calendarEventMinutes(second.startTime))
+        }
+
+        function isAllDayCalendarEvent(event){
+            return event?.allDay === true
+        }
+
+        function createAgendaAppointment(event, className){
+            const appointment = document.createElement("button")
+
+            appointment.type = "button"
+            appointment.className = className
+            appointment.style.backgroundColor = `rgba(${calendarsList[event.calendar]?.rgbColor || "128, 158, 220"}, 1)`
+            appointment.textContent = isAllDayCalendarEvent(event)
+                ? (event.title || "")
+                : `${event.startTime || ""} ${event.title || ""}`.trim()
+            appointment.addEventListener("click", (clickEvent)=>{
+                clickEvent.stopPropagation()
+                showCalendarEventPopover(event.strId, clickEvent)
+            })
+
+            return appointment
+        }
+
+        function renderDayAgenda(date){
+            const selectedDay = new Date(date)
+            const timeline = document.createDocumentFragment()
+
+            for(let slot = 0; slot < 48; slot++){
+                const totalMinutes = slot * 30
+                const time = document.createElement("div")
+                time.className = "day-agenda-time"
+                time.textContent = `${String(Math.floor(totalMinutes / 60)).padStart(2, "0")}:${String(totalMinutes % 60).padStart(2, "0")}`
+
+                const divider = document.createElement("div")
+                divider.className = "day-agenda-slot"
+
+                timeline.append(time, divider)
+            }
+
+            const dayEvents = eventsForCalendarDay(selectedDay)
+            const allDayEvents = dayEvents.filter(isAllDayCalendarEvent)
+            const timedEvents = dayEvents.filter((event)=> !isAllDayCalendarEvent(event))
+            const allDayAppointments = document.createDocumentFragment()
+
+            for(const event of allDayEvents)
+                allDayAppointments.append(createAgendaAppointment(event, "day-agenda-event day-agenda-all-day-event"))
+
+            dayAgendaAllDayEvents.replaceChildren(allDayAppointments)
+            $(dayAgendaAllDay).toggleClass("is-visible", allDayEvents.length > 0)
+
+            for(const event of timedEvents){
+                const startMinute = calendarEventMinutes(event.startTime)
+                const endMinute = calendarEventMinutes(event.endTime)
+                const duration = Math.max(30, endMinute - startMinute)
+                const startSlot = Math.min(47, Math.floor(startMinute / 30))
+                const durationSlots = Math.max(1, Math.ceil(Math.min(duration, 24 * 60 - startMinute) / 30))
+                const appointment = createAgendaAppointment(event, "day-agenda-event")
+                appointment.style.gridColumn = "2"
+                appointment.style.gridRow = `${startSlot + 1} / span ${durationSlots}`
+
+                timeline.append(appointment)
+            }
+
+            dayAgendaTimeline.replaceChildren(timeline)
+            $("#dayAgendaTitle").text(selectedDay.toLocaleDateString(undefined, {
+                weekday: "long",
+                month: "long",
+                day: "numeric",
+                year: "numeric"
+            }))
+
+            const firstEventSlot = timedEvents.length ? Math.floor(calendarEventMinutes(timedEvents[0].startTime) / 30) : 16
+            $(dayAgenda).find(".day-agenda-scroller").scrollTop(Math.max(0, firstEventSlot * 36 - 36))
+        }
+
+        function showDayAgenda(date){
+            renderDayAgenda(date)
+            $(dayAgenda).addClass("is-visible").attr("aria-hidden", "false")
+        }
+
+        function hideDayAgenda(){
+            $(dayAgenda).removeClass("is-visible").attr("aria-hidden", "true")
+        }
+
         function retrieveMonth(){
             $(".calendar .dayContent").each(function(){
                 $(this).html('')
@@ -812,7 +1206,6 @@
 
         function openApp_calendar(){
             setTimeout(()=>{
-                updateTableSize()
                 retrieveMonth()
             },100)
         }
@@ -822,17 +1215,11 @@
         }, 60*1000)
 
         function getDateIndex(date){
-            const currentDate = new Date(firstDate);
-
-            for(let d=0; d<gridDays; d++){
-                if(date.getFullYear() == currentDate.getFullYear() && date.getMonth() == currentDate.getMonth() && date.getDate() == currentDate.getDate())
-                    return d
-
-                // Add 24 hours to the current date
-                currentDate.setHours(currentDate.getHours() + 24);
-            }
-
-            return -1
+            return days.findIndex((currentDate) =>
+                date.getFullYear() == currentDate.getFullYear() &&
+                date.getMonth() == currentDate.getMonth() &&
+                date.getDate() == currentDate.getDate()
+            )
         }
              
         function appReceive_calendar(obj){
@@ -848,8 +1235,22 @@
                 let calendar = calendarsList[obj.calendar]
                 let calendarColor = Math.floor(calendar.color[0]*255)+','+Math.floor(calendar.color[1]*255)+','+Math.floor(calendar.color[2]*255)                                
 
-                let add = '<div class="event" style="background-color:rgba('+calendarColor+',1)!important;" onclick="showCalendarEventPopover(\''+obj.strId+'\', event)" oncontextmenu="return calendarEditEvent(\''+obj.strId+'\', event)">'+obj.title+'</div>'
-                content.html(content.html()+add)
+                const appointment = document.createElement("button")
+                appointment.type = "button"
+                appointment.className = "event"
+                appointment.classList.toggle("event-all-day", isAllDayCalendarEvent(obj))
+                appointment.style.backgroundColor = `rgba(${calendarColor}, 1)`
+                appointment.textContent = obj.title || ""
+                appointment.addEventListener("click", (clickEvent)=>{
+                    clickEvent.stopPropagation()
+                    showCalendarEventPopover(obj.strId, clickEvent)
+                })
+                appointment.addEventListener("contextmenu", (contextEvent)=>{
+                    contextEvent.preventDefault()
+                    contextEvent.stopPropagation()
+                    calendarEditEvent(obj.strId, contextEvent)
+                })
+                content.append(appointment)
 
                 events[obj.strId] = obj
             }
@@ -894,62 +1295,84 @@
         /// Show event
         ///
         const calendarEventPopover = document.getElementById('calendarEventPopover')
+        const calendarEventPopoverCard = calendarEventPopover.querySelector('.event-popover-card')
+
+        function positionCalendarEventPopover(target){
+            const overlayRect = calendarEventPopover.getBoundingClientRect()
+            const targetRect = target.getBoundingClientRect()
+            const popoverRect = calendarEventPopoverCard.getBoundingClientRect()
+            const margin = 12
+            const maxLeft = Math.max(margin, overlayRect.width - popoverRect.width - margin)
+            const maxTop = Math.max(margin, overlayRect.height - popoverRect.height - margin)
+            const targetCenterX = targetRect.left - overlayRect.left + targetRect.width / 2
+            const preferredLeft = targetCenterX - popoverRect.width / 2
+            const belowTop = targetRect.bottom - overlayRect.top + 8
+            const aboveTop = targetRect.top - overlayRect.top - popoverRect.height - 8
+            const spaceBelow = overlayRect.bottom - targetRect.bottom
+            const spaceAbove = targetRect.top - overlayRect.top
+
+            let top = belowTop
+            if(spaceBelow < popoverRect.height + 8 && spaceAbove >= popoverRect.height + 8)
+                top = aboveTop
+            else if(spaceBelow < popoverRect.height + 8)
+                top = targetRect.top - overlayRect.top + targetRect.height / 2 - popoverRect.height / 2
+
+            calendarEventPopoverCard.style.left = `${Math.max(margin, Math.min(maxLeft, preferredLeft))}px`
+            calendarEventPopoverCard.style.top = `${Math.max(margin, Math.min(maxTop, top))}px`
+        }
+
         var showCalendarEventPopover = function(event, e) {     
             if(e) e.stopPropagation()
             
             event = events[event]
+            const trigger = e?.currentTarget
+            if(!event || !trigger)
+                return
+
             console.log('showCalendarEventPopover', event)
 
-            $(calendarEventPopover).show()
             showingCalendarPopOver = true
+            $(calendarEventPopover).addClass('is-visible').attr('aria-hidden', 'false')
 
-            $("#popoverEventTitle").html(event.title)
+            $("#popoverEventTitle").text(event.title || '')
 
             let calendar = calendarsList[event.calendar]
-            $("#popoverCalendarName").html(event.calendar)
-            $("#popoverCalendarColor").css('background-color', 'rgb('+calendar.rgbColor+')')
+            $("#popoverCalendarName").text(event.calendar || '')
+            $("#popoverCalendarColor").css('background-color', 'rgb('+(calendar?.rgbColor || '128, 158, 220')+')')
 
-            $("#popoverNotes").html(event.notes)
-            $("#popoverLocation").html(event.location)
+            $("#popoverNotes").text(event.notes || '')
+            $("#popoverLocation").text(event.location || '')
             
-            event.url = event.url || ''
-            $("#popoverURL").html(event.url)
-            $("#popoverURL").attr('src', event.url)
+            const eventURL = event.url ? String(event.url) : ''
+            $("#popoverURL").text(eventURL || '—')
+            $("#popoverURL").attr('href', eventURL || '#')
 
-            let date = event.day
+            let date = new Date(event.day)
 
-            date.setHours(event.startTime.split(':')[0])
-            date.setMinutes(event.startTime.split(':')[1])
-            $("#popoverStartDate").html(setCurrentDateTimeFormat(date))
+            if(isAllDayCalendarEvent(event)){
+                const allDayDate = setCurrentDateTimeFormat(date)
+                $("#popoverStartDate").text(`All day — ${allDayDate}`)
+                $("#popoverEndDate").text('All day')
+            }
+            else {
+                date.setHours(event.startTime.split(':')[0])
+                date.setMinutes(event.startTime.split(':')[1])
+                $("#popoverStartDate").text(setCurrentDateTimeFormat(date))
 
-            date.setHours(event.endTime.split(':')[0])
-            date.setMinutes(event.endTime.split(':')[1])
-            $("#popoverEndDate").html(setCurrentDateTimeFormat(date))
+                date.setHours(event.endTime.split(':')[0])
+                date.setMinutes(event.endTime.split(':')[1])
+                $("#popoverEndDate").text(setCurrentDateTimeFormat(date))
+            }
 
-            calendarEventPopover.show(e.target);   
-            
-            let $target = $(e.target)
-            let $popover = $(calendarEventPopover).find('.popover')
-
-            setTimeout(()=>{
-                let goToLeft = $target.offset().left - $popover.width()/2 + $target.width()/2
-                goToLeft -= $(".left").width()
-                if(goToLeft < 0) goToLeft = 0
-
-                console.log("popover correction", $popover, goToLeft)
-
-                $popover.animate({'left': goToLeft}, 100)
-                //$popover.css('left', goToLeft+'px')
-            }, 300)            
+            requestAnimationFrame(()=>{
+                positionCalendarEventPopover(trigger)
+                calendarEventPopoverCard.focus()
+            })
         };
 
         var hideCalendarEventPopover = function() {            
-            calendarEventPopover.hide();
             showingCalendarPopOver = false
-
-            setTimeout(()=>{
-                $(calendarEventPopover).hide()
-            }, 500)
+            $(calendarEventPopover).removeClass('is-visible').attr('aria-hidden', 'true')
         };
 
         ///
@@ -1121,7 +1544,6 @@
         
         let $selectCalendarsPopover = $("#selectCalendarsPopover .popover")
         let $newEventForm = $("#newEvent form")
-        let $calendarEventPopover = $("#calendarEventPopover .popover")
 
         $('body').on('click', (e)=>{
             let $target = $(e.target)
@@ -1137,7 +1559,7 @@
                 hideCalendarsPopover()
             }
 
-            if(!$.contains($calendarEventPopover[0], $target[0]) && !$target.is($calendarEventPopover[0])){        
+            if(calendarEventPopover.classList.contains('is-visible') && !calendarEventPopoverCard.contains(e.target)){
                 hideCalendarEventPopover()
             }
         })
@@ -1171,23 +1593,47 @@
             }, 10)                         
         })
 
-        let $days = $('.day')
-        function setCurrentMonthEvents(){
-            $days.on( "contextmenu", function(e) {
-                console.log("calendar .day contextmenu")
+        function setCalendarDayInteractions(){
+            const $calendarDays = $(".calendar .days-grid .day")
 
-                $t = $(e.target)
-                while($t && !$t.is('.day'))
-                    $t = $t.parent()
+            $calendarDays.off(".calendarDay")
+                .on("mouseenter.calendarDay", function(){
+                    scheduleCalendarDayExpansion(this)
+                })
+                .on("mouseleave.calendarDay", ()=>{
+                    clearCalendarDayExpansion()
+                })
+                .on("click.calendarDay", function(clickEvent){
+                    if($(clickEvent.target).closest(".event").length)
+                        return
 
-                let iday = $days.index($t[0])               
-                let selDay = days[iday]
-                showNewEvent(null, selDay)
-            });
+                    const dayIndex = $calendarDays.index(this)
+                    const selectedDay = days[dayIndex]
+                    if(selectedDay)
+                        showDayAgenda(selectedDay)
+                })
+                .on("contextmenu.calendarDay", function(contextEvent){
+                    contextEvent.preventDefault()
+
+                    const dayIndex = $calendarDays.index(this)
+                    const selectedDay = days[dayIndex]
+                    if(selectedDay)
+                        showNewEvent(null, selectedDay)
+                })
         }
 
+        $(dayAgenda).on("click", function(clickEvent){
+            if(clickEvent.target === dayAgenda)
+                hideDayAgenda()
+        })
+
+        $(document).off("keydown.calendarDayAgenda").on("keydown.calendarDayAgenda", (keyEvent)=>{
+            if(keyEvent.key == "Escape")
+                hideDayAgenda()
+        })
+
         setTimeout(()=>{
-            setCurrentMonthEvents()
+            setCalendarDayInteractions()
         }, 100)
 
         const calendarColorCanvasCtx = calendarColorCanvas.getContext('2d');

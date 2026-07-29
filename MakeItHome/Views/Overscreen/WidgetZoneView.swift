@@ -15,6 +15,128 @@
 import SwiftUI
 import WebKit
 import Cocoa
+import ImageIO
+
+/// Bounds the image data handed to the Widgets Zone without changing the image
+/// retained by `Clipboard.Element` for pasteboard round-trips. WebKit decodes
+/// every data URL in the Clipboard grid, so a large source image is needlessly
+/// expensive even though the preview is rendered at card size.
+private enum ClipboardPreviewImage {
+    private static let maximumSourceBase64Characters = 2_000_000
+    private static let maximumEncodedBytes = 128 * 1024
+    private static let maximumPixelDimension = 160
+
+    static func boundedBase64(_ encodedImage: String) -> String? {
+        let payload: Substring
+        if let separator = encodedImage.firstIndex(of: ",") {
+            payload = encodedImage[encodedImage.index(after: separator)...]
+        } else {
+            payload = encodedImage[...]
+        }
+
+        // Refuse an unexpectedly huge data URL before allocating its decoded
+        // representation. This is a preview-only path; the original pasteboard
+        // bytes remain available in the native clipboard history.
+        guard payload.utf8.count <= maximumSourceBase64Characters,
+              let sourceData = Data(base64Encoded: String(payload)),
+              let source = CGImageSourceCreateWithData(sourceData as CFData, nil) else {
+            return nil
+        }
+
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        let width = (properties?[kCGImagePropertyPixelWidth] as? NSNumber)?.intValue ?? 0
+        let height = (properties?[kCGImagePropertyPixelHeight] as? NSNumber)?.intValue ?? 0
+
+        // Avoid re-encoding the normal clipboard thumbnail path. It is already
+        // within the browser budget and is frequently re-sent after navigation.
+        if sourceData.count <= maximumEncodedBytes,
+           width <= maximumPixelDimension,
+           height <= maximumPixelDimension {
+            return String(payload)
+        }
+
+        let options: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maximumPixelDimension
+        ]
+
+        guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+            return nil
+        }
+
+        let preview = NSBitmapImageRep(cgImage: thumbnail)
+        guard let data = preview.representation(using: .png, properties: [:]),
+              data.count <= maximumEncodedBytes else {
+            return nil
+        }
+
+        return data.base64EncodedString()
+    }
+}
+
+private enum WidgetZoneDefaultWidgetSettings {
+    private struct Definition {
+        let setting: String
+        let defaultsKey: String
+        let defaultValue: Bool
+    }
+
+    private static let definitions = [
+        Definition(
+            setting: "widgetClipboardEnabled",
+            defaultsKey: "WidgetZoneDefaultWidgetClipboardEnabled",
+            defaultValue: true
+        ),
+        Definition(
+            setting: "widgetNotesEnabled",
+            defaultsKey: "WidgetZoneDefaultWidgetNotesEnabled",
+            defaultValue: false
+        ),
+        Definition(
+            setting: "widgetTasksEnabled",
+            defaultsKey: "WidgetZoneDefaultWidgetTasksEnabled",
+            defaultValue: false
+        ),
+        Definition(
+            setting: "widgetCalendarEnabled",
+            defaultsKey: "WidgetZoneDefaultWidgetCalendarEnabled",
+            defaultValue: true
+        )
+    ]
+
+    static func value(for setting: String) -> Bool? {
+        guard let definition = definitions.first(where: { $0.setting == setting }) else {
+            return nil
+        }
+
+        let defaults = UserDefaults.standard
+        guard defaults.object(forKey: definition.defaultsKey) != nil else {
+            return definition.defaultValue
+        }
+
+        return defaults.bool(forKey: definition.defaultsKey)
+    }
+
+    @discardableResult
+    static func set(_ value: Bool, for setting: String) -> Bool? {
+        guard let definition = definitions.first(where: { $0.setting == setting }) else {
+            return nil
+        }
+
+        UserDefaults.standard.set(value, forKey: definition.defaultsKey)
+        return value
+    }
+
+    static var persistedValues: [(setting: String, value: Bool)] {
+        definitions.compactMap { definition in
+            value(for: definition.setting).map {
+                (setting: definition.setting, value: $0)
+            }
+        }
+    }
+}
 
 struct WidgetZoneView: View {
     @State private var isDropTargeted = false
@@ -318,10 +440,10 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
             case "enableClipboardCapture":
                 Static.EnableClipboardCapture = json.valBool!
                 settingReply.valBool = Static.EnableClipboardCapture
-            case .none:
-                break
-            case .some(_):
-                break
+            default:
+                if let setting = json.setting, let value = json.valBool {
+                    settingReply.valBool = WidgetZoneDefaultWidgetSettings.set(value, for: setting)
+                }
             }
 
             if settingReply.valBool != nil {
@@ -408,7 +530,10 @@ public class TopWebViewCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate
     }
 
     public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-        (webView as? TopWKWV)?.detectPageMessageReceiver()
+        guard let topWebView = webView as? TopWKWV else { return }
+        topWebView.detectPageMessageReceiver()
+        topWebView.sendCurrentSettings()
+        Static.clipboard?.sendHistorySnapshot()
     }
 
 
@@ -963,7 +1088,18 @@ public class TopWKWV : WKWebView, NSDraggingSource{
     private var pageCanReceiveMessages = false
     private var pageMessageDeliveryInFlight = false
     private var pageMessageGeneration = 0
-    private var pendingPageMessages: [Any] = []
+    private var pageMessageDeliveryToken: UInt64 = 0
+    private var pageMessageSequence: UInt64 = 0
+
+    private struct QueuedPageMessage {
+        let sequence: UInt64
+        let payload: Any
+    }
+
+    // Clipboard traffic is batched before it reaches this queue. The fixed
+    // capacity is a final safety net for a terminated or repeatedly navigating
+    // WebContent process so native memory cannot grow without bound.
+    private var pendingPageMessages = BoundedFIFOQueue<QueuedPageMessage>(capacity: 128)
 
     public override func layout() {
         super.layout()
@@ -976,6 +1112,8 @@ public class TopWKWV : WKWebView, NSDraggingSource{
     func prepareForContentReload() {
         pageCanReceiveMessages = false
         pageMessageGeneration += 1
+        pageMessageDeliveryToken &+= 1
+        pageMessageDeliveryInFlight = false
 
         nativeWebViews.values.forEach {
             $0.isHidden = true
@@ -1005,10 +1143,29 @@ public class TopWKWV : WKWebView, NSDraggingSource{
         )
     }
 
+    func sendCurrentSettings() {
+        var settings = [
+            (setting: "detectDragAndDrop", value: Static.EnableDragDropDetection),
+            (setting: "enableClipboardCapture", value: Static.EnableClipboardCapture)
+        ]
+        settings.append(contentsOf: WidgetZoneDefaultWidgetSettings.persistedValues)
+
+        for setting in settings {
+            var jsMessage = JSMessage()
+            jsMessage.type = "setSetting"
+            jsMessage.setting = setting.setting
+            jsMessage.valBool = setting.value
+            sendMessage(obj: jsMessage)
+        }
+    }
+
     private func enqueuePageMessage(_ message: Any) {
         let enqueue = { [weak self] in
             guard let self else { return }
-            self.pendingPageMessages.append(message)
+            self.pageMessageSequence &+= 1
+            self.pendingPageMessages.append(
+                QueuedPageMessage(sequence: self.pageMessageSequence, payload: message)
+            )
             self.deliverNextPageMessage()
         }
 
@@ -1022,11 +1179,13 @@ public class TopWKWV : WKWebView, NSDraggingSource{
     private func deliverNextPageMessage() {
         guard pageCanReceiveMessages,
               !pageMessageDeliveryInFlight,
-              let message = pendingPageMessages.first else {
+              let queuedMessage = pendingPageMessages.first else {
             return
         }
 
         pageMessageDeliveryInFlight = true
+        pageMessageDeliveryToken &+= 1
+        let deliveryToken = pageMessageDeliveryToken
         let generation = pageMessageGeneration
         callAsyncJavaScript(
             """
@@ -1036,16 +1195,19 @@ public class TopWKWV : WKWebView, NSDraggingSource{
             }
             return false;
             """,
-            arguments: ["message": message],
+            arguments: ["message": queuedMessage.payload],
             in: nil,
             in: .page,
             completionHandler: { [weak self] result in
                 guard let self else { return }
+                guard deliveryToken == self.pageMessageDeliveryToken else {
+                    return
+                }
                 self.pageMessageDeliveryInFlight = false
 
                 if generation != self.pageMessageGeneration {
                     if case .success(let value) = result, value as? Bool == true {
-                        self.pendingPageMessages.removeFirst()
+                        self.removePendingPageMessage(ifSequenceMatches: queuedMessage.sequence)
                     }
                     self.deliverNextPageMessage()
                     return
@@ -1053,7 +1215,7 @@ public class TopWKWV : WKWebView, NSDraggingSource{
 
                 switch result {
                 case .success(let value) where value as? Bool == true:
-                    self.pendingPageMessages.removeFirst()
+                    self.removePendingPageMessage(ifSequenceMatches: queuedMessage.sequence)
                     self.deliverNextPageMessage()
                 case .success:
                     // Navigation may have replaced the page after readiness was
@@ -1061,12 +1223,22 @@ public class TopWKWV : WKWebView, NSDraggingSource{
                     self.pageCanReceiveMessages = false
                 case .failure(let error):
                     // A broken handler must not block unrelated messages behind it.
-                    self.pendingPageMessages.removeFirst()
+                    self.removePendingPageMessage(ifSequenceMatches: queuedMessage.sequence)
                     print("Unable to deliver widget page message: \(error.localizedDescription)")
                     self.deliverNextPageMessage()
                 }
             }
         )
+    }
+
+    private func removePendingPageMessage(ifSequenceMatches sequence: UInt64) {
+        guard pendingPageMessages.first?.sequence == sequence else {
+            // The fixed-capacity queue may have evicted an old in-flight value
+            // while WebKit was unavailable. Never pop a newer message for an
+            // older completion callback.
+            return
+        }
+        pendingPageMessages.popFirst()
     }
 
     func syncNativeWebViews(from messageBody: Any) {
@@ -1327,18 +1499,7 @@ public class TopWKWV : WKWebView, NSDraggingSource{
                     Static.topBarWebViewRepresentable?.sendMessage(str: "opening")
                     
                     self.firstOpening = false
-                    
-                    var jsMessage = JSMessage()
-                    jsMessage.type = "setSetting"
-                    jsMessage.setting = "detectDragAndDrop"
-                    jsMessage.valBool = Static.EnableDragDropDetection
-                    self.sendMessage(obj: jsMessage)
-
-                    jsMessage = JSMessage()
-                    jsMessage.type = "setSetting"
-                    jsMessage.setting = "enableClipboardCapture"
-                    jsMessage.valBool = Static.EnableClipboardCapture
-                    self.sendMessage(obj: jsMessage)
+                    self.sendCurrentSettings()
                 }
                 
                 //NSRunningApplication.current.activate(options: .activateAllWindows)
@@ -1372,7 +1533,10 @@ public class TopWKWV : WKWebView, NSDraggingSource{
     
     public func sendMessage(obj: JSMessage){
         do {
-            let jsonData = try JSONEncoder().encode(obj)
+            var previewMessage = obj
+            previewMessage.boundClipboardImagePreviews()
+
+            let jsonData = try JSONEncoder().encode(previewMessage)
             let message = try JSONSerialization.jsonObject(with: jsonData)
             enqueuePageMessage(message)
         }
@@ -1392,6 +1556,9 @@ public struct JSMessage: Codable {
     var url : URL?
     var str : String?
     var imgBase : String?
+    var html : String?
+    var ids : [Int]?
+    var clipboardItems : [ClipboardItemMessage]?
     
     var id : Int?
     var strId : String?
@@ -1431,6 +1598,33 @@ public struct JSMessage: Codable {
     // Calendars
     var calendarsTitles : [String]?
     var calendarsColors : [[CGFloat]]?
+}
+
+public struct ClipboardItemMessage: Codable {
+    var id: Int
+    var format: String
+    var url: URL?
+    var str: String?
+    var imgBase: String?
+    var html: String?
+    var replacesID: Int?
+}
+
+private extension JSMessage {
+    /// Limits only image data that is about to enter the Widgets Zone. The
+    /// corresponding `Clipboard.Element` keeps its full raw pasteboard payload.
+    mutating func boundClipboardImagePreviews() {
+        if let imgBase {
+            self.imgBase = ClipboardPreviewImage.boundedBase64(imgBase)
+        }
+
+        guard var clipboardItems else { return }
+        for index in clipboardItems.indices {
+            guard let imgBase = clipboardItems[index].imgBase else { continue }
+            clipboardItems[index].imgBase = ClipboardPreviewImage.boundedBase64(imgBase)
+        }
+        self.clipboardItems = clipboardItems
+    }
 }
 
 extension URL {

@@ -28,11 +28,8 @@ export default class FallToastAnimator extends ToastAnimator {
 
   constructor({ timing = 'ease', delay = 0, duration = 0.35 } = {}) {
     super({ timing, delay, duration });
-    if (iPhoneXPatch.isIPhoneXPortraitPatchActive()) {
-      this.fallAmount = 'calc(-100% - 44px)';
-    } else {
-      this.fallAmount = '-100%';
-    }
+    const top = iPhoneXPatch.getSafeAreaLengths().top;
+    this.fallAmount = top > 0 ? `calc(-100% - ${top}px)` : '-100%';
   }
 
   /**
@@ -79,12 +76,8 @@ export default class FallToastAnimator extends ToastAnimator {
   }
 
   _updatePosition(toast, cleanUp) {
-    let correctTop;
-    if (iPhoneXPatch.isIPhoneXPortraitPatchActive()) {
-      correctTop = '44px';
-    } else {
-      correctTop = '0';
-    }
+    const topInset = iPhoneXPatch.getSafeAreaLengths().top;
+    const correctTop = topInset > 0 ? `${topInset}px` : '0';
 
     if (toast.style.top !== correctTop) {
       toast.style.top = correctTop;

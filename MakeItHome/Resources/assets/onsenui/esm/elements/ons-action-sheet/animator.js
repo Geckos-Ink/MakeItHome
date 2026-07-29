@@ -120,9 +120,11 @@ export class IOSActionSheetAnimator extends ActionSheetAnimator {
     this.maskTiming = 'linear';
     this.maskDuration = 0.2;
     if (iPhoneXPatch.isIPhoneXPortraitPatchActive()) {
-      this.liftAmount = 'calc(100% + 48px)';
+      const bottom = iPhoneXPatch.getSafeAreaLengths().bottom;
+      this.liftAmount = `calc(100% + ${bottom + 14}px)`; // bottom safe area + 14px extra margin (from action-sheet.css)
     } else if (iPhoneXPatch.isIPhoneXLandscapePatchActive()) {
-      this.liftAmount = 'calc(100% + 33px)';
+      const bottom = iPhoneXPatch.getSafeAreaLengths().bottom;
+      this.liftAmount = `calc(100% + ${bottom + 12}px)`; // bottom safe area + 12px extra margin (from action-sheet.css)
     } else {
       this.liftAmount = document.body.clientHeight / 2.0 - 1 + 'px'; // avoid Forced Synchronous Layout
     }

@@ -13,17 +13,26 @@ import QuickLookThumbnailing
 public class Clipboard {
     var history: [Element] = []    
     private var captureEnabled = true
+    private var pollingTimer: Timer?
     
-    init(){
+    /// Debug harnesses can drive `checkClipboard()` explicitly so they can stop
+    /// without leaving a RunLoop timer monitoring the user's pasteboard.
+    init(automaticallyPolls: Bool = true){
         captureEnabled = Static.EnableClipboardCapture
 
-        if Static.TopBarIsPreview { // for last 1.4.x versions, for the moment
+        if !automaticallyPolls || Static.TopBarIsPreview { // for last 1.4.x versions, for the moment
             return
         }               
         
-        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { timer in
+        pollingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            guard let self else { return }
             self.checkClipboard()
         }
+    }
+
+    func stopPolling() {
+        pollingTimer?.invalidate()
+        pollingTimer = nil
     }
     
     func getElement(id: Int) -> Element?{
@@ -36,7 +45,7 @@ public class Clipboard {
         return nil
     }
     
-    var ignoreThisPaste = false
+    private var ignoredPasteboardChangeCount: Int?
 
     // Bounds the re-copy retry loop so enforcement never fights the user's own
     // clipboard activity for more than a fraction of a second.
@@ -65,11 +74,11 @@ public class Clipboard {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         let written = pasteboard.writeObjects([item])
-        ignoreThisPaste = true
 
         // Change count captured right after our write. If it still matches when we
         // verify, nobody has copied over us; if it differs, the user won and we back off.
         let expectedChangeCount = pasteboard.changeCount
+        ignoredPasteboardChangeCount = expectedChangeCount
 
         let verify = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
@@ -107,8 +116,8 @@ public class Clipboard {
 
         switch el.type {
         case "str":
-            if let rtf = el.rtf {
-                return pasteboard.string(forType: .rtf) == rtf
+            if let rtfData = el.rtfData {
+                return pasteboard.data(forType: .rtf) == rtfData
             }
             return pasteboard.string(forType: .string) == el.str
         case "img":
@@ -128,26 +137,42 @@ public class Clipboard {
         }
     }
     
-    func checkElement(element : Element){
-        var num = 1
-        for hEl in history{
-            if hEl == element {
-                if num != history.count && num > 10 {
-                    hEl.alreadySent = hEl.sent
-                    hEl.sent = false
-                    
-                    let iEl = history.firstIndex(of: hEl)
-                    if iEl != nil{
-                        history.remove(at: iEl!)
-                        history.insert(element, at: 0)
-                    }
+    func checkElement(element: Element){
+        if let existingIndex = history.firstIndex(of: element) {
+            // Re-copying an older value makes that existing element recent again.
+            // Reuse the object so file thumbnails and raw pasteboard data are not
+            // duplicated in memory, then give it a fresh UI id when it is sent.
+            if existingIndex >= 10 {
+                let existing = history.remove(at: existingIndex)
+                if existing.sent {
+                    existing.replacesID = existing.id
+                    existing.id = -1
+                    existing.sent = false
                 }
-                return
+                history.insert(existing, at: 0)
             }
-            num += 1
+            return
         }
-                
+
         history.insert(element, at: 0)
+
+        if element.type == "url", let url = element.url {
+            generatePreviewImage(fileURL: url, forEl: element)
+        }
+
+        let removed = trimNewestFirstHistory(
+            &history,
+            maximumCount: Static.ClipboardForgetElementsOlderThan
+        )
+        let removedIDs = removed.compactMap { removedElement in
+            removedElement.sent && removedElement.id >= 0 ? removedElement.id : nil
+        }
+        if !removedIDs.isEmpty {
+            var message = JSMessage()
+            message.type = "removeClipboardItems"
+            message.ids = removedIDs
+            Static.topBarWebViewRepresentable?.sendMessage(obj: message)
+        }
     }
     
     var totElements : Int = 0
@@ -155,63 +180,56 @@ public class Clipboard {
         if !captureEnabled {
             return
         }
-        
-        var num = 1
-        for el in history{
-            if el.wait || el.sent {
-                continue
-            }
-            
-            if el.alreadySent {
-                if false { // don't remove it, simply go on
-                    var msg = JSMessage()
-                    msg.type = "removeClipboardItem"
-                    msg.value = String(el.id)
-                    Static.topBarWebViewRepresentable?.sendMessage(obj: msg)
-                }
-            }
-            else {
-                el.id = totElements
-                totElements += 1
-                
-                let cleanUpTo = totElements - Static.ClipboardForgetElementsOlderThan
-                if cleanUpTo >= 0 {
-                    
-                    var msg = JSMessage()
-                    msg.type = "removeUpTo"
-                    msg.value = String(cleanUpTo)
-                    Static.topBarWebViewRepresentable?.sendMessage(obj: msg)
-                    
-                    for el in history{
-                        if el.id > cleanUpTo {
-                            break;
-                        }
-                        
-                        history.remove(at: history.firstIndex(of: el)!)
-                    }
-                }
-            }
-            
-            var msg = JSMessage()
-            msg.type = "newClipboardItem"
 
-            msg.id = el.id
-            msg.format = el.type
-            msg.imgBase = el.imgBase
-            msg.str = el.str
-            msg.url = el.url?.absoluteURL
-            
-            el.sent = true
-            
-            Static.topBarWebViewRepresentable?.sendMessage(obj: msg)
-            num += 1
+        // History is newest-first, while the grid appends at its visual bottom.
+        // Sending oldest-first preserves chronological order even for a burst of
+        // copied files and lets WebKit update the DOM once per poll.
+        let pending = history.reversed().filter { !$0.wait && !$0.sent }
+        guard !pending.isEmpty else { return }
+
+        var items: [ClipboardItemMessage] = []
+        items.reserveCapacity(pending.count)
+
+        for element in pending {
+            element.id = totElements
+            totElements += 1
+            element.sent = true
+            items.append(element.pageMessage)
+            element.replacesID = nil
         }
+
+        var message = JSMessage()
+        message.type = "clipboardItems"
+        message.clipboardItems = items
+        Static.topBarWebViewRepresentable?.sendMessage(obj: message)
+    }
+
+    /// Replaces the page's clipboard DOM after a WebKit navigation or content
+    /// process recovery. The native history is the source of truth.
+    func sendHistorySnapshot(){
+        guard captureEnabled else {
+            var message = JSMessage()
+            message.type = "clearClipboardItems"
+            Static.topBarWebViewRepresentable?.sendMessage(obj: message)
+            return
+        }
+
+        for element in history.reversed() where !element.wait && !element.sent {
+            element.id = totElements
+            totElements += 1
+            element.sent = true
+        }
+
+        var message = JSMessage()
+        message.type = "replaceClipboardItems"
+        message.clipboardItems = history.reversed().compactMap { element in
+            guard !element.wait && element.sent else { return nil }
+            return element.pageMessage
+        }
+        history.forEach { $0.replacesID = nil }
+        Static.topBarWebViewRepresentable?.sendMessage(obj: message)
     }
     
-    var prevString : String?
-    var prevRtf : String?
-    var prevImage : Data?
-    var prevFileUrl : URL?
     // Tracks the pasteboard's change count so app-specific payloads that expose
     // none of the standard flavors (e.g. a Blender object copy) can still be
     // detected as "something new" and captured.
@@ -232,136 +250,78 @@ public class Clipboard {
     }
 
     func syncCurrentPasteboardAsBaseline() {
-        let pasteboard = NSPasteboard.general
-        prevString = pasteboard.string(forType: .string)
-        prevRtf = pasteboard.string(forType: .rtf)
-        prevImage = pasteboard.data(forType: .tiff)
-        prevChangeCount = pasteboard.changeCount
-
-        if let fileURLs = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL],
-           fileURLs.count == 1 {
-            prevFileUrl = fileURLs.first
-        }
-        else {
-            prevFileUrl = nil
-        }
+        prevChangeCount = NSPasteboard.general.changeCount
     }
     
     func checkClipboard(){
         if !captureEnabled {
             return
         }
-        
-        // Set string to clipboard
+
         let pasteboard = NSPasteboard.general
-        //pasteboard.declareTypes([.string, .fileURL, .png, .pdf, .fileContents, .textFinderOptions], owner: nil)
-        
-        var something = false
-        
-        let el = Element()
-        var jump = false
-        
-        if let copiedString = pasteboard.string(forType: .string) {
-            if prevString != copiedString{
-                something = true
-                el.setString(str: copiedString)
-                prevString = copiedString
-            }
-            else {
-                jump = true
-            }
+        guard pasteboard.changeCount != prevChangeCount else {
+            checkElementsForSending()
+            return
         }
-        
-        if !jump, let copiedString = pasteboard.string(forType: .rtf) {
-            if prevRtf != copiedString{
-                something = true
-                el.setRtf(rtf: copiedString)
-                prevRtf = copiedString
-            }
-            else {
-                jump = true
-            }
-        }
-                
-        if !jump, let imageData = pasteboard.data(forType: .tiff) {
-            if prevImage != imageData{
-                // Encode PNG data to base64
-                if let base64String = tiffToBase64(tiff: imageData) {
-                    something = true
-                    el.setImage(base: base64String, data: imageData)
-                }
-                prevImage = imageData
-            }
-            else {
-                jump = true
-            }
-        }
-    
-        // Set when the copy is a set of files, which are recorded individually
-        // below and must not also be captured as a single custom payload.
-        var handledMultipleFiles = false
 
-        if !jump, let fileURLs = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL] {
-           // Handle the copied file URLs
-            if fileURLs.count == 1 {
-                for fileURL in fileURLs {
-                    if prevFileUrl != fileURL{
-                        something = true
-                        el.setUrl(url: fileURL)
-                        prevFileUrl = fileURL
-                    }
-                    else {
-                        jump = true
+        // Selecting a history item writes it back to the pasteboard. Record the
+        // new baseline without inserting a duplicate into history.
+        if ignoredPasteboardChangeCount == pasteboard.changeCount {
+            ignoredPasteboardChangeCount = nil
+            syncCurrentPasteboardAsBaseline()
+            checkElementsForSending()
+            return
+        }
+        ignoredPasteboardChangeCount = nil
+
+        let fileURLs = pasteboard.readObjects(
+            forClasses: [NSURL.self],
+            options: nil
+        ) as? [URL] ?? []
+
+        if fileURLs.count > 1 {
+            // One pasteboard change may represent several files. Keep work and
+            // Quick Look requests bounded while preserving their source order.
+            for fileURL in fileURLs.prefix(10) {
+                let element = Element()
+                element.setUrl(url: fileURL)
+                checkElement(element: element)
+            }
+        } else {
+            let element = Element()
+
+            if let fileURL = fileURLs.first {
+                element.setUrl(url: fileURL)
+            } else if let imageData = pasteboard.data(forType: .tiff),
+                      let base64String = tiffToBase64(tiff: imageData) {
+                element.setImage(base: base64String, data: imageData)
+            } else {
+                if let copiedString = pasteboard.string(forType: .string) {
+                    element.setString(str: copiedString)
+                }
+                if let copiedRTF = pasteboard.data(forType: .rtf) {
+                    element.setRtf(data: copiedRTF)
+                }
+
+                if element.type == "nil" {
+                    element.captureRawTypes(from: pasteboard)
+                    if !element.rawTypes.isEmpty {
+                        element.setCustom()
                     }
                 }
             }
-            else {
-                if fileURLs.count > 1 && fileURLs.count < 10 { // limit to a maximum of 10 of files at the same time
-                    handledMultipleFiles = true
-                    for fileURL in fileURLs {
-                        let el = Element()
-                        el.setUrl(url: fileURL)
-                        checkElement(element: el)
 
-                        something = false
-                    }
+            if element.type != "nil" {
+                // Preserve every representation the OS pasteboard exposed so
+                // re-copy remains byte-faithful.
+                if element.rawTypes.isEmpty {
+                    element.captureRawTypes(from: pasteboard)
                 }
+                checkElement(element: element)
             }
         }
 
-        // None of the standard flavors changed, but the pasteboard did: this is an
-        // app-specific payload (e.g. a Blender object copy). Capture its raw
-        // representations so it appears in history and can be re-copied faithfully.
-        if !something && !jump && !handledMultipleFiles && pasteboard.changeCount != prevChangeCount {
-            el.captureRawTypes(from: pasteboard)
-            if !el.rawTypes.isEmpty {
-                el.setCustom()
-                something = true
-            }
-        }
-
-        if something && !jump{
-            // Preserve every representation the OS pasteboard exposed so re-copy is
-            // byte-faithful for images and custom app types, not just the flavor we
-            // used for display.
-            if el.rawTypes.isEmpty {
-                el.captureRawTypes(from: pasteboard)
-            }
-            el.sent = ignoreThisPaste
-            ignoreThisPaste = false
-            checkElement(element: el)
-        }
-
-        if jump {
-            if prevFileUrl != nil || prevImage != nil {
-                prevString = nil
-                prevFileUrl = nil
-                prevImage = nil
-            }
-        }
-
-        prevChangeCount = pasteboard.changeCount
-
+        syncCurrentPasteboardAsBaseline()
         checkElementsForSending()
     }
     
@@ -388,7 +348,8 @@ public class Clipboard {
         public var str : String?
         public var imgBase : String?
         public var imgData : Data?
-        public var rtf : String?
+        public var rtfData : Data?
+        public var rtfHTML : String?
 
         // Every representation the OS pasteboard exposed for this item, keyed by
         // pasteboard type identifier. Replayed verbatim on re-copy so app-specific
@@ -397,7 +358,19 @@ public class Clipboard {
 
         public var wait = false
         public var sent = false
-        public var alreadySent : Bool = false
+        public var replacesID : Int?
+
+        var pageMessage: ClipboardItemMessage {
+            ClipboardItemMessage(
+                id: id,
+                format: type,
+                url: url?.absoluteURL,
+                str: str,
+                imgBase: imgBase,
+                html: rtfHTML,
+                replacesID: replacesID
+            )
+        }
 
         /// Snapshots all raw representations of the pasteboard's first item.
         public func captureRawTypes(from pasteboard: NSPasteboard){
@@ -447,10 +420,9 @@ public class Clipboard {
 
         public func setUrl(url: URL){
             self.url = url
+            self.str = url.lastPathComponent
             self.hash = url.absoluteString
             type = "url"
-            
-            generatePreviewImage(fileURL: url, forEl: self)
         }
         
         public func setImage(base: String, data: Data){
@@ -467,8 +439,35 @@ public class Clipboard {
             type = "str"
         }
         
-        public func setRtf(rtf: String){
-            self.rtf = rtf
+        public func setRtf(data: Data){
+            rtfData = data
+            type = "str"
+
+            var hasher = Hasher()
+            hasher.combine(str)
+            hasher.combine(data)
+            hash = "rtf:\(hasher.finalize())"
+
+            guard let attributed = try? NSAttributedString(
+                data: data,
+                options: [.documentType: NSAttributedString.DocumentType.rtf],
+                documentAttributes: nil
+            ) else {
+                return
+            }
+
+            if str == nil {
+                str = attributed.string
+            }
+
+            let fullRange = NSRange(location: 0, length: attributed.length)
+            guard let htmlData = try? attributed.data(
+                from: fullRange,
+                documentAttributes: [.documentType: NSAttributedString.DocumentType.html]
+            ) else {
+                return
+            }
+            rtfHTML = String(data: htmlData, encoding: .utf8)
         }
         
         public func getItem() -> NSPasteboardItem? {
@@ -504,10 +503,10 @@ public class Clipboard {
                     if let plain = self.str {
                         item.setString(plain, forType: NSPasteboard.PasteboardType.string)
                     }
-                    if let rtf = self.rtf {
-                        item.setString(rtf, forType: NSPasteboard.PasteboardType.rtf)
+                    if let rtfData = self.rtfData {
+                        item.setData(rtfData, forType: NSPasteboard.PasteboardType.rtf)
                     }
-                    if self.str == nil && self.rtf == nil {
+                    if self.str == nil && self.rtfData == nil {
                         return nil
                     }
 
@@ -568,15 +567,7 @@ func tiffToBase64(tiff: Data) -> String?{
     return nil
 }
 
-var _doneThumbails : [URL] = []
-
 func generatePreviewImage(fileURL: URL, forEl: Clipboard.Element){
-    
-    if _doneThumbails.contains(fileURL){
-        return
-    }
-    _doneThumbails.append(fileURL)
-    
     // Create a QLThumbnailGenerator
     let thumbnailGenerator = QLThumbnailGenerator.shared
     
@@ -587,41 +578,31 @@ func generatePreviewImage(fileURL: URL, forEl: Clipboard.Element){
     
     thumbnailGenerator.generateBestRepresentation(for: request) { (thumbnail, error) in
         if let thumbnail = thumbnail, error == nil {
-            // Handle the generated thumbnail image (NSImage)
-            print("Thumbnail image generated successfully.")
-            
-            let res = thumbnail.nsImage
-            
-            if res.tiffRepresentation != nil {
-                forEl.imgBase = tiffToBase64(tiff: res.tiffRepresentation!)
+            let imageBase = thumbnail.nsImage.tiffRepresentation.flatMap(tiffToBase64)
+
+            DispatchQueue.main.async {
+                forEl.imgBase = imageBase
+                forEl.wait = false
+                Static.clipboard?.checkElementsForSending()
             }
-            
-            forEl.wait = false
-            
-            // Do something with the thumbnail image...
         } else {
-            
             let request2 = QLThumbnailGenerator.Request(fileAt: fileURL, size: CGSize(width: 150, height: 150), scale: NSScreen.main?.backingScaleFactor ?? 1.0, representationTypes: .icon)
             
             thumbnailGenerator.generateBestRepresentation(for: request2) { (thumbnail2, error2) in
-                if error2 != nil {
-                    print("Thumbnail2 generation error: \(error2?.localizedDescription)")
+                if let error2 {
+                    print("Thumbnail icon generation error: \(error2.localizedDescription)")
                 }
-                else {
-                    let res = thumbnail2?.nsImage
-                    if res?.tiffRepresentation != nil {
-                        forEl.imgBase = tiffToBase64(tiff: res!.tiffRepresentation!)
-                    }
+
+                let imageBase = thumbnail2?.nsImage.tiffRepresentation.flatMap(tiffToBase64)
+                DispatchQueue.main.async {
+                    forEl.imgBase = imageBase
+                    forEl.wait = false
+                    Static.clipboard?.checkElementsForSending()
                 }
-                
-                forEl.wait = false
             }
             
-            // Handle error
             if let error = error {
                 print("Thumbnail generation error: \(error.localizedDescription)")
-            } else {
-                print("Unknown thumbnail generation error.")
             }
         }
     }

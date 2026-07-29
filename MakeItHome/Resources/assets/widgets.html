@@ -80,7 +80,6 @@
         <link rel="stylesheet" href="./fontawesome/css/all.min.css">
 
         <script src="./jquery-3.7.1.min.js"></script>
-        <script src="./masonry.pkgd.min.js"></script>
         
         <!-- OsenUI -->
         <link rel="stylesheet" href="./onsenui/css/onsenui.css">
@@ -114,10 +113,10 @@
                         </div>-->
 
                         <!-- Board Apps -->
-                        <div class="appItem" id="appItem-board-notes" onclick="openApp('board-notes')">
+                        <div class="appItem" id="appItem-board-notes" onclick="openApp('board-notes')" style="display: none;">
                             <div class="img"><i class="fa-solid fa-note-sticky"></i></div> <div class="text" data-i18n="widgets.navigation.notes">Notes</div>
                         </div>
-                        <div class="appItem" id="appItem-board-tasks" onclick="openApp('board-tasks')">
+                        <div class="appItem" id="appItem-board-tasks" onclick="openApp('board-tasks')" style="display: none;">
                             <div class="img"><i class="fa-solid fa-list-check"></i></div> <div class="text" data-i18n="widgets.navigation.tasks">Tasks</div>
                         </div>
                         <!--<div class="appItem" id="appItem-board-scrumboard" onclick="openApp('board-scrumboard')">
@@ -135,7 +134,8 @@
                 <div class="app-main center">
                     <div id="clipboard">                        
                         <div class="down">
-                            <div class="grid">                                
+                            <div class="grid" role="list" aria-live="polite">
+                                <div class="clipboard-notch-spacer" aria-hidden="true"></div>
                             </div>
                         </div>
                     </div>
@@ -189,6 +189,7 @@
                     <ons-list>
                       <ons-list-header data-i18n="widgets.settings.sections">Sections</ons-list-header>
                       <ons-list-item modifier="chevron" tappable class="general" data-i18n="widgets.settings.general">General</ons-list-item>
+                      <ons-list-item modifier="chevron" tappable class="widgets" data-i18n="widgets.settings.widgets">Widgets</ons-list-item>
                       <ons-list-item modifier="chevron" tappable class="myWidgets" data-i18n="widgets.settings.my_widgets">My Widgets</ons-list-item>
                       <ons-list-item modifier="chevron" tappable class="extensions" data-i18n="widgets.settings.external_extensions">External Extensions</ons-list-item>
                       <ons-list-item modifier="chevron" tappable class="guides" data-i18n="widgets.settings.guides">Guides</ons-list-item>
@@ -226,6 +227,48 @@
                                 <div class="title" data-i18n="widgets.settings.feedback.title">Share your feedback</div>
                                 <span data-i18n="widgets.settings.feedback.messaging">Soon will be available the messaging system internally in the widgets zone.</span> <br>
                                 <span data-i18n="widgets.settings.feedback.contact">For the moment, to share your feedback about the product, you can contact</span> <a href="mailto:makeithome@geckos.ink">makeithome@geckos.ink</a>.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section widgets">
+                        <div class="paragraphs">
+                            <div class="paragraph">
+                                <div class="title" data-i18n="widgets.settings.widgets">Widgets</div>
+                                <ons-list class="defaultWidgetsSettingsList">
+                                    <ons-list-item tappable>
+                                        <label class="left">
+                                            <ons-checkbox input-id="check-widgetClipboardEnabled" data-widget-setting="widgetClipboardEnabled" checked></ons-checkbox>
+                                        </label>
+                                        <label for="check-widgetClipboardEnabled" class="center">
+                                            <span data-i18n="widgets.navigation.clipboard">Clipboard</span>
+                                        </label>
+                                    </ons-list-item>
+                                    <ons-list-item tappable>
+                                        <label class="left">
+                                            <ons-checkbox input-id="check-widgetNotesEnabled" data-widget-setting="widgetNotesEnabled"></ons-checkbox>
+                                        </label>
+                                        <label for="check-widgetNotesEnabled" class="center">
+                                            <span data-i18n="widgets.navigation.notes">Notes</span>
+                                        </label>
+                                    </ons-list-item>
+                                    <ons-list-item tappable>
+                                        <label class="left">
+                                            <ons-checkbox input-id="check-widgetTasksEnabled" data-widget-setting="widgetTasksEnabled"></ons-checkbox>
+                                        </label>
+                                        <label for="check-widgetTasksEnabled" class="center">
+                                            <span data-i18n="widgets.navigation.tasks">Tasks</span>
+                                        </label>
+                                    </ons-list-item>
+                                    <ons-list-item tappable>
+                                        <label class="left">
+                                            <ons-checkbox input-id="check-widgetCalendarEnabled" data-widget-setting="widgetCalendarEnabled" checked></ons-checkbox>
+                                        </label>
+                                        <label for="check-widgetCalendarEnabled" class="center">
+                                            <span data-i18n="widgets.navigation.calendar">Calendar</span>
+                                        </label>
+                                    </ons-list-item>
+                                </ons-list>
                             </div>
                         </div>
                     </div>

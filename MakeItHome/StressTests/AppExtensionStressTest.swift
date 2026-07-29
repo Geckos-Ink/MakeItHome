@@ -1,4 +1,4 @@
-#if DEBUG
+#if STRESS_TEST_APP
 
 import AppKit
 import Foundation
@@ -164,6 +164,10 @@ final class AppExtensionStressCoordinator: ObservableObject {
 
     func start() {
         guard runTask == nil else { return }
+        writeStressResult(
+            "[AppExtensionStress] STARTED duration=\(configuration.durationSeconds)",
+            configuration: configuration
+        )
         let server = SimpleHTTPServer(port: configuration.port)
         let app = AppExtension(bundleId: bundleID, identity: "\(bundleID)#\(clientID)")
         server.appExtensionManager.apps[bundleID] = app
@@ -195,7 +199,9 @@ final class AppExtensionStressCoordinator: ObservableObject {
                 self.failedRequests += 1
                 self.status = "Failed to start"
                 server.stop()
-                print("[AppExtensionStress] FAILED: \(error.localizedDescription)")
+                let summary = "[AppExtensionStress] FAILED error=\(error.localizedDescription)"
+                print(summary)
+                writeStressResult(summary, configuration: self.configuration)
                 finishStressRun(autoExit: self.configuration.autoExit, failed: true)
             }
         }
@@ -228,10 +234,16 @@ final class AppExtensionStressCoordinator: ObservableObject {
         server?.stop()
         status = snapshot.failedRequests == 0 ? "Completed" : "Completed with errors"
         let failed = snapshot.failedRequests > 0 || snapshot.completedRequests == 0
-        print("[AppExtensionStress] \(failed ? "FAILED" : "COMPLETED") requests=\(snapshot.completedRequests) errors=\(snapshot.failedRequests) sentMB=\(String(format: "%.1f", megabytesSent)) rps=\(String(format: "%.1f", requestsPerSecond)) peakMemoryMB=\(String(format: "%.1f", peakResidentMB)) peakThreads=\(peakThreads)")
+        let summary =
+            "[AppExtensionStress] \(failed ? "FAILED" : "COMPLETED") requests=\(snapshot.completedRequests) " +
+            "errors=\(snapshot.failedRequests) sentMB=\(String(format: "%.1f", megabytesSent)) " +
+            "rps=\(String(format: "%.1f", requestsPerSecond)) " +
+            "peakMemoryMB=\(String(format: "%.1f", peakResidentMB)) peakThreads=\(peakThreads)"
+        print(summary)
         if let firstError = snapshot.firstError {
             print("[AppExtensionStress] firstError=\(firstError)")
         }
+        writeStressResult(summary, configuration: configuration)
         finishStressRun(autoExit: configuration.autoExit, failed: failed)
     }
 
