@@ -1,6 +1,6 @@
 # MakeItHome — AI Agent Reference
 
-This is the fast-access operational reference for agents working on MakeItHome, a shipped macOS SwiftUI application that exposes an “overscreen” beyond display edges for live app previews, app switching, widgets, and trusted third-party extension content. The checked-out `2.1.0` branch builds marketing version 2.1.0; the public README still identifies 2.0.9 as the current Mac App Store release. Do not confuse the embedded Safari Web Extension, the optional third-party App Extension protocol, or the Angular source templates under `Assets/templates/` with the native application itself.
+This is the fast-access operational reference for agents working on MakeItHome, a shipped macOS SwiftUI application that exposes an “overscreen” beyond display edges for live app previews, app switching, widgets, and trusted third-party extension content. The current tree builds marketing version 2.1.0, which is tagged as `release-2.1.0` and documented in the public README as the current Mac App Store release. Do not confuse the embedded Safari Web Extension, the optional third-party App Extension protocol, or the Angular source templates under `Assets/templates/` with the native application itself.
 
 ## Read This First
 
@@ -9,7 +9,7 @@ Use this source-of-truth order:
 1. [`LICENSE`](LICENSE) and platform privacy/security requirements — legal and OS-enforced boundaries.
 2. [`Tests/PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift), executable protocol behavior, target definitions, and build settings in [`MakeItHome.xcodeproj/project.pbxproj`](MakeItHome.xcodeproj/project.pbxproj) — asserted behavior and build truth.
 3. Current Swift, JavaScript, HTML, property lists, entitlements, and packaged-resource configuration — implemented behavior.
-4. [`README.md`](README.md) — public product behavior, release statement, and roadmap summary; it is currently stale about the development branch/version.
+4. [`README.md`](README.md) — public product behavior, current release statement, and roadmap summary; verify its branch pointers against repository refs.
 5. [`WhatsNew.md`](WhatsNew.md) — public 2.0.9 release notes, not a development changelog.
 6. [`MakeItHome/StressTests/README.md`](MakeItHome/StressTests/README.md) — verified manual stress-harness invocations.
 7. [`MakeItHome/Notes/`](MakeItHome/Notes/) and Git history — historical context only; notes may contain experiments or superseded code.
@@ -26,7 +26,7 @@ No nested `AGENTS.md` files exist at this revision. This root file applies to th
 - For UI, capture, extension, clipboard, calendar, or pointer behavior without automated coverage, build the app and report the required manual permission/hardware checks accurately.
 - Do not edit or commit ignored/generated state such as `build/`, `DerivedData/`, `.DS_Store`, Xcode user data, `.swiftpm` user state, `Pods/`, workspaces, signing material, or local secret/config files.
 - Treat bundled minified/vendor output under [`MakeItHome/Resources/assets/`](MakeItHome/Resources/assets/) and Angular distributions under [`Assets/templates/`](Assets/templates/) as generated/vendor artifacts. Change their authoritative source when it is available and regenerate; do not hand-edit hashed bundles as the first choice.
-- Development branches are named for the version in progress. The current branch is `2.1.0`; verify rather than copying the stale branch name in the README.
+- Development branches are named for the version in progress. Verify the checked-out branch and project marketing version rather than relying on an older README statement.
 - There is no checked-in automated release pipeline or complete release procedure. Do not invent signing, notarization, archive, or App Store steps.
 - Before committing, review the full diff, validate changed links/commands, keep feature labels honest, and stage this handbook with the code or docs whose facts it updates.
 
@@ -111,9 +111,9 @@ Canonical persisted state is split between native `UserDefaults` (settings, trus
 
 Authoritative target, source/resource membership, Swift package dependency, deployment target, bundle IDs, versions, schemes, and signing configuration.
 
-- **Key subparts:** `MakeItHome` app target; embedded `MakeItHome Web Extension`; separate Debug-only `MakeItHome Test` app target; Swift Collections 1.0.3; macOS 12.3 target; app marketing version 2.1.0 with normal-app build 163 and Test build 161. The Test target produces `MakeItHome Test.app` (`ink.geckos.MakeItHome.Test`) so TCC permissions and `UserDefaults` remain separate from normal app builds; it deliberately does not embed the Safari extension and overrides `LSUIElement` to `NO` so its explicit stress host window starts reliably.
+- **Key subparts:** `MakeItHome` app target; embedded `MakeItHome Web Extension`; separate Debug-only `MakeItHome Test` app target; Swift Collections 1.0.3; macOS 12.3 target; app marketing version 2.1.0 with normal-app build 164 and Test build 161. The Test target produces `MakeItHome Test.app` (`ink.geckos.MakeItHome.Test`) so TCC permissions and `UserDefaults` remain separate from normal app builds; it deliberately does not embed the Safari extension and overrides `LSUIElement` to `NO` so its explicit stress host window starts reliably.
 - **Depends on:** [`MakeItHome.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`](MakeItHome.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved).
-- **Common mistakes:** Add new manually grouped files to the correct target/resource phase. Keep parent and extension `CFBundleVersion` aligned before distribution; the current normal app build is 163 while the extension build is 1.
+- **Common mistakes:** Add new manually grouped files to the correct target/resource phase. Keep parent and extension `CFBundleVersion` aligned before distribution; the current normal app build is 164 while the extension build is 1.
 
 ### [`MakeItHome/MakeItHomeApp.swift`](MakeItHome/MakeItHomeApp.swift)
 
@@ -595,8 +595,8 @@ There is no root lint/format task, CI workflow, automated UI suite, checked-in a
 
 ### Known Gaps
 
-- The checked-out project builds version 2.1.0 on branch `2.1.0`, while [`README.md`](README.md) and [`WhatsNew.md`](WhatsNew.md) still present 2.0.9 as current; resolve this only when release status is known.
-- The parent app build number is 161 and embedded Web Extension build number is 1, producing an Xcode validation warning.
+- [`WhatsNew.md`](WhatsNew.md) remains the standalone 2.0.9 release-note file; the 2.1.0 summary currently lives in [`README.md`](README.md) and the Mac App Store listing.
+- The parent app build number is 164 and embedded Web Extension build number is 1, producing an Xcode validation warning.
 - The app target also copies its processed [`Info.plist`](MakeItHome/Info.plist) in the Resources phase, producing an Xcode build warning.
 - `ContentView.swift` has an `@available (` whitespace warning that becomes an error in Swift 6 mode.
 - App Extension tutorial/API documentation remains incomplete.
