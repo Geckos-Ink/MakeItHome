@@ -78,6 +78,7 @@ No nested `AGENTS.md` files exist at this revision. This root file applies to th
 - **Full-screen search pointer exit:** Native child `WKWebView`s intercept pointer events. Search exit may be armed only after real downward movement in the parent page; entering search must not pre-arm an upward exit. Keep search-only pointer behavior scoped to `fullOverscreenMode`.
 - **Permission-prompt ordering:** [`AppExtensionManager`](MakeItHome/Managers/AppExtension.swift) defers connection alerts while any display is presenting overscreen content. A prompt must not force-close active search or compete with the overscreen window. `Static.isExtensionApprovalPromptShowing` keeps displays dismissed during the blocking modal.
 - **Extension authentication:** All non-`/connect` App Extension operations require the current secret and `SHA256(secret:unixSecond)` token within the configured clock skew. Safari connections also require a nonempty `clientId`. Keep the 10-second post-approval grace behavior that converges racing connects without rotating secrets repeatedly.
+- **Safari tab surface:** [`background.js`](MakeItHome/MakeItHome%20Web%20Extension/Resources/background.js) sends `syncSafariTabs` metadata before `applySafariScreenshots` batches. Titles are text nodes, never interpolated HTML. Normal hide/show retains the carousel and images; only explicit recovery or changed content rebuilds it. Save the selected tab ID and fallback index through `tabPosition` status in browser storage, excluding private tabs; never persist previews or tab titles/URLs. Both browser and view caches cap previews at 60 and 8 MiB of base64 characters, with 256 KiB per frame and 768 KiB per send batch. Release bitmaps and replaced/removed/reinjected object URLs, retry failed deliveries, and preserve inventory events received during asynchronous sync. Keep capture requests for real switches/navigation paced separately from slower periodic captures; page title tickers must not mark user activity. The content script retains Safari website-access matching but performs no timers or messaging.
 - **HTTP isolation and bounds:** [`SimpleHTTPServer.start`](MakeItHome/Managers/SimpleHttpServer.swift) sets `acceptLocalOnly`; request bodies are capped at 15 MiB; App Extension handling is dispatched synchronously to main because it touches UI-owned state. Do not expose this server beyond loopback or remove body bounds.
 - **Widget bridge reliability:** Page-to-native operational messages use the `widgetMessage` WebKit handler. The legacy `myapp://` URL bridge remains compatibility-only because repeated identical navigations can coalesce. Localization and native child-web-view sync use their dedicated handlers.
 - **Widget localization:** Every user-facing fallback in [`widgets.html`](MakeItHome/Resources/assets/widgets.html) needs a semantic `widgets.…` key and an English value in [`Localizable.xcstrings`](Localizable.xcstrings). Dynamic strings in [`script.js`](MakeItHome/Resources/assets/script.js) must be registered through `registerLocalizations` and rendered through `localizedString`. Send the collected dictionary through `widgetLocalization`, never the custom URL bridge.
@@ -104,7 +105,7 @@ App Extension:
 
 external client or bundled Safari background worker → loopback `/appExtension/*` → `SimpleHTTPServer` → main-thread `AppExtensionManager.httpRequest` → approval/trust/token checks → `AppExtension` state → `AppExtensionWKWV` → `Display.AppWindows`
 
-Canonical persisted state is split between native `UserDefaults` (settings, trust metadata/secrets, native child-web-view navigation), Safari `chrome.storage.local` (extension connection state), and Application Support JSON used by the embedded board APIs. Screen frames and the native clipboard history are runtime memory, not durable application data.
+Canonical persisted state is split between native `UserDefaults` (settings, trust metadata/secrets, native child-web-view navigation), Safari `chrome.storage.local` (extension connection state and tab-carousel position), and Application Support JSON used by the embedded board APIs. Screen frames and the native clipboard history are runtime memory, not durable application data.
 
 ## Linked Source Tree and File Reference
 
@@ -335,10 +336,23 @@ Manifest V3 declaration for the bundled Safari extension, including tabs, active
 
 Safari-side App Extension client: stable client identity, secret/token generation, connection/reconnect policy, adaptive status polling, tab tracking, screenshot pacing, and HTML/JavaScript payload delivery.
 
-- **Key functions:** `makeRequestUrl`, `getRollingToken`, `connect`, `checkOpenTabs`, screenshot/status loops, `setHtmlContent`, and `sendJsMessage`.
+- **Key functions:** `makeRequestUrl`, `getRollingToken`, `connect`, `checkOpenTabs`, `markTabsDirty`, `trimPreviewCache`, `sendAllTabsScreenshot`, screenshot/status loops, `setHtmlContent`, and `sendJsMessage`.
 - **Depends on:** loopback `/appExtension/*`, Chrome/Safari extension APIs, and packaged extension HTML.
-- **Tests:** App flood harness validates the native protocol but not browser behavior.
-- **Common mistakes:** Do not reset a valid secret on `connectionIgnored`/`connectionDeferred`; honor server-suggested poll intervals and bounded in-flight work.
+- **Tests:** [`Tests/WebExtensionTests.cjs`](Tests/WebExtensionTests.cjs) executes the production browser/view scripts with deterministic API/DOM doubles. App flood harness validates the native protocol; signed Safari capture/permission behavior remains manual.
+- **Common mistakes:** Do not reset a valid secret on `connectionIgnored`/`connectionDeferred`; honor server-suggested poll intervals, abort timed-out fetches, back off unavailable connections, and bound preview sends even during recovery. Send metadata without waiting for capture, acknowledge only successfully delivered frame versions, and supply unchanged HTML without `forceReload` on reconnect so the native view retains its DOM.
+
+### [`MakeItHome/MakeItHome Web Extension/Resources/assets/extension.html`](MakeItHome/MakeItHome%20Web%20Extension/Resources/assets/extension.html)
+
+Authoritative Safari tab-carousel markup, styles, and controller injected into the native App Extension web view with bundled Swiper 11.1.4.
+
+- **Key functions:** `syncSafariTabs`, `applySafariScreenshots`, `rememberSafariPosition`, `restoreSafariPosition`, `trimSafariPreviews`, and `releaseSafariPreview`.
+- **Behavior:** Shows every tab's title immediately, then fills in available previews. Keeps first-discovery order and selected tab identity across metadata updates, reopen, orientation changes, and reinjection; uses a clamped index if the selected tab closes. Keyboard handling is disabled while hidden; layout/library retries are bounded.
+- **Tests:** [`Tests/WebExtensionTests.cjs`](Tests/WebExtensionTests.cjs); real Swiper tested with synthetic tabs in isolated headless Chrome. Safari/WebKit integration remains manual.
+- **Common mistakes:** Preserve position before destroying an instance, batch initial DOM insertion, avoid layout updates per screenshot, scope CSS to `#safariTabs`, and revoke every retired object URL.
+
+### [`MakeItHome/MakeItHome Web Extension/Resources/content.js`](MakeItHome/MakeItHome%20Web%20Extension/Resources/content.js)
+
+No-op entry point retained by manifest website matches for Safari website-access permissions. Tab metadata and capture work live in the background script; never restore the old one-second heartbeat per webpage.
 
 ### [`MakeItHome/MakeItHome Web Extension/SafariWebExtensionHandler.swift`](MakeItHome/MakeItHome%20Web%20Extension/SafariWebExtensionHandler.swift)
 
@@ -461,9 +475,9 @@ Angular/Fuse source templates and built distributions used for the Notes/Tasks e
 
 ### Bundled Safari Web Extension — Shipped groundwork
 
-- **Behavior:** Tracks Safari tabs, produces bounded/adaptive previews, and supplies a tab-switching extension surface after approval.
+- **Behavior:** Tracks Safari tabs and supplies a tab-switching surface after approval. The 2.1.1 development tree adds immediate titles, bounded preview caches/batches, slower idle capture, and retained carousel position across reopen/recovery.
 - **Constraints:** Safari extension permissions, local server availability, persisted browser secret, and reconnect cooldown/backoff.
-- **Tests and gaps:** Embedded target builds; broader-browser variants are planned.
+- **Tests and gaps:** Embedded target builds; browser/view regression doubles and real Swiper synthetic checks cover the 2.1.1 changes. Installed Safari permissions, active-tab capture races, CPU/memory profiling, private browsing, and multiple-window integration remain manual; broader-browser variants are planned.
 
 ### Fullscreen or idle leaves previews frozen
 
@@ -541,6 +555,14 @@ Fast focused and resource-bound stress tests:
 ./Tests/run.sh
 ```
 
+Safari extension browser/view regressions (requires Node.js, no packages):
+
+```sh
+node Tests/WebExtensionTests.cjs
+```
+
+Manual Safari validation: run a signed Debug app, enable MakeItHome Web in Safari and grant website access plus the native App Extension approval. With many tabs and two windows, verify immediate titles, cached preview loading, click-to-focus, title changes, final-tab closure, saved position on reopen and orientation change, private-tab position exclusion, explicit Reset, app restart/reconnect, and permission denial/revocation. Safari can capture only the visible tab; uncaptured tabs intentionally show a title card until visited. Compare Safari CPU/memory while the surface is open, hidden, and Safari is unfocused; the policy changes have not been measured in installed Safari.
+
 Normal development run: open [`MakeItHome.xcodeproj`](MakeItHome.xcodeproj) in Xcode, select the `MakeItHome` scheme, configure signing locally, and Run. The main app and Safari extension entitlement files are source-controlled project inputs; do not remove the extension's explicit `.gitignore` exception.
 
 Debug stress modes are launch arguments on the Debug `MakeItHome Test` scheme:
@@ -577,6 +599,7 @@ There is no root lint/format task, CI workflow, automated UI suite, checked-in a
 - Authenticated server concurrency, payload bounds, memory, and thread growth → [`AppExtensionStressTest.swift`](MakeItHome/StressTests/AppExtensionStressTest.swift).
 - Full production-runtime ScreenCaptureKit profile transitions, populated `CapturePreview` SceneKit sleep/restart, and Clipboard-to-Widgets-Zone delivery → [`RuntimeLifecycleStressTest.swift`](MakeItHome/StressTests/RuntimeLifecycleStressTest.swift); requests the Debug app's separate Screen Recording permission, reports peak SceneKit app/window nodes, and requires manual WebKit inspection.
 - Clipboard history and native-to-WebKit queue resource bounds/order → [`ClipboardResourceStressTests.swift`](Tests/ClipboardResourceStressTests.swift).
+- Safari metadata, capture pacing, bounded cache/delivery, saved position, title safety, and object-URL lifecycle → [`WebExtensionTests.cjs`](Tests/WebExtensionTests.cjs), using API/DOM doubles.
 - Build/resource/localization integration → the code-signing-disabled Xcode build.
 - Known test gaps: App Extension auth decisions, HTTP parsing/path safety, WebKit bridges/state retention, JavaScript DOM behavior, clipboard pasteboard/RTF fidelity, EventKit behavior, accessibility hotkeys, UI permission flows, and end-to-end signed Safari installation.
 
@@ -585,7 +608,7 @@ There is no root lint/format task, CI workflow, automated UI suite, checked-in a
 - ScreenCaptureKit frames and derived window previews are runtime-only. Do not add disk or network persistence for them.
 - Clipboard history is runtime memory. It may contain sensitive text, images, files, and app-specific raw pasteboard types; do not log payloads or transmit them.
 - User settings, known extension metadata, trust flags/secrets, and child-web-view navigation state are in `UserDefaults`. Treat stored extension secrets as credentials even though the current implementation does not use Keychain.
-- Safari extension connection state is in `chrome.storage.local`. Never print the secret/token or include real credentials in fixtures.
+- Safari extension connection state and the selected non-private tab ID/fallback index (`tabPosition`) are in `chrome.storage.local`. Preview images and tab titles/URLs stay in runtime memory and the approved loopback connection. Never print the secret/token or include real credentials in fixtures.
 - Board/Notes task data is read/written as JSON in Application Support through `/fuse/api/*`; writes are atomic with complete file protection. Preserve format compatibility or provide migration logic.
 - Calendar data remains owned by EventKit. Access only after user permission and do not mirror it to unrelated persistence.
 - The local HTTP server must remain loopback-only, with bounded bodies. App Extension content and JavaScript are trusted only after explicit identity approval and request authentication.

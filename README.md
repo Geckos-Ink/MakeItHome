@@ -111,7 +111,9 @@ Development branches are named after the version in progress. The 2.1.0 source i
 - Run `./Tests/run.sh` for the focused preview-flow, clipboard-bound, and preview-title regression tests.
 - Debug-only runtime and stress harnesses are documented in [`MakeItHome/StressTests/README.md`](MakeItHome/StressTests/README.md).
 - The top Widgets Zone web assets live in `MakeItHome/Resources/assets/`; its Swift controller is `MakeItHome/Views/Overscreen/WidgetZoneView.swift`.
-- The browser extension sources are in `MakeItHome/MakeItHome Web Extension/`.
+- The browser extension sources are in `MakeItHome/MakeItHome Web Extension/`. Run `node Tests/WebExtensionTests.cjs` for its dependency-free browser/view regressions (Node.js required).
+
+The 2.1.1 development tree improves MakeItHome Web for Safari: tab titles appear before previews, cached previews arrive in batches, and reopening returns to the last tab-carousel position. Capture runs less frequently at smaller sizes, preview caches are bounded, and webpages no longer send a one-second heartbeat. Previews remain in memory; only the selected non-private tab ID and fallback position are saved locally. Safari can capture the visible tab, so a tab without a cached preview shows its title until visited. Signed Safari installation, website permissions, multi-window behavior, and CPU/memory measurements still require manual validation.
 
 Heads-up on GitHub's security advisories: they are all related to the Angular project used for the Notes and Tasks widgets and are inconsistent issues in practice. The Swift code advisories are the ones worth checking.
 

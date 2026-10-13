@@ -130,16 +130,12 @@ async function makeRequestUrl(req, options = {}){
 }
 
 async function storageGet(){
-    return new Promise((res)=>{
-        chrome.storage.local.get().then((val)=>{
-            storage = val
-            res(val)
-        })
-    })
+    storage = await chrome.storage.local.get()
+    return storage
 }
 
 function storageSave(){
-    chrome.storage.local.set(storage)
+    chrome.storage.local.set({secret: storage.secret || ""})
 }
 
 /**
@@ -218,7 +214,7 @@ async function readTextFile(asset) {
 
 
 async function makeGet(url){
-    return await fetch(url)
+    return await fetchWithTimeout(url)
 }
 
 async function makePost(url, body, maxRetries = 1){
@@ -228,7 +224,7 @@ async function makePost(url, body, maxRetries = 1){
 
     for(let attempt = 0; attempt <= maxRetries; attempt++){
         try{
-            return await fetch(url, {
+            return await fetchWithTimeout(url, {
                 method: "POST",
                 body: body,
                 headers: {
@@ -292,32 +288,46 @@ let tabs = {}
 let orderedTabs = []
 
 const screenshotPolicy = {
-    minCaptureGapMs: 450,
-    appShowingCaptureMs: 900,
-    activeCaptureMs: 2500,
-    idleCaptureMs: 9500,
+    minCaptureGapMs: 1000,
+    appShowingCaptureMs: 1500,
+    activeCaptureMs: 4000,
+    idleCaptureMs: 15000,
     deepIdleAfterMs: 5 * 60 * 1000,
     deepIdleCaptureMs: 30000,
-    tabSyncIntervalMs: 7000,
+    tabSyncIntervalMs: 30000,
     statusPollActiveMs: 700,
     statusPollIdleMs: 3200,
     statusRequestTimeoutMs: 3500,
     statusMaxInFlightMs: 7000,
-    maxSendWhenShowing: 2,
+    maxSendWhenShowing: 4,
+    maxPreviewCount: 60,
+    maxPreviewChars: 8 * 1024 * 1024,
+    maxFrameChars: 256 * 1024,
+    maxBatchChars: 768 * 1024,
     maxSendWhenIdle: 1
 }
 
 let activeTabId = null
 let lastActiveAt = 0
 let lastCaptureAt = 0
+let captureRequested = false
 let lastOpenTabsSyncAt = 0
 let tabsListDirty = true
+let tabsListRevision = 0
+function markTabsDirty(){
+    tabsListDirty = true
+    tabsListRevision++
+}
 let lastConfirmedTabsSignature = ""
 
 let screenshotLoopTimeout = null
 let screenshotInProgress = false
-let suppressSendsUntil = 0
+let pendingViewPosition = null
+let connectionRetryMs = 1000
 let cachedExtensionPayload = null
+let contentNeedsLoad = true
+let contentLoadInFlight = false
+let previewRetryAfter = 0
 
 let waitForStatusInFlight = false
 let waitForStatusStartedAt = 0
@@ -374,7 +384,8 @@ function normalizeTabInfo(tab){
         pinned: !!tab.pinned,
         title: tab.title || "",
         url: tab.url || "",
-        favIconUrl: tab.favIconUrl || ""
+        favIconUrl: tab.favIconUrl || "",
+        incognito: !!tab.incognito
     }
 }
 
@@ -392,83 +403,45 @@ function makeFrameFingerprint(str){
     return `${size}:${first}:${middle}:${tail}`
 }
 
-function getAllOpenTabs() {
-    return new Promise((res)=>{
-        chrome.tabs.query({}, function(allTabs) {
-            let tabsObj = {}
-            allTabs.forEach(tab => {
-                tabsObj[tab.id] = tab
-            });
-            res(tabsObj)
-        });
-    })
+async function getAllOpenTabs(){
+    const allTabs = await chrome.tabs.query({})
+    return Object.fromEntries(allTabs.map(tab=>[tab.id, tab]))
 }
 
-let lastNumOfTabs = 0
-let voteTabsForRemove = {}
 async function checkOpenTabs(options = {}){
-    let shouldRefreshPreviews = options.refreshPreviews === true
-    let tabsObj = await getAllOpenTabs()
-    
-    let tabsIds = []
-    for(let t in tabsObj){
-        let tab = normalizeTabInfo(tabsObj[t])
-        
-        voteTabsForRemove[tab.id] = 0
-        tabs[tab.id] = {
-            ...(tabs[tab.id] || {}),
-            ...tab
-        }
-        
-        tabsIds.push(tab.id)
+    const tabsObj = await getAllOpenTabs()
+    for(const source of Object.values(tabsObj)){
+        const tab = normalizeTabInfo(source)
+        tabs[tab.id] = {...(tabs[tab.id] || {}), ...tab}
     }
-    tabsIds.sort((a, b)=>a - b)
-    
-    for(let i = orderedTabs.length - 1; i >= 0; i--){
-        let tabId = orderedTabs[i]
-        if(!tabsObj[tabId]){
-            let votes = voteTabsForRemove[tabId] = (voteTabsForRemove[tabId] || 0) + 1
-            if(votes > 1){
-                spliceOrderedTabs(i)
-                delete tabs[tabId]
-            }
-        }
+    // A successful empty query is authoritative too (e.g. the final window
+    // closed). API failures reject and retain the previous inventory.
+    for(const id of Object.keys(tabs)){
+        if(!tabsObj[id]) delete tabs[id]
     }
-    
-    let openIdsSet = new Set(tabsIds.map((id)=>id.toString()))
-    for(let tabId in tabs){
-        if(!openIdsSet.has(tabId.toString())){
-            let votes = voteTabsForRemove[tabId] = (voteTabsForRemove[tabId] || 0) + 1
-            if(votes > 1){
-                delete tabs[tabId]
-            }
-        }
-    }
-    
-    if(tabsIds.length == 0 && lastNumOfTabs > 1){
-        return
-    }
-    
-    lastNumOfTabs = tabsIds.length
-    
-    let tabsSignature = tabsIds.join(",")
+    orderedTabs = orderedTabs.filter(id=>tabsObj[id])
+
+    // Titles and placeholders do not wait for a screenshot. Keep existing tab
+    // order in the view; newly discovered tabs follow Safari window/index order.
+    let tabInfos = Object.values(tabsObj).map(normalizeTabInfo)
+        .sort((a, b)=>a.windowId - b.windowId || a.index - b.index)
+    let tabsSignature = JSON.stringify(tabInfos)
     if(tabsSignature !== lastConfirmedTabsSignature){
-        // Confirm the signature only on a successful send, so a dropped message
-        // (disconnected, HTTP error) is retried on the next sync instead of the
-        // widget keeping stale slides forever
-        let sent = await sendJsMessage('confirmSafariTabs('+JSON.stringify(tabsIds)+')')
+        let sent = await sendJsMessage('syncSafariTabs('+tabsSignature+','+JSON.stringify(pendingViewPosition)+')')
         if(sent){
             lastConfirmedTabsSignature = tabsSignature
+            pendingViewPosition = null
+        } else {
+            markTabsDirty()
         }
     }
-    
-    if(shouldRefreshPreviews){
+
+    if(options.refreshPreviews === true){
         await sendAllTabsScreenshot({force: true, onlyFocused: false})
     }
 }
 
 // currently used due to api limitations
-let cycleStatusForReload = 0
 let appIsShowing = false
 
 let nextWaitForStatusTimeout = null;
@@ -491,15 +464,18 @@ function nextWaitForStatus(delayMs = getStatusPollIntervalMs()){
     }, Math.max(160, delayMs));
 }
 
+async function fetchWithTimeout(url, options = {}, timeoutMs = 5000){
+    const controller = new AbortController()
+    const timeout = setTimeout(()=>controller.abort(), timeoutMs)
+    try {
+        return await fetch(url, {...options, signal: controller.signal})
+    } finally {
+        clearTimeout(timeout)
+    }
+}
+
 async function makeGetWithTimeout(url, timeoutMs){
-    return await Promise.race([
-        makeGet(url),
-        new Promise((_, reject)=>{
-            setTimeout(()=>{
-                reject(new Error("requestTimeout"))
-            }, timeoutMs)
-        })
-    ])
+    return fetchWithTimeout(url, {}, timeoutMs)
 }
 
 async function handleStatusMessages(statusMessages){
@@ -513,8 +489,15 @@ async function handleStatusMessages(statusMessages){
             if(status.type === "clickedOn"){
                 let id = parseInt(status.id, 10)
                 if(Number.isFinite(id)){
-                    focusOnTab(id)
+                    await focusOnTab(id)
                     scheduleScreenshotLoop(120)
+                }
+            } else if(status.type === "tabPosition"){
+                const id = Number(status.id)
+                const index = Number(status.index)
+                if(Number.isInteger(id) && Number.isInteger(index) && index >= 0 && tabs[id] && !tabs[id].incognito){
+                    storage.tabPosition = {id, index}
+                    await chrome.storage.local.set({tabPosition: storage.tabPosition})
                 }
             }
         }
@@ -527,7 +510,7 @@ async function handleStatusMessages(statusMessages){
 async function waitForStatus() {
     if(toConnect){
         lastServerSuggestedStatusPollMs = null
-        nextWaitForStatus(350)
+        nextWaitForStatus(screenshotPolicy.statusPollIdleMs)
         return
     }
 
@@ -586,24 +569,8 @@ async function waitForStatus() {
             appIsShowing = nextAppIsShowing
                 
             if(appIsShowing){
-                cycleStatusForReload = 0
-                for(let tabId in tabs){
-                    tabs[tabId].needsResend = true
-                }
-                tabsListDirty = true
-                scheduleScreenshotLoop(120)
-            }
-            else {
-                resetSwiper()
-            }
-        }
-        else if(!appIsShowing){
-            // Reset contentHtml every 10 cycles; skip while deep-idle so we don't
-            // keep messaging MakeItHome when nobody has touched the browser in a while
-            cycleStatusForReload++
-            if(cycleStatusForReload > 10 && Date.now() - lastActiveAt < screenshotPolicy.deepIdleAfterMs){
-                cycleStatusForReload = 0
-                resetSwiper()
+                markTabsDirty()
+                scheduleScreenshotLoop(100)
             }
         }
         
@@ -617,10 +584,6 @@ async function waitForStatus() {
             nextWaitForStatus()
         }
     }
-}
-
-function resetSwiper(){
-    return sendJsMessage("resetSwiper()");
 }
 
 let resetSecret = false
@@ -669,7 +632,8 @@ async function runConnect(){
         res = await makeGet(req)
         json = await res.json()
     } catch(err){
-        console.error("connect failed", err)
+        connectionBlockedUntil = Date.now() + connectionRetryMs
+        connectionRetryMs = Math.min(30000, connectionRetryMs * 2)
         return false
     }
 
@@ -700,11 +664,12 @@ async function runConnect(){
 
     resetSecret = false
     connectionBlockedUntil = 0
+    connectionRetryMs = 1000
     toConnect = false
     lastServerSuggestedStatusPollMs = null
 
     nextWaitForStatus(40)
-    return json?.description !== "appAlreadyConnected"
+    return true
 }
 
 /**
@@ -826,39 +791,40 @@ async function blobToBase64(blob) {
     });
 }
 
-async function resizeAndCompressImage(blob, maxHeight = 300, quality = 0.6) {
+async function resizeAndCompressImage(blob, maxHeight = 360, quality = 0.5) {
+    const bitmap = await createImageBitmap(blob)
     try {
-        // Create an ImageBitmap from the Blob
-        const bitmap = await createImageBitmap(blob);
-
-        // Calculate new dimensions while maintaining aspect ratio
-        const aspectRatio = bitmap.width / bitmap.height;
-        const newHeight = Math.min(maxHeight, bitmap.height);
-        const newWidth = newHeight * aspectRatio;
-
-        // Create an OffscreenCanvas
-        const offscreenCanvas = new OffscreenCanvas(newWidth, newHeight);
-        const ctx = offscreenCanvas.getContext('2d');
-
-        // Draw the ImageBitmap onto the canvas
-        ctx.drawImage(bitmap, 0, 0, newWidth, newHeight);
-
-        // Convert the canvas to a Blob in JPEG format
-        const compressedBlob = await offscreenCanvas.convertToBlob({
-            type: 'image/jpeg',
-            quality: quality
-        });
-
-        return compressedBlob;
-    } catch (error) {
-        console.error('Error resizing and compressing image:', error);
-        throw error;
+        const scale = Math.min(1, maxHeight / bitmap.height, 640 / bitmap.width)
+        const width = Math.max(1, Math.round(bitmap.width * scale))
+        const height = Math.max(1, Math.round(bitmap.height * scale))
+        const canvas = new OffscreenCanvas(width, height)
+        canvas.getContext('2d').drawImage(bitmap, 0, 0, width, height)
+        return await canvas.convertToBlob({type: 'image/jpeg', quality})
+    } finally {
+        bitmap.close()
     }
+}
+
+// Images stay in memory and have both a count and byte budget. Metadata is
+// independent, so evicting a preview never removes its title or switch action.
+function trimPreviewCache(){
+    const previews = Object.values(tabs).filter(tab=>tab.lastStrBlob)
+        .sort((a, b)=>(b.lastCaptureAt || 0) - (a.lastCaptureAt || 0))
+    let chars = 0
+    previews.forEach((tab, index)=>{
+        chars += tab.lastStrBlob.length
+        if(index >= screenshotPolicy.maxPreviewCount || chars > screenshotPolicy.maxPreviewChars){
+            delete tab.lastStrBlob
+            delete tab.lastRawFrameFingerprint
+            delete tab.lastFrameFingerprint
+            tab.needsResend = false
+        }
+    })
 }
 
 async function captureVisibleTabAsDataUrl(windowId){
     return new Promise((resolve, reject)=>{
-        chrome.tabs.captureVisibleTab(windowId, { format: "jpeg" }, (dataUrl)=>{
+        chrome.tabs.captureVisibleTab(windowId, { format: "jpeg", quality: 50 }, (dataUrl)=>{
             if(chrome.runtime.lastError){
                 reject(chrome.runtime.lastError)
                 return
@@ -913,16 +879,18 @@ function scheduleScreenshotLoop(delayMs = getCaptureIntervalMs()){
 
 async function captureScreenshotAndSend() {
     try {
-        if(Date.now() - lastCaptureAt < screenshotPolicy.minCaptureGapMs){
+        if(Date.now() - lastCaptureAt < (captureRequested ? screenshotPolicy.minCaptureGapMs : getCaptureIntervalMs())){
             return {changed: false, reason: "throttled"}
         }
 
         if(await shouldSkipBackgroundCapture()){
+            captureRequested = false
             return {changed: false, reason: "windowUnfocused"}
         }
 
         const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true })
         if(!activeTab){
+            captureRequested = false
             return {changed: false, reason: "noActiveTab"}
         }
         
@@ -940,23 +908,32 @@ async function captureScreenshotAndSend() {
         let tabInfoChanged = tabState.lastStrTabInfo !== strTabInfo
         tabState.lastStrTabInfo = strTabInfo
 
+        // Pace attempts as well as changed frames, including failed captures.
+        lastCaptureAt = Date.now()
+        captureRequested = false
         const dataUrl = await captureVisibleTabAsDataUrl(activeTab.windowId)
+        const [stillActive] = await chrome.tabs.query({active: true, windowId: activeTab.windowId})
+        if(!stillActive || stillActive.id !== activeTab.id || stillActive.url !== activeTab.url || tabs[tabInfo.id] !== tabState){
+            return {changed: false, reason: "tabChangedDuringCapture"}
+        }
         let rawFrameFingerprint = makeFrameFingerprint(dataUrl)
         if(tabState.lastRawFrameFingerprint === rawFrameFingerprint && !tabInfoChanged){
             return {changed: false, reason: "sameRawFrame"}
         }
-        tabState.lastRawFrameFingerprint = rawFrameFingerprint
-        // The page visibly changed in a focused window: treat it as user activity
-        // so same-tab browsing keeps previews fresh (static pages still wind down to idle)
-        lastActiveAt = Date.now()
         
         let response = await fetch(dataUrl)
         let blob = await response.blob()
-        blob = await resizeAndCompressImage(blob, 600, 0.5)
+        blob = await resizeAndCompressImage(blob)
         
         let strBlob = await blobToBase64(blob)
-        strBlob = formatStrForJsMessage(strBlob)
+        if(strBlob.length > screenshotPolicy.maxFrameChars){
+            return {changed: false, reason: "frameTooLarge"}
+        }
+        if(tabs[tabInfo.id] !== tabState || tabState.url !== tabInfo.url){
+            return {changed: false, reason: "tabChangedDuringCompression"}
+        }
         
+        tabState.lastRawFrameFingerprint = rawFrameFingerprint
         let frameFingerprint = makeFrameFingerprint(strBlob)
         if(tabState.lastFrameFingerprint === frameFingerprint && !tabInfoChanged){
             return {changed: false, reason: "sameCompressedFrame"}
@@ -966,7 +943,7 @@ async function captureScreenshotAndSend() {
         tabState.lastStrBlob = strBlob
         tabState.needsResend = true
         
-        lastCaptureAt = Date.now()
+        trimPreviewCache()
         return {changed: true}
     } catch (error) {
         console.error("Failed to capture screenshot: ", error)
@@ -1003,84 +980,38 @@ function getTabPriorityScore(tabId){
     return score
 }
 
-async function sendTab(tab, options = {}){
-    if(!tab || !tab.lastStrBlob || !tab.lastStrTabInfo){
-        return false
-    }
-    if(Date.now() < suppressSendsUntil){
-        return false
-    }
-    
-    let force = options.force === true
-    if(!force && !tab.needsResend && tab.lastSentFrameFingerprint === tab.lastFrameFingerprint && tab.lastSentTabInfo === tab.lastStrTabInfo){
-        return false
-    }
-    
-    let strTabInfo = tab.lastStrTabInfo
-    let strBlob = tab.lastStrBlob
-    
-    const divideChuck = false
-    
-    if(divideChuck){ // when exceed body limit
-        const chunckSize = 1024 * 128
-        for(let c=0; c<strBlob.length; c+= chunckSize){
-            let chunk = strBlob.substr(c, chunckSize)
-            await sendJsMessage('appendBlob("'+chunk+'")')
-        }
-        
-        await sendJsMessage('addScreenshot(vars.chrome.blob, '+strTabInfo+'); vars.chrome.blob="";')
-    }
-    else {
-        await sendJsMessage('addScreenshot("'+strBlob+'", '+strTabInfo+');')
-    }
-    
-    tab.lastSentFrameFingerprint = tab.lastFrameFingerprint
-    tab.lastSentTabInfo = tab.lastStrTabInfo
-    tab.lastSentAt = Date.now()
-    tab.needsResend = false
-    
-    return true
+function pendingPreviewTabs(options = {}){
+    return Object.values(tabs).filter(tab=>tab.lastStrBlob &&
+        (!options.onlyFocused || tab.id === activeTabId) &&
+        (options.force || tab.needsResend || tab.lastSentFrameFingerprint !== tab.lastFrameFingerprint))
+        .sort((a, b)=>getTabPriorityScore(b.id) - getTabPriorityScore(a.id))
 }
 
 async function sendAllTabsScreenshot(options = {}){
-    let force = options.force === true
-    let onlyFocused = options.onlyFocused === true
-    let maxTabs = Number.isFinite(options.maxTabs) ? options.maxTabs : (appIsShowing ? screenshotPolicy.maxSendWhenShowing : screenshotPolicy.maxSendWhenIdle)
-    
-    let tabIds = [
-        ...orderedTabs.slice().reverse(),
-        ...Object.keys(tabs).map((tabId)=>parseInt(tabId, 10))
-    ]
-    tabIds = tabIds.filter((tabId)=>Number.isFinite(tabId))
-    tabIds = [...new Set(tabIds)]
-
-    // Precompute scores: the comparator would otherwise recompute them
-    // (including an orderedTabs.indexOf scan) O(n log n) times
-    let scores = new Map()
-    for(let tabId of tabIds){
-        scores.set(tabId, getTabPriorityScore(tabId))
+    const maxTabs = options.maxTabs ?? (appIsShowing ? screenshotPolicy.maxSendWhenShowing : screenshotPolicy.maxSendWhenIdle)
+    const batch = []
+    let chars = 0
+    for(const tab of pendingPreviewTabs(options)){
+        if(batch.length >= maxTabs || chars + tab.lastStrBlob.length > screenshotPolicy.maxBatchChars) break
+        batch.push({tab, blob: tab.lastStrBlob, info: normalizeTabInfo(tab), fingerprint: tab.lastFrameFingerprint})
+        chars += tab.lastStrBlob.length
     }
-    tabIds.sort((a, b)=>scores.get(b) - scores.get(a))
-    
-    let sent = 0
-    for(let tabId of tabIds){
-        let tab = tabs[tabId]
-        if(!tab || !tab.lastStrBlob){
-            continue
-        }
-        
-        if(!force && onlyFocused && tabId != activeTabId){
-            continue
-        }
-        
-        let tabSent = await sendTab(tab, {force})
-        if(tabSent){
-            sent += 1
-            if(!force && sent >= maxTabs){
-                break
-            }
-        }
+    if(!batch.length || Date.now() < previewRetryAfter) return false
+    const payload = batch.map(item=>({blob: item.blob, tabInfo: item.info}))
+    const sent = await sendJsMessage('applySafariScreenshots('+JSON.stringify(payload)+')')
+    if(!sent){
+        previewRetryAfter = Date.now() + 1500
+        return false
     }
+    previewRetryAfter = 0
+    for(const item of batch){
+        // A capture/update can finish during the HTTP request. Acknowledge only
+        // the exact version sent, retaining new work and all failed sends.
+        item.tab.lastSentFrameFingerprint = item.fingerprint
+        item.tab.lastSentAt = Date.now()
+        item.tab.needsResend = item.tab.lastFrameFingerprint !== item.fingerprint
+    }
+    return true
 }
 
 async function runScreenshotLoop(){
@@ -1097,21 +1028,25 @@ async function runScreenshotLoop(){
             return
         }
         
+        if(contentNeedsLoad){
+            await loadScripts()
+            return
+        }
+
         let now = Date.now()
         let deepIdle = !appIsShowing && now - lastActiveAt > screenshotPolicy.deepIdleAfterMs
         if(tabsListDirty || (!deepIdle && now - lastOpenTabsSyncAt > screenshotPolicy.tabSyncIntervalMs)){
+            const revision = tabsListRevision
             await checkOpenTabs()
-            tabsListDirty = false
+            tabsListDirty = tabsListRevision !== revision
             lastOpenTabsSyncAt = Date.now()
         }
         
-        let captureResult = await captureScreenshotAndSend()
-        if(captureResult.changed || appIsShowing){
-            await sendAllTabsScreenshot({
-                force: false,
-                onlyFocused: !appIsShowing,
-                maxTabs: appIsShowing ? screenshotPolicy.maxSendWhenShowing : screenshotPolicy.maxSendWhenIdle
-            })
+        // Deliver cached previews first; capture/encoding must not delay them.
+        await sendAllTabsScreenshot({onlyFocused: !appIsShowing})
+        const captureResult = await captureScreenshotAndSend()
+        if(captureResult.changed){
+            await sendAllTabsScreenshot({onlyFocused: !appIsShowing})
         }
     }
     catch (err){
@@ -1119,48 +1054,49 @@ async function runScreenshotLoop(){
     }
     finally {
         screenshotInProgress = false
-        scheduleScreenshotLoop()
+        const pending = appIsShowing && pendingPreviewTabs().length > 0
+        const retryDelay = toConnect ? Math.max(1000, connectionBlockedUntil - Date.now()) : getCaptureIntervalMs()
+        const captureDelay = captureRequested && !toConnect ? Math.max(100, screenshotPolicy.minCaptureGapMs - (Date.now() - lastCaptureAt)) : retryDelay
+        scheduleScreenshotLoop(pending && !toConnect ? Math.max(100, previewRetryAfter - Date.now()) : captureDelay)
     }
 }
 
 // Add a listener for the browser action
 chrome.action.onClicked.addListener(()=>{
-    connect()
+    checkConnect()
     scheduleScreenshotLoop(120)
 });
 
-async function loadScripts(){
-    if(!cachedExtensionPayload){
-        let extension = await readTextFile("extension.html")
-        let swiperCss = await readTextFile("swiper.css")
-        let swiperJs = await readTextFile("swiper.min.js")
+async function loadScripts(options = {}){
+    if(contentLoadInFlight) return
+    contentLoadInFlight = true
+    try {
+        await installExtensionContent(options)
+    } finally {
+        contentLoadInFlight = false
+    }
+}
 
+async function installExtensionContent(options){
+    if(!cachedExtensionPayload){
+        const [extension, swiperCss, swiperJs] = await Promise.all([
+            readTextFile("extension.html"), readTextFile("swiper.css"), readTextFile("swiper.min.js")
+        ])
+        if(!extension || !swiperCss || !swiperJs) return
         cachedExtensionPayload = "<style>"+swiperCss+"\r\n</style><script>"+swiperJs+"\r\n</script>\r\n\r\n" + extension
     }
 
-    let loaded = await setHtmlContent(cachedExtensionPayload, { forceReload: true })
-    if(!loaded){
-        return
-    }
-
-    suppressSendsUntil = Date.now() + 1500
-    
-    for(let tabId in tabs){
-        tabs[tabId].needsResend = true
-    }
-    tabsListDirty = true
-    
-    setTimeout(async ()=>{
-        if(appIsShowing){
-            await sendAllTabsScreenshot({
-                force: false,
-                onlyFocused: true,
-                maxTabs: 1
-            })
-        }
-        
-        scheduleScreenshotLoop(appIsShowing ? 120 : getCaptureIntervalMs())
-    }, 300)
+    const loaded = await setHtmlContent(cachedExtensionPayload, {forceReload: options.forceReload === true})
+    if(!loaded) return
+    contentNeedsLoad = false
+    pendingViewPosition = storage.tabPosition || null
+    lastConfirmedTabsSignature = ""
+    for(const tab of Object.values(tabs)) tab.needsResend = true
+    markTabsDirty()
+    // Native queues messages until content is ready; no fixed 1.5-second sleep.
+    await checkOpenTabs()
+    await sendAllTabsScreenshot()
+    scheduleScreenshotLoop(100)
 }
 
 async function checkConnect(){
@@ -1181,7 +1117,8 @@ chrome.tabs.onActivated.addListener((activeInfo)=>{
     }
     
     confirmTabOrder(activeInfo.tabId)
-    tabsListDirty = true
+    captureRequested = true
+    markTabsDirty()
     scheduleScreenshotLoop(120)
 })
 
@@ -1195,14 +1132,14 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab)=>{
             }
             
             let nextTabInfo = JSON.stringify(normalized)
-            if(tabs[tabId].lastStrTabInfo && tabs[tabId].lastStrTabInfo !== nextTabInfo && tabs[tabId].lastStrBlob){
-                tabs[tabId].needsResend = true
-            }
             tabs[tabId].lastStrTabInfo = nextTabInfo
             
             if(tab.active){
                 activeTabId = tabId
-                lastActiveAt = Date.now()
+                if(changeInfo.url || changeInfo.status === "complete"){
+                    lastActiveAt = Date.now()
+                    captureRequested = true
+                }
             }
         }
     }
@@ -1211,13 +1148,20 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab)=>{
     // and title tickers on background tabs must not tighten the capture loop
     let meaningfulChange = changeInfo.status === "complete" || changeInfo.url || changeInfo.title || changeInfo.favIconUrl
     if(meaningfulChange){
-        tabsListDirty = true
+        markTabsDirty()
 
         if((tab && tab.active) || appIsShowing){
             scheduleScreenshotLoop(tab && tab.active ? 120 : 450)
         }
     }
 })
+
+for(const event of [chrome.tabs.onCreated, chrome.tabs.onMoved, chrome.tabs.onAttached, chrome.tabs.onDetached]){
+    event.addListener(()=>{
+        markTabsDirty()
+        scheduleScreenshotLoop(150)
+    })
+}
 
 chrome.tabs.onRemoved.addListener((tabId)=>{
     delete tabs[tabId]
@@ -1226,23 +1170,19 @@ chrome.tabs.onRemoved.addListener((tabId)=>{
         spliceOrderedTabs(index)
     }
     
-    tabsListDirty = true
+    markTabsDirty()
     scheduleScreenshotLoop(120)
 })
 
 chrome.runtime.onMessage.addListener(async function(message, sender, sendResponse){
-    console.log("received message", message)
     if(message.extensionStart) {
         checkConnect()
         nextWaitForStatus(80)
         scheduleScreenshotLoop(150)
     }
     
-    if(message.greeting){
-        sendResponse(message)
-    }
-    
     if(message.takeScreenshot){
+        captureRequested = true
         scheduleScreenshotLoop(20)
     }
     
@@ -1252,7 +1192,7 @@ chrome.runtime.onMessage.addListener(async function(message, sender, sendRespons
     
     if(message.action == 'reset'){
         console.log("resetting connection...")
-        await loadScripts()
+        await loadScripts({forceReload: true})
     }
 });
 

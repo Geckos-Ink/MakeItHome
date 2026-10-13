@@ -1,629 +1,320 @@
 <style>
-#safariTabs {
-    width: 100%;
-    height: 100%;
-}
-
-#safariTabs img {
-    max-height: 100%;
-    max-width: 100%;
-    
-    margin-top: 20px;
-    
-    cursor: pointer;
-}
-
-.swiper-slide {
+#safariTabs { width: 100%; height: 100%; perspective: 1200px; }
+#safariTabs .swiper-wrapper { pointer-events: none; }
+#safariTabs .swiper-slide {
     pointer-events: auto;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px;
+    cursor: pointer;
+    backface-visibility: hidden;
 }
-
-.swiper-wrapper {
-    pointer-events: none; /* Disable pointer events on the wrapper if necessary */
+#safariTabs img { max-height: calc(100% - 48px); max-width: 100%; object-fit: contain; border-radius: 6px; }
+#safariTabs img[hidden] { display: none; }
+#safariTabs .safari-tab-title {
+    width: 100%;
+    max-width: 640px;
+    padding: 5px 9px;
+    box-sizing: border-box;
+    color: white;
+    background: rgba(0, 0, 0, .72);
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: bold;
+    line-height: 20px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    text-align: center;
+    flex-shrink: 0;
 }
-
-    /*
-     Effect
-     */
-    
-    /* Tunables */
-    :root{
-      --max-rotate: 38deg;   /* max tilt at edges */
-      --max-pop: 140px;      /* Z “pop” for center */
-      --min-scale: .82;      /* smallest scale at edges */
-    }
-
-    /* 3D context + orientation-aware axes */
-    .swiper{
-      perspective: 1200px;
-
-      /* HORIZONTAL defaults */
-      --rx: 0;               /* rotate around X? (0=off/1=on) */
-      --ry: 1;               /* rotate around Y? (0=off/1=on) */
-      --dir-sign: -1;        /* angle sign so left/right tilt toward center */
-    }
-
-    /* When Swiper is vertical, it adds .swiper-vertical */
-    .swiper.swiper-vertical{
-      --rx: 1;               /* rotate around X for vertical */
-      --ry: 0;               /* no Y rotation */
-      --dir-sign: 1;         /* top/bottom tilt toward center */
-    }
-
-    .swiper-slide{
-      transform-style: preserve-3d;
-      backface-visibility: hidden;
-      transform-origin: center center;
-      will-change: transform, filter, opacity;
-      transition: transform 420ms cubic-bezier(.2,.7,.2,1), opacity 240ms, filter 240ms;
-
-      /* set by JS */
-      --p: 0;                /* slide.progress (…,-1←0→+1,…) */
-      --absP: 0;             /* clamp01(abs(--p)) */
-
-      /* map progress → visuals */
-      --rot:  calc(var(--p) * var(--dir-sign) * var(--max-rotate));
-      --pop:  calc((1 - var(--absP)) * var(--max-pop));
-      --sc:   calc(1 - var(--absP) * (1 - var(--min-scale)));
-      --fade: calc(1 - var(--absP) * .35);
-      --sat:  calc(1 - var(--absP) * .2);
-
-      /* rotate around X for vertical, Y for horizontal via rotate3d(rx, ry, 0, angle) */
-      transform: translateZ(var(--pop)) rotate3d(var(--rx), var(--ry), 0, var(--rot)) scale(var(--sc));
-      opacity: var(--fade);
-      filter: saturate(var(--sat));
-      z-index: calc(1000 - var(--absP) * 100);
-    }
-
-    /* Optional: motion safety */
-    @media (prefers-reduced-motion: reduce){
-      .swiper-slide{ transition: none; transform: none; }
-    }
-
-    
 </style>
-
-<div id="safariTabs" class="safariSwiperContainer swiper swiper-container">
+<div id="safariTabs" class="safariSwiperContainer swiper swiper-container" aria-label="Safari tabs">
     <div class="swiper-wrapper"></div>
-    <div class="swiper-pagination"></div>
 </div>
-
 <script>
     vars.safari = vars.safari || {}
-    if(vars.safari.swiper){
-        // A previous injection's Swiper is bound to DOM that setContent just replaced:
-        // keeping it makes instanceSwiper a no-op and new slides land in a detached wrapper
-        try { vars.safari.swiper.destroy(true, true) } catch(err) {}
-        vars.safari.swiper = null
-    }
-    if(vars.safari.swiperRetryTimer){
-        clearTimeout(vars.safari.swiperRetryTimer)
-        vars.safari.swiperRetryTimer = null
-    }
-    if(vars.safari.swiperRefreshTimer){
-        clearTimeout(vars.safari.swiperRefreshTimer)
-        vars.safari.swiperRefreshTimer = null
+    // Content reinjection replaces the DOM. Preserve navigation, release images
+    // and listeners from the old instance, and rebuild only for this new content.
+    rememberSafariPosition(false)
+    destroySwiper()
+    for(const tab of Object.values(vars.safari.tabs || {})) releaseSafariPreview(tab)
+    for(const name of ['swiperRetryTimer', 'swiperRefreshTimer', 'positionTimer']){
+        clearTimeout(vars.safari[name])
+        vars.safari[name] = null
     }
     vars.safari.slides = []
     vars.safari.tabs = {}
+    vars.safari.restoring = false
 
     function swiperHasLayout(){
-        let container = document.getElementById('safariTabs')
+        const container = document.getElementById('safariTabs')
         if(!container || !isShowing) return false
-
-        let bounds = container.getBoundingClientRect()
+        const bounds = container.getBoundingClientRect()
         return bounds.width > 1 && bounds.height > 1
     }
 
-    function scheduleSwiperRefresh(attempt = 0){
-        if(vars.safari.swiperRefreshTimer){
-            clearTimeout(vars.safari.swiperRefreshTimer)
-        }
+    function safariPositionIndex(){
+        const position = vars.safari.position
+        const slides = vars.safari.slides
+        if(!position || !slides.length) return 0
+        const index = slides.findIndex(slide=>Number(slide.getAttribute('tabId')) === Number(position.id))
+        return index >= 0 ? index : Math.min(Math.max(0, position.index || 0), slides.length - 1)
+    }
 
-        // The native overscreen changes both position and size. Wait across a
-        // few render frames so coverflow sees its final non-zero geometry.
+    function rememberSafariPosition(notify = true){
+        const swiper = vars.safari.swiper
+        if(!swiper || swiper.destroyed || vars.safari.restoring) return
+        const index = swiper.activeIndex
+        const slide = vars.safari.slides[index]
+        if(!slide) return
+        const id = Number(slide.getAttribute('tabId'))
+        vars.safari.position = {id, index}
+        clearTimeout(vars.safari.positionTimer)
+        if(notify && isShowing){
+            // Coalesce wheel/drag changes; persist only an ID and fallback index.
+            vars.safari.positionTimer = setTimeout(()=>{
+                vars.safari.positionTimer = null
+                sendStatus(JSON.stringify({type: 'tabPosition', ...vars.safari.position}))
+            }, 250)
+        }
+    }
+
+    function restoreSafariPosition(){
+        const swiper = vars.safari.swiper
+        if(!swiper || swiper.destroyed) return
+        vars.safari.restoring = true
+        swiper.slideTo(safariPositionIndex(), 0, false)
+        vars.safari.restoring = false
+    }
+
+    function scheduleSwiperRefresh(attempt = 0){
+        clearTimeout(vars.safari.swiperRefreshTimer)
+        // The native overlay animates its geometry. All retries are bounded and
+        // stop while hidden; adding a batch needs only one layout update.
         const delays = [0, 16, 50, 120, 250]
         vars.safari.swiperRefreshTimer = setTimeout(()=>{
             vars.safari.swiperRefreshTimer = null
-
-            if(!swiperHasLayout()){
-                if(isShowing && attempt + 1 < delays.length){
-                    scheduleSwiperRefresh(attempt + 1)
+            if(swiperHasLayout()){
+                ensureSwiper()
+                const swiper = vars.safari.swiper
+                if(swiper && !swiper.destroyed){
+                    vars.safari.restoring = true
+                    swiper.update()
+                    vars.safari.restoring = false
+                    restoreSafariPosition()
+                    swiper.setTranslate(swiper.translate)
                 }
-                return
             }
-
-            if(!vars.safari.swiper){
-                instanceSwiper()
-            }
-
-            let swiper = vars.safari.swiper
-            if(swiper && !swiper.destroyed){
-                swiper.update()
-                // Re-run the active effect after the size update. Without this,
-                // an instance created during the native transition can retain
-                // plain two-dimensional transforms.
-                swiper.setTranslate(swiper.translate)
-            }
-
-            if(attempt + 1 < delays.length){
-                scheduleSwiperRefresh(attempt + 1)
-            }
-        }, delays[Math.min(attempt, delays.length - 1)])
+            if(isShowing && attempt + 1 < delays.length) scheduleSwiperRefresh(attempt + 1)
+        }, delays[attempt])
     }
 
-    // Swiper may not be evaluated yet when the first screenshots arrive:
-    // retry instead of throwing, so slides queued in vars.safari.slides
-    // get appended once the library is ready
-    function ensureSwiper(){
+    function ensureSwiper(attempt = 0){
         if(vars.safari.swiper) return true
-
-        if(!swiperHasLayout()){
-            if(isShowing && !vars.safari.swiperRetryTimer){
-                vars.safari.swiperRetryTimer = setTimeout(()=>{
-                    vars.safari.swiperRetryTimer = null
-                    scheduleSwiperRefresh()
-                }, 50)
-            }
-            return false
-        }
-
+        if(!swiperHasLayout()) return false
         if(typeof Swiper === 'undefined'){
-            if(!vars.safari.swiperRetryTimer){
+            if(attempt < 10 && !vars.safari.swiperRetryTimer){
                 vars.safari.swiperRetryTimer = setTimeout(()=>{
                     vars.safari.swiperRetryTimer = null
-                    ensureSwiper()
+                    ensureSwiper(attempt + 1)
                 }, 120)
             }
             return false
         }
-
         instanceSwiper()
         return !!vars.safari.swiper
     }
 
     function instanceSwiper(){
-        if(vars.safari.swiper) return;
-        if(typeof Swiper === 'undefined') return;
-        console.log("instance swiper")
-        
+        if(vars.safari.swiper || typeof Swiper === 'undefined') return
         vars.safari.swiperIsHorizontal = isHorizontal
-        
-        $("#safariTabs .swiper-wrapper").html('')
-        
-        let swiper = vars.safari.swiper = new Swiper(".safariSwiperContainer", {
-            effect: "coverflow",
-            direction: isHorizontal ? "horizontal" : "vertical",
-            grabCursor: true,
-            freeMode: true,
-            centeredSlides: true,
-            slidesPerView: 5,
-            simulateTouch: true,
-            mousewheel: true,
+        const wrapper = document.querySelector('#safariTabs .swiper-wrapper')
+        wrapper.replaceChildren(...vars.safari.slides)
+        vars.safari.restoring = true
+        vars.safari.swiper = new Swiper('#safariTabs', {
+            effect: 'coverflow',
+            direction: isHorizontal ? 'horizontal' : 'vertical',
+            initialSlide: safariPositionIndex(),
+            grabCursor: true, freeMode: true, centeredSlides: true,
+            slidesPerView: 5, simulateTouch: true, mousewheel: true,
             preventClicks: false,
-            coverflowEffect: {
-                rotate: 5,
-                stretch: 0,
-                depth: 100,
-                modifier: 1,
-                slideShadows: false,
-            },
-            keyboard: {
-               enabled: true,
-               onlyInViewport: false,
-             },
-            pagination: {
-            el: ".swiper-pagination",
-            },
-        });
-        
-        for(let slide of vars.safari.slides){
-            console.log("appendSlide", slide)
-            vars.safari.swiper.appendSlide(slide)
-        }
-        
-        /*setTimeout(()=>{
-            
-            document.querySelectorAll('.swiper-slide').forEach((slide, index) => {
-                slide.addEventListener('click', () => {
-                    swiper.slideTo(index);
-                });
-            });
-
-        }, 50)*/
-        
-        // Runs after jQuery is loaded
-        // Delegate from document: it survives swiper destroy/recreate and setContent
-        // re-injections, and binding once avoids stacking a handler per instanceSwiper call
-        if(vars.safari.clickHandlerBound) return;
-        vars.safari.clickHandlerBound = true;
-
-        $(document).on('click', '#safariTabs .swiper-slide', function (e) {
-            console.log("Clicked on .swiper-slide")
-          // Read the custom attribute exactly as requested: "tabId"
-          // (also tolerate lowercase and data-* variants just in case)
-          let tabId =
-            $(this).attr('tabId') ??
-            $(this).attr('tabid') ??
-            $(this).data('tabId') ??
-            $(this).data('tab-id');
-
-          if (tabId == null || tabId === '') {
-            console.warn('Clicked .swiper-slide has no tabId attribute:', this);
-            return;
-          }
-
-          // If you expect it to be numeric, normalize here:
-          // const idNum = Number(tabId); if (!Number.isNaN(idNum)) { ... }
-
-          console.log('clicked tabId:', tabId);
-
-          // 👉 do whatever you need with tabId here
-          clickedOnSafariTab(tabId)
-        });
-
+            coverflowEffect: {rotate: 5, stretch: 0, depth: 100, modifier: 1, slideShadows: false},
+            keyboard: {enabled: true, onlyInViewport: true},
+            on: {slideChange: ()=>rememberSafariPosition()}
+        })
+        vars.safari.restoring = false
     }
 
     function destroySwiper(){
         if(vars.safari.swiper){
-            console.log("destroyng swiper")
-            vars.safari.swiper.destroy(true, true);
+            vars.safari.swiper.destroy(true, true)
             vars.safari.swiper = null
         }
     }
 
     function resetSwiper(){
+        rememberSafariPosition(false)
         destroySwiper()
-        ensureSwiper()
+        scheduleSwiperRefresh()
     }
 
     setEvent('show', ()=>{
-        console.log("showing safari extension", isHorizontal)
         if(vars.safari.swiper && vars.safari.swiperIsHorizontal !== isHorizontal){
+            rememberSafariPosition(false)
             destroySwiper()
         }
+        if(vars.safari.swiper) vars.safari.swiper.keyboard.enable()
         scheduleSwiperRefresh()
     })
+    setEvent('exit', ()=>{
+        rememberSafariPosition()
+        clearTimeout(vars.safari.swiperRefreshTimer)
+        clearTimeout(vars.safari.swiperRetryTimer)
+        vars.safari.swiperRefreshTimer = null
+        vars.safari.swiperRetryTimer = null
+        if(vars.safari.swiper) vars.safari.swiper.keyboard.disable()
+    })
 
-    vars.safari.blob = ""
-    function appendBlob(blob){
-        vars.safari.blob += blob
-    }
-    
-    function getUniqueColorFromId(id) {
-      // Utilizziamo una semplice funzione di hash per generare un valore da 0 a 359 (per hue)
-      const hue = Math.abs(id * 9973 % 360);
-      
-      // Impostiamo valori fissi per saturazione e luminosità per colori vivaci ma leggibili
-      const saturation = 100;  // percentuale
-      const lightness = 80;   // percentuale
-      
-      // Convertiamo da HSL a RGB
-      const h = hue / 360;
-      const s = saturation / 100;
-      const l = lightness / 100;
-      
-      let r, g, b;
-      
-      if (s === 0) {
-        r = g = b = l; // è un grigio
-      } else {
-        const hue2rgb = (p, q, t) => {
-          if (t < 0) t += 1;
-          if (t > 1) t -= 1;
-          if (t < 1/6) return p + (q - p) * 6 * t;
-          if (t < 1/2) return q;
-          if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
-          return p;
-        };
-        
-        const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-        const p = 2 * l - q;
-        
-        r = hue2rgb(p, q, h + 1/3);
-        g = hue2rgb(p, q, h);
-        b = hue2rgb(p, q, h - 1/3);
-      }
-      
-      // Convertiamo i valori RGB da 0-1 a 0-255
-      const red = Math.round(r * 255);
-      const green = Math.round(g * 255);
-      const blue = Math.round(b * 255);
-      
-      // Impostiamo un'opacità fissa di 1 (completamente opaco)
-      const alpha = 1;
-      
-      // Restituiamo la stringa nel formato rgba
-      return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
-    }
-
-    function addGradientBorder(selector, color) {
-      // Trova l'elemento usando il selettore
-      const element = document.querySelector(selector);
-      
-      if (!element) {
-        console.error(`Elemento con selettore "${selector}" non trovato`);
-        return;
-      }
-      
-      // Estrai i valori RGB dal colore (assumendo formato rgba(r, g, b, a))
-      const rgbaMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
-      
-      if (!rgbaMatch) {
-        console.error(`Formato colore non valido: ${color}`);
-        return;
-      }
-      
-      const r = parseInt(rgbaMatch[1], 10);
-      const g = parseInt(rgbaMatch[2], 10);
-      const b = parseInt(rgbaMatch[3], 10);
-      
-      // Crea una versione più scura del colore per il gradiente (riduce la luminosità del 20%)
-      const darkerR = Math.max(0, Math.floor(r * 0.8));
-      const darkerG = Math.max(0, Math.floor(g * 0.8));
-      const darkerB = Math.max(0, Math.floor(b * 0.8));
-      const darkerColor = `rgba(${darkerR}, ${darkerG}, ${darkerB}, 1)`;
-      
-      // Applica il bordo con gradiente
-      element.style.borderWidth = '2.5px';
-      element.style.borderStyle = 'solid';
-      element.style.borderImageSource = `linear-gradient(135deg, ${color}, ${darkerColor})`;
-      element.style.borderImageSlice = '1';
-      
-      // Assicurati che l'elemento mantenga le dimensioni originali
-      const originalBox = window.getComputedStyle(element).boxSizing;
-      if (originalBox !== 'border-box') {
-        element.style.boxSizing = 'border-box';
-      }
-    }
-    
-    function addCircularGradientBackground(selector, color) {
-      // Trova l'elemento usando il selettore
-      const element = document.querySelector(selector);
-      
-      if (!element) {
-        console.error(`Elemento con selettore "${selector}" non trovato`);
-        return;
-      }
-      
-      // Estrai i valori RGB dal colore
-      const rgbaMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
-      
-      if (!rgbaMatch) {
-        console.error(`Formato colore non valido: ${color}`);
-        return;
-      }
-      
-      const r = parseInt(rgbaMatch[1], 10);
-      const g = parseInt(rgbaMatch[2], 10);
-      const b = parseInt(rgbaMatch[3], 10);
-      
-      // Crea il colore con opacità piena al centro
-      const centerColor = `rgba(${r}, ${g}, ${b}, 1.0)`;
-      // Crea la versione trasparente per i bordi
-      const transparentColor = `rgba(${r}, ${g}, ${b}, 0)`;
-      
-      // Applica un semplice gradiente radiale che va da opaco al centro a trasparente ai bordi
-      element.style.background = `radial-gradient(circle at center, ${centerColor} 0%, ${transparentColor} 65%)`;
-      
-      // In Safari, a volte è utile forzare la modalità di rendering
-      element.style.webkitBackgroundClip = 'padding-box';
-      element.style.backgroundClip = 'padding-box';
-    }
-    
-    function addPulsatingGradientBackground(selector, color) {
-      // Trova l'elemento usando il selettore
-      const element = document.querySelector(selector);
-      
-      if (!element) {
-        console.error(`Elemento con selettore "${selector}" non trovato`);
-        return;
-      }
-      
-      // Estrai i valori RGB dal colore
-      const rgbaMatch = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*[\d.]+)?\)/);
-      
-      if (!rgbaMatch) {
-        console.error(`Formato colore non valido: ${color}`);
-        return;
-      }
-      
-      const r = parseInt(rgbaMatch[1], 10);
-      const g = parseInt(rgbaMatch[2], 10);
-      const b = parseInt(rgbaMatch[3], 10);
-      
-      // Crea il colore con opacità piena al centro
-      const centerColor = `rgba(${r}, ${g}, ${b}, 0.8)`;
-      // Crea la versione trasparente per i bordi
-      const transparentColor = `rgba(${r}, ${g}, ${b}, 0)`;
-      
-      // Crea una keyframe animation per far pulsare il gradiente
-      const styleSheet = document.createElement('style');
-      const uniqueAnimationName = `pulseGradient_${Math.floor(Math.random() * 10000)}`;
-      
-      styleSheet.textContent = `
-        @keyframes ${uniqueAnimationName} {
-          0% { background: radial-gradient(circle at center, ${centerColor} 0%, ${transparentColor} 80%); }
-          50% { background: radial-gradient(circle at center, ${centerColor} 0%, ${transparentColor} 50%); }
-          100% { background: radial-gradient(circle at center, ${centerColor} 0%, ${transparentColor} 70%); }
-        }
-      `;
-      document.head.appendChild(styleSheet);
-      
-      // Applica l'animazione all'elemento
-      element.style.animation = `${uniqueAnimationName} 8s ease-in-out infinite alternate`;
-      
-      // Imposta un valore iniziale
-      element.style.background = `radial-gradient(circle at center, ${centerColor} 0%, ${transparentColor} 70%)`;
-      
-      // Assicurati che le proprietà di background siano ben supportate
-      element.style.webkitBackgroundClip = 'padding-box';
-      element.style.backgroundClip = 'padding-box';
-    }
-    
-    function addScreenshot(blob, tabInfo){
+    function upsertSafariTab(tabInfo){
         let tab = vars.safari.tabs[tabInfo.id]
-        
-        let createSlide = false
-        if(tab == null){
-            tab = {}
-            vars.safari.tabs[tabInfo.id] = tab
-            createSlide = true
+        if(!tab){
+            const slide = document.createElement('div')
+            slide.className = 'swiper-slide'
+            slide.id = 'safariTab' + tabInfo.id
+            slide.setAttribute('tabId', tabInfo.id)
+            const hue = Math.abs(tabInfo.id * 9973 % 360)
+            slide.style.background = `radial-gradient(ellipse, hsla(${hue}, 85%, 70%, .4), transparent 70%)`
+            const img = document.createElement('img')
+            img.hidden = true
+            img.alt = '' // The adjacent title names the same tab.
+            const title = document.createElement('div')
+            title.className = 'safari-tab-title'
+            slide.append(img, title)
+            tab = vars.safari.tabs[tabInfo.id] = {slide, img, title}
+            vars.safari.slides.push(slide)
         }
-        
         tab.info = tabInfo
-        
-        let screenshot = base64ToBlob(blob, 'image/jpeg')
-        console.log("received screenshot", screenshot, tabInfo)
-        
-        if(createSlide){
-            let img = blobToImg(screenshot)
+        // Website-controlled titles must never be interpolated as HTML.
+        const title = tabInfo.title || tabInfo.url || 'Safari tab'
+        tab.title.textContent = title
+        tab.slide.title = title
+        tab.slide.setAttribute('aria-label', title)
+        return tab
+    }
 
-            let borderColor = getUniqueColorFromId(tabInfo.id)
-
-            // A stale slide with this id can survive a tabs-map reset:
-            // drop it before creating a fresh one, or the tab shows twice
-            $("#safariTab"+tabInfo.id).remove()
-            vars.safari.slides = vars.safari.slides.filter((el)=>String($(el).attr('tabId')) !== String(tabInfo.id))
-
-            let $slide = $('<div id="safariTab'+tabInfo.id+'" class="swiper-slide" style="border-color: borderColor;" tabId="'+tabInfo.id+'" oncontextmenu="return animateRemoveSafariTab('+tabInfo.id+')"></div>')
-            $slide.append(img)
-
-            tab.$slide = $slide
-
-            console.log("appending slide", $slide[0])
-
-            vars.safari.slides.push($slide[0])
-            if(vars.safari.swiper){
-                vars.safari.swiper.appendSlide($slide[0])
-                scheduleSwiperRefresh()
-            }
-            else {
-                ensureSwiper() // appends every pending slide once the library is ready
-            }
-
-            setTimeout(()=>{
-                addCircularGradientBackground('#safariTab'+tabInfo.id, borderColor)
-            }, 100)
-        } else {
-            const blobURL = URL.createObjectURL(screenshot);
-            let $img = tab.$slide.find("img")
-            let oldURL = $img.attr("src")
-            $img.attr("src", blobURL)
-            if(oldURL && oldURL.startsWith("blob:"))
-                URL.revokeObjectURL(oldURL)
-
-            // Self-heal: a failed append in the past left this slide detached,
-            // making the tab invisible even though screenshots keep arriving
-            if(!document.contains(tab.$slide[0]) && ensureSwiper()){
-                if(vars.safari.slides.indexOf(tab.$slide[0]) < 0)
-                    vars.safari.slides.push(tab.$slide[0])
-                vars.safari.swiper.appendSlide(tab.$slide[0])
-            }
+    function syncSafariTabs(tabInfos, position = null){
+        if(!vars.safari.position && position) vars.safari.position = position
+        const openIds = new Set(tabInfos.map(tab=>String(tab.id)))
+        vars.safari.restoring = true
+        for(const id of Object.keys(vars.safari.tabs)){
+            if(!openIds.has(id)) removeSafariTab(id, false)
         }
-        
-        //$(".swiper-wrapper").append($slide)
+        for(const info of tabInfos) upsertSafariTab(info)
+        vars.safari.restoring = false
+        const wrapper = document.querySelector('#safariTabs .swiper-wrapper')
+        // Move existing nodes in one operation. Their images and selection survive.
+        wrapper.replaceChildren(...vars.safari.slides)
+        scheduleSwiperRefresh()
+    }
+
+    function releaseSafariPreview(tab){
+        if(tab.previewURL) URL.revokeObjectURL(tab.previewURL)
+        tab.previewURL = null
+        tab.previewChars = 0
+        if(tab.img){
+            tab.img.removeAttribute('src')
+            tab.img.hidden = true
+        }
+    }
+
+    function trimSafariPreviews(){
+        const previews = Object.values(vars.safari.tabs).filter(tab=>tab.previewURL)
+            .sort((a, b)=>b.previewAt - a.previewAt)
+        let chars = 0
+        previews.forEach((tab, index)=>{
+            chars += tab.previewChars
+            if(index >= 60 || chars > 8 * 1024 * 1024) releaseSafariPreview(tab)
+        })
+    }
+
+    function addScreenshot(blob, tabInfo){
+        const tab = upsertSafariTab(tabInfo)
+        const bytes = Uint8Array.from(atob(blob), char=>char.charCodeAt(0))
+        const url = URL.createObjectURL(new Blob([bytes], {type: 'image/jpeg'}))
+        releaseSafariPreview(tab)
+        tab.previewURL = url
+        tab.previewChars = blob.length
+        tab.previewAt = Date.now()
+        tab.img.src = url
+        tab.img.hidden = false
+    }
+
+    function applySafariScreenshots(items){
+        for(const item of items) addScreenshot(item.blob, item.tabInfo)
+        trimSafariPreviews()
+        // Metadata normally creates every slide before previews arrive.
+        const wrapper = document.querySelector('#safariTabs .swiper-wrapper')
+        for(const slide of vars.safari.slides){
+            if(slide.parentNode !== wrapper) wrapper.append(slide)
+        }
+        if(!vars.safari.swiper) scheduleSwiperRefresh()
     }
 
     function clickedOnSafariTab(id){
-        console.log("clicked on tab", id)
-        
-        let status = {type: "clickedOn", id}
-        
-        for(let i=0; i<3; i++){ // try, try and try
+        const index = vars.safari.slides.findIndex(slide=>String(slide.getAttribute('tabId')) === String(id))
+        vars.safari.position = {id: Number(id), index: Math.max(0, index)}
+        restoreSafariPosition()
+        // The compatibility URL bridge can coalesce adjacent navigations.
+        for(let i = 0; i < 3; i++){
             setTimeout(()=>{
                 focusOnMe()
-                sendStatus(JSON.stringify(status))
-            }, i*100)
+                sendStatus(JSON.stringify({type: 'clickedOn', id}))
+            }, i * 100)
         }
-                
-        //closeOverscreen()
+        sendStatus(JSON.stringify({type: 'tabPosition', ...vars.safari.position}))
     }
 
-    function removeSafariTab(id){
-        let tab = vars.safari.tabs[id]
-
-        // Match by attribute too, not just element identity: a ghost slide whose
-        // map entry is gone must still be removable, or resetSwiper resurrects it
-        vars.safari.slides = vars.safari.slides.filter((el)=>{
-            if(tab && tab.$slide && el === tab.$slide[0]) return false
-            return String($(el).attr('tabId')) !== String(id)
-        })
-
-        $("#safariTab"+id).remove()
-        if(tab && tab.$slide)
-            tab.$slide.remove()
-        delete vars.safari.tabs[id]
-
-        if(vars.safari.swiper)
-            vars.safari.swiper.update()
+    function removeSafariTab(id, refresh = true){
+        const tab = vars.safari.tabs[id]
+        if(tab){
+            releaseSafariPreview(tab)
+            tab.slide.remove()
+            delete vars.safari.tabs[id]
+        }
+        vars.safari.slides = vars.safari.slides.filter(slide=>String(slide.getAttribute('tabId')) !== String(id))
+        if(refresh) scheduleSwiperRefresh()
     }
 
     function animateRemoveSafariTab(id){
-        let $div = $("#safariTab"+id)
-        $div.animate({
-            opacity: 0
-        }, 250, ()=>{
-            $div.remove()
-            removeSafariTab(id)
-        })
-        
+        removeSafariTab(id)
         return false
     }
 
     function confirmSafariTabs(ids){
-        // Compare as strings: ids arrive as numbers but object keys are strings,
-        // so a raw indexOf never matched and every tab got removed on each call
-        let openIds = new Set(ids.map(String))
-
-        let toRemove = []
-        for(let id in vars.safari.tabs){
-            if(!openIds.has(String(id)))
-                toRemove.push(id)
+        const openIds = new Set(ids.map(String))
+        for(const id of Object.keys(vars.safari.tabs)){
+            if(!openIds.has(id)) removeSafariTab(id, false)
         }
-
-        // Run even while showing: a closed tab must leave the swiper, otherwise its
-        // stale slide sticks around as a duplicate whose click can't focus anything
-        for(let id of toRemove){
-            removeSafariTab(id)
-        }
+        scheduleSwiperRefresh()
     }
 
-    // Function to convert a Base64 string to a Blob
-    function base64ToBlob(base64, contentType = '', sliceSize = 512) {
-        const byteCharacters = atob(base64);
-        const byteArrays = [];
-
-        for (let offset = 0; offset < byteCharacters.length; offset += sliceSize) {
-            const slice = byteCharacters.slice(offset, offset + sliceSize);
-
-            const byteNumbers = new Array(slice.length);
-            for (let i = 0; i < slice.length; i++) {
-                byteNumbers[i] = slice.charCodeAt(i);
+    if(!vars.safari.clickHandlerBound){
+        vars.safari.clickHandlerBound = true
+        document.addEventListener('click', event=>{
+            const slide = event.target.closest('#safariTabs .swiper-slide')
+            if(slide) clickedOnSafariTab(slide.getAttribute('tabId'))
+        })
+        document.addEventListener('contextmenu', event=>{
+            const slide = event.target.closest('#safariTabs .swiper-slide')
+            if(slide){
+                event.preventDefault()
+                animateRemoveSafariTab(slide.getAttribute('tabId'))
             }
-
-            const byteArray = new Uint8Array(byteNumbers);
-            byteArrays.push(byteArray);
-        }
-
-        return new Blob(byteArrays, { type: contentType });
-    }
-
-    // Function to create and append an image from a Blob
-   function blobToImg(blob) {
-       // Create a URL for the Blob
-       const blobURL = URL.createObjectURL(blob);
-       
-       // Create an image element
-       const img = document.createElement('img');
-       img.src = blobURL;
-       
-       return img
-   }
-
-    // Still alive
-    if(false){
-        setInterval(()=>{
-            sendStatus(JSON.stringify({type: "flush"}))
-        }, 3000)
+        })
     }
 </script>
