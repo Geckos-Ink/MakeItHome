@@ -1,6 +1,6 @@
 # MakeItHome — AI Agent Reference
 
-This is the fast-access operational reference for agents working on MakeItHome, a shipped macOS SwiftUI application that exposes an “overscreen” beyond display edges for live app previews, app switching, widgets, and trusted third-party extension content. The current tree builds marketing version 2.1.0, which is tagged as `release-2.1.0` and documented in the public README as the current Mac App Store release. Do not confuse the embedded Safari Web Extension, the optional third-party App Extension protocol, or the Angular source templates under `Assets/templates/` with the native application itself.
+This is the fast-access operational reference for agents working on MakeItHome, a shipped macOS SwiftUI application that exposes an “overscreen” beyond display edges for live app previews, app switching, widgets, and trusted third-party extension content. The current development tree builds marketing version 2.1.1 on branch `2.1.1`; version 2.1.0 is tagged as `release-2.1.0` and documented in the public README as the current Mac App Store release. The isolated Test target still uses marketing version 2.1.0. Do not confuse the embedded Safari Web Extension, the optional third-party App Extension protocol, or the Angular source templates under `Assets/templates/` with the native application itself.
 
 ## Read This First
 
@@ -67,7 +67,8 @@ No nested `AGENTS.md` files exist at this revision. This root file applies to th
 
 ## Critical Implementation Contracts
 
-- **Capture lifecycle serialization:** [`CaptureEngineOperationGate`](MakeItHome/Managers/Capture/CaptureEngine.swift) serializes `SCStream` start, update, and stop. [`ScreenRecorder.start`](MakeItHome/Managers/Capture/ScreenRecorder.swift) uses intent/run IDs and awaits in-flight stop/update work. Never overlap raw `SCStream` mutations or bypass these owners.
+- **Capture lifecycle serialization:** [`CaptureEngineOperationGate`](MakeItHome/Helpers/CaptureLifecycle.swift) serializes `SCStream` start, update, and stop. [`ScreenRecorder`](MakeItHome/Managers/Capture/ScreenRecorder.swift) publishes its stop task before awaiting configuration work, uses intent/run IDs, and releases the engine when frame iteration ends or is canceled. Never overlap raw `SCStream` mutations or clear a newer run's state after an older stop resumes.
+- **Capture frame ownership:** [`LatestCaptureFrames`](MakeItHome/Helpers/CaptureLifecycle.swift) retains only one newest queued frame. Each `CaptureEngineStreamOutput` yields to its own immutable channel; late callbacks must never look up the engine's current continuation. `CaptureEngine.startCapture` stops any previously owned stream before replacement. Screen frames stay in memory.
 - **Preview flow gate:** [`PreviewFlowGate`](MakeItHome/Helpers/PreviewFlowGate.swift) is the canonical state machine for fullscreen, Space-change, duplicate-placeholder, missing-placeholder, focus-restore, and recorder eligibility. [`Display.checkForScreenshot`](MakeItHome/Managers/Displays.swift) must call stale recovery on an every-tick path, including paths that return before the window list is evaluated. Covered by [`Tests/PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift).
 - **Fullscreen detection:** A normal maximized window that leaves the menu-bar area visible is not automatically native fullscreen. Use `isFullscreenCandidateFrame` plus Accessibility full-screen state, and accept a complete display frame directly. Do not regress Stage Manager or multi-display geometry.
 - **Space topology:** A fullscreen Space legitimately has no MakeItHome placeholder. A single placeholder must settle before it becomes authoritative; duplicate IDs are repairable only after their stable grace period. Never repair a missing placeholder while fullscreen.
@@ -111,7 +112,7 @@ Canonical persisted state is split between native `UserDefaults` (settings, trus
 
 Authoritative target, source/resource membership, Swift package dependency, deployment target, bundle IDs, versions, schemes, and signing configuration.
 
-- **Key subparts:** `MakeItHome` app target; embedded `MakeItHome Web Extension`; separate Debug-only `MakeItHome Test` app target; Swift Collections 1.0.3; macOS 12.3 target; app marketing version 2.1.0 with normal-app build 164 and Test build 161. The Test target produces `MakeItHome Test.app` (`ink.geckos.MakeItHome.Test`) so TCC permissions and `UserDefaults` remain separate from normal app builds; it deliberately does not embed the Safari extension and overrides `LSUIElement` to `NO` so its explicit stress host window starts reliably.
+- **Key subparts:** `MakeItHome` app target; embedded `MakeItHome Web Extension`; separate Debug-only `MakeItHome Test` app target; Swift Collections 1.0.3; macOS 12.3 target; normal-app marketing version 2.1.1/build 164 and Test marketing version 2.1.0/build 161. The Test target produces `MakeItHome Test.app` (`ink.geckos.MakeItHome.Test`) so TCC permissions and `UserDefaults` remain separate from normal app builds; it deliberately does not embed the Safari extension and overrides `LSUIElement` to `NO` so its explicit stress host window starts reliably.
 - **Depends on:** [`MakeItHome.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`](MakeItHome.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved).
 - **Common mistakes:** Add new manually grouped files to the correct target/resource phase. Keep parent and extension `CFBundleVersion` aligned before distribution; the current normal app build is 164 while the extension build is 1.
 
@@ -160,6 +161,14 @@ Pure, AppKit-free state machine for preview/recorder gating and Space topology. 
 - **Tests:** [`Tests/PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift).
 - **Common mistakes:** Timestamp transitions only on a state edge; changing signatures restart grace periods. Do not convert wall-clock safety nets to tick counts.
 
+### [`MakeItHome/Helpers/CaptureLifecycle.swift`](MakeItHome/Helpers/CaptureLifecycle.swift)
+
+AppKit-free capture primitives: `CaptureEngineOperationGate` serializes suspending operations, and `LatestCaptureFrames` creates a separate newest-one channel for each capture run. Both are used by `CaptureEngine` and covered by [`Tests/CaptureLifecycleTests.swift`](Tests/CaptureLifecycleTests.swift).
+
+### [`MakeItHome/Helpers/StressProcessSample.swift`](MakeItHome/Helpers/StressProcessSample.swift)
+
+Test-target-only memory/thread sampling. `StressProcessSample.capture` releases every send right returned by `task_threads` before freeing its returned array. [`Tests/StressProcessSampleTests.swift`](Tests/StressProcessSampleTests.swift) performs 10,000 samples and checks that the caller's thread send-right count remains unchanged.
+
 ### [`MakeItHome/Helpers/PreviewTitleText.swift`](MakeItHome/Helpers/PreviewTitleText.swift)
 
 Pure preview-title wrapping used before SceneKit text creation. It clamps computed character limits to at least one and traverses Swift `Character`s safely so transient zero-width window geometry cannot crash title rendering.
@@ -182,10 +191,10 @@ The primary overscreen domain owner: display discovery, high-frequency pointer m
 
 Lowest ScreenCaptureKit boundary. It creates `SCStream`, serializes stream mutations, converts complete sample buffers into `CapturedFrame`, and exposes frames through `AsyncThrowingStream`.
 
-- **Key symbols:** `CaptureEngineOperationGate`, `CapturedFrame`, `CaptureEngine.startCapture`, `stopCapture`, `update`, and `CaptureEngineStreamOutput`.
+- **Key symbols:** `CapturedFrame`, `CaptureEngine.startCapture`, `stopCapture`, `update`, and `CaptureEngineStreamOutput`.
 - **Called by:** [`ScreenRecorder`](MakeItHome/Managers/Capture/ScreenRecorder.swift).
-- **Tests:** No focused ScreenCaptureKit tests.
-- **Common mistakes:** Never update configuration/filter while stop is in progress; never render incomplete sample buffers.
+- **Tests:** [`Tests/CaptureLifecycleTests.swift`](Tests/CaptureLifecycleTests.swift) tests the production channel and operation gate; actual ScreenCaptureKit cleanup/cancellation requires the runtime lifecycle harness.
+- **Common mistakes:** Never update configuration/filter while stop is in progress; never render incomplete sample buffers. Keep frame buffering bounded and callbacks attached to their originating continuation, without a closure retaining the engine.
 
 ### [`MakeItHome/Managers/Capture/ScreenRecorder.swift`](MakeItHome/Managers/Capture/ScreenRecorder.swift)
 
@@ -194,7 +203,7 @@ Main-actor capture coordinator. Selects the display/window filter, switches low/
 - **Key methods:** `start`, `stop`, `stopCaptureEngine`, `updateEngine`, `refreshAvailableContent`, `contentFilter`, and `streamConfiguration`.
 - **Depends on:** [`CaptureEngine`](MakeItHome/Managers/Capture/CaptureEngine.swift), [`CapturePreview`](MakeItHome/Managers/Capture/Views/CapturePreview.swift), and `Static` performance constants.
 - **Tests:** Recorder eligibility is modeled in flow-gate tests; real capture requires Screen Recording permission.
-- **Common mistakes:** Prefer an in-place configuration update when the target stream is current. Await stop/update tasks and validate intent IDs after suspension.
+- **Common mistakes:** Prefer an in-place configuration update when the target stream is current. Publish pending stops before suspending, validate intent IDs after suspension, stop the engine on consumer cancellation/error, and avoid post-await state writes from an older stop.
 
 ### [`MakeItHome/Managers/Capture/Views/CapturePreview.swift`](MakeItHome/Managers/Capture/Views/CapturePreview.swift)
 
@@ -383,10 +392,10 @@ Small SwiftUI panels for activation, permissions, onboarding, updates, menu UI, 
 
 ### [`MakeItHome/StressTests/`](MakeItHome/StressTests/)
 
-Debug-only manual performance and lifecycle harnesses, compiled only by the `MakeItHome Test` target. [`StressTestSupport.swift`](MakeItHome/StressTests/StressTestSupport.swift) parses launch options, owns the explicit test host window, suppresses blocking onboarding/start-at-login modals only for explicit stress runs, selects a root, and writes atomic result handshakes; state-changing stress cycles use a randomized 0.25–0.75 second delay by default. [`VirtualOverscreenStressTest.swift`](MakeItHome/StressTests/VirtualOverscreenStressTest.swift) exercises SceneKit/app-count churn; [`AppExtensionStressTest.swift`](MakeItHome/StressTests/AppExtensionStressTest.swift) floods the real authenticated local server with bounded workers and intentionally does not throttle requests as lifecycle cycles; [`RuntimeLifecycleStressTest.swift`](MakeItHome/StressTests/RuntimeLifecycleStressTest.swift) embeds the full production `ContentView`/`DisplaysManager`/`ScreenRecorder`/`CapturePreview` graph, captures existing visible application windows into the real SceneKit model, and cycles recorder profiles, `CaptureView` sleep/restart, and native Clipboard-to-Widgets-Zone traffic together; [`RealUsageStressTest.swift`](MakeItHome/StressTests/RealUsageStressTest.swift) runs the normal app runtime while seeded UI automation rapidly invokes the production top/bottom shortcut endpoint, clicks random preview or visible-window title-bar points, and copies image-heavy unique file URLs. Despite its legacy name, [`run-real-usage.sh`](MakeItHome/StressTests/run-real-usage.sh) builds once with a dSYM and runs all four modes sequentially for 20 active minutes by default, staging `/Users/riccardo/Pictures/instagramToReload` (or `MIH_STRESS_COPY_SOURCE`) inside the Test sandbox.
+Debug-only manual performance and lifecycle harnesses, compiled only by the `MakeItHome Test` target. [`StressTestSupport.swift`](MakeItHome/StressTests/StressTestSupport.swift) parses launch options, owns the explicit test host window, suppresses blocking onboarding/start-at-login modals only for explicit stress runs, selects a root, and writes atomic file or explicitly marked stdout result handshakes; state-changing stress cycles use a randomized 0.25–0.75 second delay by default. [`VirtualOverscreenStressTest.swift`](MakeItHome/StressTests/VirtualOverscreenStressTest.swift) exercises SceneKit/app-count churn; [`AppExtensionStressTest.swift`](MakeItHome/StressTests/AppExtensionStressTest.swift) floods the real authenticated local server with bounded workers and intentionally does not throttle requests as lifecycle cycles; [`RuntimeLifecycleStressTest.swift`](MakeItHome/StressTests/RuntimeLifecycleStressTest.swift) embeds the full production `ContentView`/`DisplaysManager`/`ScreenRecorder`/`CapturePreview` graph, captures existing visible application windows into the real SceneKit model, and cycles recorder profiles, consumer cancellation, `CaptureView` sleep/restart, and native Clipboard-to-Widgets-Zone traffic together; it logs metrics every five seconds and fails on 15 seconds without recorder progress; [`RealUsageStressTest.swift`](MakeItHome/StressTests/RealUsageStressTest.swift) runs the normal app runtime while seeded UI automation rapidly invokes the production top/bottom shortcut endpoint, clicks random preview or visible-window title-bar points, and copies image-heavy unique file URLs. Despite its legacy name, [`run-real-usage.sh`](MakeItHome/StressTests/run-real-usage.sh) builds once with a dSYM and runs all four modes sequentially for 20 active minutes by default, staging `/Users/riccardo/Pictures/instagramToReload` (or `MIH_STRESS_COPY_SOURCE`) inside the Test sandbox. `MIH_STRESS_COPY_SOURCE=bundled` reads packaged image fixtures, and `MIH_STRESS_RESULT_CHANNEL=stdout` retains atomic controller-side result files without requiring access to the protected app container.
 
 - **Commands:** See [`MakeItHome/StressTests/README.md`](MakeItHome/StressTests/README.md).
-- **Diagnostics:** The orchestrator retains a permission-restricted bundle under `~/Library/Logs/MakeItHomeStress/` containing the full build log/settings, dSYM and UUIDs, per-mode stdout/stderr and debug-level unified logs, LLDB crash-time all-thread backtraces/registers, periodic symbolized `sample` stacks, watchdog stacks, results/status, and new Test-bundle Diagnostic Reports. It never deletes these artifacts; sandbox staging is temporary.
+- **Diagnostics:** The orchestrator retains a permission-restricted bundle under `~/Library/Logs/MakeItHomeStress/` containing the full build log/settings, dSYM and UUIDs, per-mode stdout/stderr and debug-level unified logs, LLDB crash-time all-thread backtraces/registers, periodic symbolized `sample` stacks, watchdog stacks, results/status, and new Test-bundle Diagnostic Reports. It never deletes these artifacts; sandbox staging is temporary. [`StressDiagnosticChecks.zsh`](MakeItHome/StressTests/StressDiagnosticChecks.zsh) distinguishes primary Test-app crashes from related CPU/resource diagnostics and rejects crashes after a completion record. Its [fixture tests](Tests/StressDiagnosticChecksTests.zsh) run through `Tests/run.sh`. Never edit the running wrapper or its sourced helper; launch an immutable snapshot when concurrent wrapper work is necessary.
 - **Common mistakes:** Never make stress mode reachable in Release and never turn bounded worker counts, sampling cadence, or the real-usage selection task into unbounded work. Preserve all result handshakes and diagnostic streams. The runtime lifecycle and real-usage modes must restore the pasteboard only when the user has not changed it since the final synthetic write, remove temporary linked fixtures, and keep synthetic clipboard payloads out of logs. Real-usage automation requires the Test app's Screen Recording and Accessibility permissions, reports each missing grant by name, takes control of the pointer/clipboard/window focus, and must remain isolated from the normal app identity.
 
 ### [`Tests/PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift)
@@ -469,7 +478,7 @@ Angular/Fuse source templates and built distributions used for the Notes/Tasks e
 - **Symptom / wrong assumption:** ScreenCaptureKit crashes in configuration equality or a stale start resurrects a stopped stream.
 - **Cause and invariant:** Suspended start/update/stop operations race on one `SCStream`.
 - **Risk area:** `ScreenRecorder` and `CaptureEngine`.
-- **Safe pattern / regression check:** Operation gate plus intent/run IDs; perform a code-signing-disabled build and manually exercise repeated edge entry/exit.
+- **Safe pattern / regression check:** Operation gate plus intent/run IDs, stop reservation before suspension, per-run newest-one frame channels, and engine cleanup on consumer termination. Run `./Tests/run.sh`, build, and run `runtime-lifecycle` including cancellation and frame/progress assertions.
 - **Status:** Previously fixed failure mode and active regression risk.
 
 ### Full-screen search exits to an invisible Widgets Zone
@@ -560,6 +569,8 @@ There is no root lint/format task, CI workflow, automated UI suite, checked-in a
 - Fullscreen classification and recovery → [`PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift).
 - Space transition, placeholder stability/repair, and multi-display isolation → [`PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift).
 - Cross-Space activation and focus restoration → [`PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift).
+- Capture queue retention, cancellation/channel isolation, and suspending operation serialization → [`CaptureLifecycleTests.swift`](Tests/CaptureLifecycleTests.swift).
+- Stress sampler Mach thread-right lifetime → [`StressProcessSampleTests.swift`](Tests/StressProcessSampleTests.swift).
 - Recorder eligibility state → [`PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift); real ScreenCaptureKit lifecycle is manual.
 - Preview-title wrapping and transient zero-width geometry → [`PreviewTitleTextTests.swift`](Tests/PreviewTitleTextTests.swift).
 - SceneKit churn, virtual app counts, and frame updates → [`VirtualOverscreenStressTest.swift`](MakeItHome/StressTests/VirtualOverscreenStressTest.swift).
@@ -608,6 +619,7 @@ There is no root lint/format task, CI workflow, automated UI suite, checked-in a
 - App Extension tutorial/API documentation remains incomplete.
 - Automated coverage is concentrated in `PreviewFlowGate`; security, WebKit, clipboard, calendar, capture, and end-to-end UI paths remain gaps.
 - Release/signing/notarization procedure and continuous integration are not checked in.
+- A retired 2.1.0/build 163 report records a main-thread `objc_release`/autorelease-pool `EXC_BAD_ACCESS` after roughly 5 hours 47 minutes. Capture lifecycle resource fixes do not establish that this historical crash is resolved; see the [13 October investigation](MakeItHome/StressTests/Reports/2026-10-13-lifecycle-soak.md) for measured coverage and remaining checks.
 
 ### Planned
 

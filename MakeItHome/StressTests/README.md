@@ -44,7 +44,7 @@ Run the Debug-only `MakeItHome Test.app` target. Its `ink.geckos.MakeItHome.Test
 --stress runtime-lifecycle --stress-duration 1200 --stress-cycle-min 0.25 --stress-cycle-max 0.75 --stress-auto-exit
 ```
 
-This single, bounded harness embeds the production `ContentView` and its real `DisplaysManager`, `ScreenRecorder`, `CapturePreview`, Widgets Zone, and clipboard owner. Before opening the production bottom overscreen, it briefly activates visible external applications and sends them through the normal `Display.checkForScreenshot` crop path so `CapturePreview.swift` builds and displays its normal desktop plane plus live application/window SceneKit nodes, rather than rendering a separate lightweight recorder view. It continuously cycles the production recorder through low-priority, high-priority, and stopped states; alternates the populated `CaptureView` between SceneKit sleep and active rendering; and writes synthetic text, image, and uniquely linked bundled-video items through the native clipboard into the live Widgets Zone. The HUD and final summary report peak SceneKit app/window counts as evidence that the production graph was exercised.
+This single, bounded harness embeds the production `ContentView` and its real `DisplaysManager`, `ScreenRecorder`, `CapturePreview`, Widgets Zone, and clipboard owner. Before opening the production bottom overscreen, it briefly activates visible external applications and sends them through the normal `Display.checkForScreenshot` crop path so `CapturePreview.swift` builds and displays its normal desktop plane plus live application/window SceneKit nodes, rather than rendering a separate lightweight recorder view. It continuously cycles the production recorder through low-priority, high-priority, and stopped states, periodically cancels the frame-consumer task and checks that its owned stream is released; alternates the populated `CaptureView` between SceneKit sleep and active rendering; and writes synthetic text, image, and uniquely linked bundled-video items through the native clipboard into the live Widgets Zone. The HUD and final summary report peak SceneKit app/window counts as evidence that the production graph was exercised. Five-second metric records report real frame counts, recorder transitions/cancellations, SceneKit cycles, clipboard writes, memory, and threads. Fifteen seconds without recorder progress fails the run; successful completion requires actual frames and cancellation coverage, not merely an `isRunning` flag. Sampling releases both the Mach thread rights and the array returned by `task_threads`.
 
 Every recorder transition, SceneKit sleep/restart transition, and clipboard write waits a newly randomized delay in the shared 0.25–0.75 second range. The run restores the previously frontmost application, restores the pre-test system clipboard only if it remains untouched after the final synthetic write, restores the prior clipboard-capture setting, and removes its temporary video links on exit. Explicit stress launches suppress the production onboarding/start-at-login modal so unattended runs cannot hang behind it.
 
@@ -63,7 +63,7 @@ Despite its historical filename, the script builds `MakeItHome Test.app` once in
 - runtime lifecycle: 300 seconds;
 - real-usage UI chaos: 780 seconds.
 
-Build, permission waits, watchdog allowances, and diagnostic finalization are additional wall-clock time. Each app launch uses a private atomic result-file handshake; a crash, hang, failed assertion, missing UI startup, or incomplete action category makes that phase fail. By default later phases still run so a single failure does not discard the rest of the coverage; set `MIH_STRESS_STOP_ON_FAILURE=1` for fail-fast behavior.
+Build, permission waits, watchdog allowances, and diagnostic finalization are additional wall-clock time. Each app launch uses a private result handshake (atomic app-written file by default, or a marked stdout record saved atomically by the controller); a crash, hang, failed assertion, missing UI startup, or incomplete action category makes that phase fail. By default later phases still run so a single failure does not discard the rest of the coverage; set `MIH_STRESS_STOP_ON_FAILURE=1` for fail-fast behavior.
 
 Every invocation prints and retains a private diagnostic bundle under `~/Library/Logs/MakeItHomeStress/<UTC timestamp>-<pid>/` by default. It contains:
 
@@ -72,9 +72,11 @@ Every invocation prints and retains a private diagnostic bundle under `~/Library
 - complete stdout, stderr, and process-scoped unified logging at debug level with source annotations;
 - an LLDB log whose crash hook records process state, every thread backtrace, and registers before terminating the crashed Test process;
 - periodic symbolized `sample` snapshots of every live thread and a five-second watchdog sample if a phase hangs;
-- any new macOS Diagnostic Reports belonging to `ink.geckos.MakeItHome.Test`.
+- new primary Test-app `.ips`/`.crash` reports, with related process/resource reports retained separately under `related-diagnostics/`. Completion records never override native or debugger-caught shutdown crashes.
 
-Artifacts are permission-restricted and never removed by the script. The temporary sandbox corpus and result handshakes are removed on success, failure, signal, or watchdog termination. A crash caught by the attached debugger normally does not produce a separate `.ips`; the LLDB all-thread stack is authoritative in that case. Set `MIH_STRESS_ATTACH_LLDB=0` to test native crash handling instead; periodic samples remain enabled and any resulting `.ips` is copied.
+Do not edit the wrapper or its sourced diagnostics helper while it is running: a shell may read later statements after a phase finishes.
+
+Artifacts are permission-restricted and never removed by the script. The temporary sandbox corpus and app-written result handshakes are removed on success, failure, signal, or watchdog termination. A crash caught by the attached debugger normally does not produce a separate `.ips`; the LLDB all-thread stack is authoritative in that case. Set `MIH_STRESS_ATTACH_LLDB=0` to test native crash handling instead; periodic samples remain enabled and any resulting `.ips` is copied.
 
 Useful overrides:
 
@@ -87,7 +89,24 @@ MIH_STRESS_SEED=12345 \
 ./MakeItHome/StressTests/run-real-usage.sh
 ```
 
-Available settings are `MIH_STRESS_MODES`, `MIH_STRESS_VIRTUAL_STAGE_SECONDS`, `MIH_STRESS_APP_EXTENSION_SECONDS`, `MIH_STRESS_RUNTIME_SECONDS`, `MIH_STRESS_REAL_USAGE_SECONDS`, `MIH_STRESS_CYCLE_MIN_SECONDS`, `MIH_STRESS_CYCLE_MAX_SECONDS`, `MIH_STRESS_SAMPLE_INTERVAL_SECONDS`, `MIH_STRESS_ATTACH_LLDB`, `MIH_STRESS_STOP_ON_FAILURE`, `MIH_STRESS_SEED`, `MIH_STRESS_COPY_SOURCE`, and `MIH_STRESS_ARTIFACTS_DIRECTORY`. The cycle bounds default to 0.25 and 0.75 seconds and apply to every state-changing virtual, runtime-lifecycle, and real-usage cycle. The App Extension request workers remain intentionally unthrottled; their 250 ms waits are readiness and metrics sampling, not action cycles. The legacy `MIH_STRESS_DURATION_SECONDS` remains a fallback override for the real-usage duration.
+Available settings are `MIH_STRESS_MODES`, `MIH_STRESS_VIRTUAL_STAGE_SECONDS`, `MIH_STRESS_APP_EXTENSION_SECONDS`, `MIH_STRESS_RUNTIME_SECONDS`, `MIH_STRESS_REAL_USAGE_SECONDS`, `MIH_STRESS_CYCLE_MIN_SECONDS`, `MIH_STRESS_CYCLE_MAX_SECONDS`, `MIH_STRESS_SAMPLE_INTERVAL_SECONDS`, `MIH_STRESS_ATTACH_LLDB`, `MIH_STRESS_STOP_ON_FAILURE`, `MIH_STRESS_SEED`, `MIH_STRESS_COPY_SOURCE`, `MIH_STRESS_ARTIFACTS_DIRECTORY`, `MIH_STRESS_RESULT_CHANNEL`, and `MIH_STRESS_DERIVED_DATA_PATH`. The result channel accepts `file` (default) or `stdout`; an optional derived-data path isolates build output. The cycle bounds default to 0.25 and 0.75 seconds and apply to every state-changing virtual, runtime-lifecycle, and real-usage cycle. The App Extension request workers remain intentionally unthrottled; their 250 ms waits are readiness and metrics sampling, not action cycles. The legacy `MIH_STRESS_DURATION_SECONDS` remains a fallback override for the real-usage duration.
+
+### One-hour validation without protected-container access
+
+If macOS denies the controller access to the Test app's container, use the inherited stdout descriptor for the explicit result handshake and packaged images for the copy corpus. This keeps the app sandbox enabled and requires no additional controller privacy grant:
+
+```sh
+MIH_STRESS_VIRTUAL_STAGE_SECONDS=5 \
+MIH_STRESS_APP_EXTENSION_SECONDS=90 \
+MIH_STRESS_RUNTIME_SECONDS=1800 \
+MIH_STRESS_REAL_USAGE_SECONDS=1680 \
+MIH_STRESS_COPY_SOURCE=bundled \
+MIH_STRESS_RESULT_CHANNEL=stdout \
+MIH_STRESS_SEED=20261013 \
+./MakeItHome/StressTests/run-real-usage.sh
+```
+
+The requested phase durations total 3,600 active seconds; build, readiness, permission waits, and diagnostic cleanup add wall time. Stdout mode still requires an exact final completion record; a crash or early exit cannot be mistaken for a pass. Controller-side results remain in the diagnostic bundle. Arbitrary external corpora still require container staging; stdout mode alone does not grant the sandbox access to them.
 
 ### Real-usage phase
 

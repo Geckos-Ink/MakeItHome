@@ -11,33 +11,6 @@ import ScreenCaptureKit
 import OSLog
 import Combine
 
-/// ScreenCaptureKit does not tolerate overlapping mutations of the same stream. In
-/// particular, an update racing a stop can crash inside `SCStreamConfiguration.isEqual`.
-private actor CaptureEngineOperationGate {
-    private var isLocked = false
-    private var waiters: [CheckedContinuation<Void, Never>] = []
-
-    func acquire() async {
-        guard isLocked else {
-            isLocked = true
-            return
-        }
-
-        await withCheckedContinuation { continuation in
-            waiters.append(continuation)
-        }
-    }
-
-    func release() {
-        guard !waiters.isEmpty else {
-            isLocked = false
-            return
-        }
-
-        waiters.removeFirst().resume()
-    }
-}
-
 /// A structure that contains the video data to render.
 struct CapturedFrame {
     static let invalid = CapturedFrame(surface: nil, contentRect: .zero, contentScale: 0, scaleFactor: 0, pixelBuffer: nil, displayID: nil)
@@ -71,52 +44,60 @@ struct CapturedFrame {
     private var continuation: AsyncThrowingStream<CapturedFrame, Error>.Continuation?
     
     private var streamOutput: CaptureEngineStreamOutput? // https://developer.apple.com/forums/thread/733077
+
+    #if STRESS_TEST_APP
+    private var streamGeneration: UInt = 0
+    func ownedStreamGeneration() async -> UInt? {
+        await operationGate.acquire()
+        let generation = stream == nil ? nil : streamGeneration
+        await operationGate.release()
+        return generation
+    }
+    #endif
     
     /// - Tag: StartCapture
     func startCapture(configuration: SCStreamConfiguration, filter: SCContentFilter) async -> AsyncThrowingStream<CapturedFrame, Error> {
         await operationGate.acquire()
 
-        var shouldStart = false
-        let frames = AsyncThrowingStream<CapturedFrame, Error> { continuation in
-            
-            self.continuation = continuation
-            
-            // The stream output object.
-            streamOutput = CaptureEngineStreamOutput(continuation: continuation)
-            streamOutput?.capturedFrameHandler = {
-                self.continuation?.yield($0)
-            }
-            //streamOutput.pcmBufferHandler = { self.powerMeter.process(buffer: $0) }
-            
-            do {
-                stream = SCStream(filter: filter, configuration: configuration, delegate: streamOutput)
-                
-                // Add a stream output to capture screen content.
-                try stream?.addStreamOutput(streamOutput!, type: .screen, sampleHandlerQueue: videoSampleBufferQueue)
-                /*try stream?.addStreamOutput(streamOutput, type: .audio, sampleHandlerQueue: audioSampleBufferQueue)*/
-                shouldStart = true
-            } catch {
-                continuation.finish(throwing: error)
-            }
+        // The engine owns at most one stream, including after a consumer exits.
+        if stream != nil {
+            await stopCurrentStream()
         }
 
-        if shouldStart {
-            do {
-                try await stream?.startCapture()
-            } catch {
-                continuation?.finish(throwing: error)
-                continuation = nil
-                streamOutput = nil
-                stream = nil
-            }
+        let frames = LatestCaptureFrames<CapturedFrame>()
+        continuation = frames.continuation
+        let output = CaptureEngineStreamOutput(continuation: frames.continuation)
+        streamOutput = output
+
+        do {
+            let newStream = SCStream(filter: filter, configuration: configuration, delegate: output)
+            #if STRESS_TEST_APP
+            streamGeneration &+= 1
+            #endif
+            stream = newStream
+            try newStream.addStreamOutput(output, type: .screen, sampleHandlerQueue: videoSampleBufferQueue)
+            try await newStream.startCapture()
+        } catch {
+            frames.continuation.finish(throwing: error)
+            continuation = nil
+            streamOutput = nil
+            stream = nil
         }
 
         await operationGate.release()
-        return frames
+        return frames.stream
     }
     
     func stopCapture() async {
         await operationGate.acquire()
+
+        await stopCurrentStream()
+
+        await operationGate.release()
+    }
+
+    /// Called only while holding operationGate.
+    private func stopCurrentStream() async {
 
         do {
             try await stream?.stopCapture()
@@ -129,7 +110,6 @@ struct CapturedFrame {
         stream = nil
         powerMeter.processSilence()
 
-        await operationGate.release()
     }
     
     /// - Tag: UpdateStreamConfiguration
@@ -156,7 +136,6 @@ struct CapturedFrame {
 @available(macOS 12.3, *) private class CaptureEngineStreamOutput: NSObject, SCStreamOutput, SCStreamDelegate {
     
     var pcmBufferHandler: ((AVAudioPCMBuffer) -> Void)?
-    var capturedFrameHandler: ((CapturedFrame) -> Void)?
     
     // Store the the startCapture continuation, so you can cancel it if an error occurs.
     private var continuation: AsyncThrowingStream<CapturedFrame, Error>.Continuation?
@@ -176,7 +155,7 @@ struct CapturedFrame {
         case .screen:
             // Create a CapturedFrame structure for a video sample buffer.
             guard let frame = createFrame(for: sampleBuffer) else { return }
-            capturedFrameHandler?(frame)
+            continuation?.yield(frame)
         @unknown default:
             fatalError("Encountered unknown stream output type: \(outputType)")
         }

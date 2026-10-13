@@ -29,3 +29,13 @@ swiftc -O -parse-as-library "$CLIPBOARD_BOUNDS" "$CLIPBOARD_TESTS" -o "$TEST_DIR
 
 swiftc -O -parse-as-library "$PREVIEW_TITLE_TEXT" "$PREVIEW_TITLE_TESTS" -o "$TEST_DIR/preview-title-text-tests"
 "$TEST_DIR/preview-title-text-tests"
+
+swiftc -O -parse-as-library "$ROOT/MakeItHome/Helpers/CaptureLifecycle.swift" \
+    "$ROOT/Tests/CaptureLifecycleTests.swift" -o "$TEST_DIR/capture-lifecycle-tests"
+"$TEST_DIR/capture-lifecycle-tests"
+
+swiftc -O -D STRESS_TEST_APP -parse-as-library "$ROOT/MakeItHome/Helpers/StressProcessSample.swift" \
+    "$ROOT/Tests/StressProcessSampleTests.swift" -o "$TEST_DIR/stress-process-sample-tests"
+"$TEST_DIR/stress-process-sample-tests"
+
+zsh "$ROOT/Tests/StressDiagnosticChecksTests.zsh"

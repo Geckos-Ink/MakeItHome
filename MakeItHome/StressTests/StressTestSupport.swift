@@ -70,6 +70,7 @@ struct StressLaunchConfiguration {
     let seed: UInt64
     let copySourcePath: String?
     let resultPath: String?
+    let resultToStdout: Bool
 
     static var current: StressLaunchConfiguration? {
         let arguments = ProcessInfo.processInfo.arguments
@@ -96,7 +97,8 @@ struct StressLaunchConfiguration {
             cycleMaximumSeconds: max(cycleMinimumSeconds, requestedCycleMaximum),
             seed: positiveUInt64("--stress-seed", arguments: arguments) ?? UInt64.random(in: 1...UInt64.max),
             copySourcePath: value(for: "--stress-copy-source", in: arguments),
-            resultPath: value(for: "--stress-result-file", in: arguments)
+            resultPath: value(for: "--stress-result-file", in: arguments),
+            resultToStdout: arguments.contains("--stress-result-stdout")
         )
     }
 
@@ -130,54 +132,6 @@ struct StressLaunchConfiguration {
             return nil
         }
         return value
-    }
-}
-
-struct StressProcessSample {
-    let residentMegabytes: Double
-    let threadCount: Int
-
-    static func capture() -> StressProcessSample {
-        StressProcessSample(
-            residentMegabytes: residentBytes() / 1_048_576,
-            threadCount: activeThreadCount()
-        )
-    }
-
-    private static func residentBytes() -> Double {
-        var info = mach_task_basic_info_data_t()
-        var count = mach_msg_type_number_t(
-            MemoryLayout<mach_task_basic_info_data_t>.size / MemoryLayout<natural_t>.size
-        )
-        let result = withUnsafeMutablePointer(to: &info) { pointer in
-            pointer.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { rebound in
-                task_info(
-                    mach_task_self_,
-                    task_flavor_t(MACH_TASK_BASIC_INFO),
-                    rebound,
-                    &count
-                )
-            }
-        }
-        return result == KERN_SUCCESS ? Double(info.resident_size) : 0
-    }
-
-    private static func activeThreadCount() -> Int {
-        var threads: thread_act_array_t?
-        var count: mach_msg_type_number_t = 0
-        guard task_threads(mach_task_self_, &threads, &count) == KERN_SUCCESS else {
-            return 0
-        }
-
-        if let threads = threads {
-            let allocationSize = vm_size_t(Int(count) * MemoryLayout<thread_t>.stride)
-            vm_deallocate(
-                mach_task_self_,
-                vm_address_t(UInt(bitPattern: threads)),
-                allocationSize
-            )
-        }
-        return Int(count)
     }
 }
 
@@ -218,6 +172,12 @@ struct StressTestRootView: View {
 }
 
 func writeStressResult(_ summary: String, configuration: StressLaunchConfiguration) {
+    if configuration.resultToStdout {
+        // LaunchServices passes an already-open output descriptor to the sandbox.
+        // This handshake avoids requiring the controller to access its container.
+        print("[StressResult] \(summary)")
+        fflush(stdout)
+    }
     guard let resultPath = configuration.resultPath else { return }
     do {
         try Data((summary + "\n").utf8).write(

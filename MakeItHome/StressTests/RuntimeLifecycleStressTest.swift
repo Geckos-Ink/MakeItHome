@@ -45,6 +45,7 @@ private struct RuntimeLifecyclePasteboardSnapshot {
 final class RuntimeLifecycleStressCoordinator: ObservableObject {
     @Published private(set) var status = "Preparing"
     @Published private(set) var recorderTransitions = 0
+    private var recorderCancellations = 0
     @Published private(set) var sceneSleepTransitions = 0
     @Published private(set) var sceneRestartTransitions = 0
     @Published private(set) var clipboardWrites = 0
@@ -74,6 +75,9 @@ final class RuntimeLifecycleStressCoordinator: ObservableObject {
     private var originalClipboardCaptureEnabled = true
     private var originalFrontmostApplication: NSRunningApplication?
     private var randomState: UInt64
+    private var lastMetricsLog = Date.distantPast
+    private var lastRecorderProgress = Date()
+    private var lastObservedRecorderTransitions = 0
 
     private var runTask: Task<Void, Never>?
     private var recorderLoopTask: Task<Void, Never>?
@@ -81,6 +85,7 @@ final class RuntimeLifecycleStressCoordinator: ObservableObject {
     private var clipboardLoopTask: Task<Void, Never>?
     private var metricsTask: Task<Void, Never>?
     private var recorderRequestTasks: [Task<Void, Never>] = []
+    private var recorderRequestIDs: Set<UUID> = []
 
     init(
         configuration: StressLaunchConfiguration,
@@ -139,6 +144,7 @@ final class RuntimeLifecycleStressCoordinator: ObservableObject {
         clipboard.setCaptureEnabled(true)
         deadline = Date().addingTimeInterval(configuration.durationSeconds)
         status = "Running"
+        lastRecorderProgress = Date()
         sampleProcess()
 
         recorderLoopTask = Task { [weak self] in
@@ -279,6 +285,19 @@ final class RuntimeLifecycleStressCoordinator: ObservableObject {
             await waitForInterval()
 
             guard shouldContinue else { break }
+            if recorderTransitions % 30 == 2 {
+                let consumerID = recorder.stressConsumerID
+                let ownedByHarness = consumerID.map { recorderRequestIDs.contains($0) } ?? false
+                let originalGeneration = await recorder.ownedCaptureStreamGeneration()
+                for request in recorderRequestTasks { request.cancel() }
+                await waitForRecorderRequests()
+                if ownedByHarness, let originalGeneration {
+                    recorderCancellations += 1
+                    if await recorder.ownedCaptureStreamGeneration() == originalGeneration {
+                        fail("Canceling the frame consumer left its original SCStream behind.")
+                    }
+                }
+            }
             await recorder.stop()
             await waitForRecorderRequests()
             recorderTransitions += 1
@@ -288,10 +307,14 @@ final class RuntimeLifecycleStressCoordinator: ObservableObject {
     }
 
     private func requestRecording(lowProfile: Bool) {
+        let consumerID = UUID()
         let task = Task { [recorder] in
-            await recorder.start(lowProfile: lowProfile)
+            await CaptureStressContext.$consumerID.withValue(consumerID) {
+                await recorder.start(lowProfile: lowProfile)
+            }
         }
         recorderRequestTasks.append(task)
+        recorderRequestIDs.insert(consumerID)
 
         // ScreenRecorder owns serialization. Sampling after each request makes a
         // missing permission or a stuck start fail the final run instead of only
@@ -299,7 +322,8 @@ final class RuntimeLifecycleStressCoordinator: ObservableObject {
         Task { [weak self] in
             await self?.wait(seconds: 0.5)
             guard let self, !self.isFinishing else { return }
-            self.didObserveRecording = self.didObserveRecording || self.recorder.isRunning
+            self.didObserveRecording = self.didObserveRecording ||
+                (self.recorder.isRunning && self.recorder.lastFrame != nil)
         }
     }
 
@@ -449,6 +473,8 @@ final class RuntimeLifecycleStressCoordinator: ObservableObject {
         clipboardLoopTask?.cancel()
         metricsTask?.cancel()
 
+        for request in recorderRequestTasks { request.cancel() }
+
         await recorder.stop()
         await recorderLoopTask?.value
         await sceneLoopTask?.value
@@ -462,7 +488,7 @@ final class RuntimeLifecycleStressCoordinator: ObservableObject {
         sampleProcess()
 
         let failed = !completed || lastError != nil || !didObserveRecording || !didObserveRecorderStop ||
-            recorderTransitions < 3 || sceneSleepTransitions == 0 || sceneRestartTransitions == 0 ||
+            recorderTransitions < 3 || recorderCancellations == 0 || sceneSleepTransitions == 0 || sceneRestartTransitions == 0 ||
             textWrites == 0 || imageWrites == 0 || videoWrites == 0 ||
             recorder.capturePreview.captureView.scene == nil
         status = failed ? "Failed" : "Completed"
@@ -471,6 +497,7 @@ final class RuntimeLifecycleStressCoordinator: ObservableObject {
             "sceneSleeps=\(sceneSleepTransitions) sceneRestarts=\(sceneRestartTransitions) clipboardWrites=\(clipboardWrites) " +
             "text=\(textWrites) images=\(imageWrites) videos=\(videoWrites) peakMemoryMB=\(String(format: "%.1f", peakResidentMB)) peakThreads=\(peakThreads)"
             + " sceneApps=\(peakSceneApps) sceneWindows=\(peakSceneWindows)"
+            + " cancellations=\(recorderCancellations) capturedFrames=\(recorder.capturedFrameCount)"
         print(summary)
         if let lastError {
             print("[RuntimeLifecycleStress] firstError=\(lastError)")
@@ -501,6 +528,7 @@ final class RuntimeLifecycleStressCoordinator: ObservableObject {
     private func waitForRecorderRequests() async {
         let requests = recorderRequestTasks
         recorderRequestTasks.removeAll(keepingCapacity: true)
+        recorderRequestIDs.removeAll(keepingCapacity: true)
         for request in requests {
             await request.value
         }
@@ -531,6 +559,24 @@ final class RuntimeLifecycleStressCoordinator: ObservableObject {
         peakResidentMB = max(peakResidentMB, sample.residentMegabytes)
         peakThreads = max(peakThreads, sample.threadCount)
         sampleSceneGraph(recorder.capturePreview.captureView)
+        let now = Date()
+        if recorderTransitions != lastObservedRecorderTransitions {
+            lastObservedRecorderTransitions = recorderTransitions
+            lastRecorderProgress = now
+        }
+        if status == "Running", now.timeIntervalSince(lastRecorderProgress) > 15 {
+            fail("Recorder lifecycle made no progress for 15 seconds.")
+            stop()
+        }
+        if now.timeIntervalSince(lastMetricsLog) >= 5 {
+            lastMetricsLog = now
+            print("[RuntimeLifecycleStress] METRICS recorderTransitions=\(recorderTransitions) " +
+                  "cancellations=\(recorderCancellations) capturedFrames=\(recorder.capturedFrameCount) " +
+                  "sceneSleeps=\(sceneSleepTransitions) sceneRestarts=\(sceneRestartTransitions) " +
+                  "clipboardWrites=\(clipboardWrites) memoryMB=\(String(format: "%.1f", sample.residentMegabytes)) " +
+                  "threads=\(sample.threadCount)")
+            fflush(stdout)
+        }
     }
 
     private func sampleSceneGraph(_ captureView: CapturePreview.CaptureView) {
