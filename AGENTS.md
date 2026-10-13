@@ -309,6 +309,12 @@ JavaScript container surface injected into the native App Extension web view.
 - **Tests:** Manual and stress-harness validation.
 - **Common mistakes:** Keep invoked JavaScript function names synchronized with `AppExtension.swift`.
 
+### [`MakeItHome/MakeItHome Web Extension/MakeItHome_Web_Extension.entitlements`](MakeItHome/MakeItHome%20Web%20Extension/MakeItHome_Web_Extension.entitlements)
+
+Required, non-secret signing input for both Debug and Release of the Safari Web Extension target. It enables App Sandbox for the native extension handler; browser permissions remain in `manifest.json`.
+
+- **Common mistakes:** Keep this file in source control via its explicit `.gitignore` exception. Do not copy the parent app's Calendar or server entitlements into the extension; the native handler only echoes messages and browser networking lives in `background.js`.
+
 ### [`MakeItHome/MakeItHome Web Extension/Resources/manifest.json`](MakeItHome/MakeItHome%20Web%20Extension/Resources/manifest.json)
 
 Manifest V3 declaration for the bundled Safari extension, including tabs, active-tab, web-navigation, storage, and alarms permissions.
@@ -526,7 +532,7 @@ Fast focused and resource-bound stress tests:
 ./Tests/run.sh
 ```
 
-Normal development run: open [`MakeItHome.xcodeproj`](MakeItHome.xcodeproj) in Xcode, select the `MakeItHome` scheme, configure signing/entitlements locally, and Run. The main app entitlement file is tracked; the Safari extension entitlement file referenced by the project is locally required but ignored by `.gitignore`, so verify it exists before a signed build.
+Normal development run: open [`MakeItHome.xcodeproj`](MakeItHome.xcodeproj) in Xcode, select the `MakeItHome` scheme, configure signing locally, and Run. The main app and Safari extension entitlement files are source-controlled project inputs; do not remove the extension's explicit `.gitignore` exception.
 
 Debug stress modes are launch arguments on the Debug `MakeItHome Test` scheme:
 
@@ -573,7 +579,7 @@ There is no root lint/format task, CI workflow, automated UI suite, checked-in a
 - Calendar data remains owned by EventKit. Access only after user permission and do not mirror it to unrelated persistence.
 - The local HTTP server must remain loopback-only, with bounded bodies. App Extension content and JavaScript are trusted only after explicit identity approval and request authentication.
 - Persistent native widget web views use the default WebKit data store and can contact remote websites configured by the user. Do not merge their cookies/session state into the parent Widgets Zone or into extension trust state.
-- The app sandbox enables incoming/outgoing networking and Calendar access in the tracked app entitlement. Signing files, keys, profiles, environment files, and local extension entitlements must remain uncommitted unless the repository policy deliberately changes.
+- The app sandbox enables incoming/outgoing networking and Calendar access in the tracked app entitlement. The Safari extension's source-controlled entitlement enables only App Sandbox. Signing credentials, keys, profiles, environment files, and other local entitlements must remain uncommitted.
 - Minimum supported macOS is 12.3 according to target settings. Keep availability guards synchronized with that boundary.
 - The App Extension protocol has compatibility behavior for older trust records and the misspelled response `appAlreadyConnected`; do not “clean up” wire values without a coordinated client migration.
 
