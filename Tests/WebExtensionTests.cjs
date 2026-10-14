@@ -209,7 +209,7 @@ function seedPreviews(h, infos, position = null){
         const h = harness(), installations = [], calls = []
         h.ctx.installations = installations
         h.ctx.calls = calls
-        h.run(`cachedExtensionPayload='fixture'; storage.tabPosition={id:1,index:2}; setHtmlContent=async(html,options)=>{installations.push(options.forceReload); return true}; checkOpenTabs=async()=>{calls.push('metadata')}; sendAllTabsScreenshot=async()=>{calls.push('previews')}`)
+        h.run(`cachedExtensionPayload='fixture'; storage.tabPosition={id:1,index:2}; setHtmlContent=async(html,options)=>{installations.push(options.forceReload); return true}; checkOpenTabs=async()=>{calls.push('metadata');return true}; sendAllTabsScreenshot=async()=>{calls.push('previews')}`)
         await h.run('loadScripts()')
         assert.equal(JSON.stringify(installations), '[false]')
         assert.equal(JSON.stringify(calls), '["metadata","previews"]')
@@ -813,6 +813,101 @@ function seedPreviews(h, infos, position = null){
         v.run(`syncSafariTabs([{id:-1},{id:0}]);applySafariScreenshots([{blob:'YQ==',tabInfo:{id:-1}},{blob:'Yg==',tabInfo:{id:0}}])`);v.flush()
         assert.equal(v.run('vars.safari.slides.length'),1)
         assert.equal(v.run('vars.safari.slides[0].getAttribute("tabId")'),'0')
+    })
+    await check('title and inventory refresh during capture preserve its stable tab state', async()=>{
+        const h=harness()
+        h.run(`appIsShowing=true; sendJsMessage=async()=>true; resizeAndCompressImage=async()=>({}); blobToBase64=async()=> 'YQ=='`)
+        h.ctx.fetch=async()=>({blob:async()=>({})})
+        h.ctx.chrome.tabs.captureVisibleTab=(id,options,callback)=>{
+            h.setTabs([{id:1,windowId:10,index:0,active:true,title:'Renamed',url:'https://example.test'}])
+            h.events.update.listener(1,{title:'Renamed'},{id:1,windowId:10,index:0,active:true,title:'Renamed',url:'https://example.test'})
+            h.run('checkOpenTabs()').then(()=>callback('data:image/jpeg;base64,YQ=='))
+        }
+        assert.equal((await h.run('captureScreenshotAndSend()')).changed,true)
+        assert.equal(h.run('tabs[1].title'),'Renamed')
+    })
+    await check('switching away and back during capture cannot cache another tab image', async()=>{
+        const h=harness()
+        h.run(`appIsShowing=true; resizeAndCompressImage=async()=>({}); blobToBase64=async()=> 'YQ=='`)
+        h.ctx.fetch=async()=>({blob:async()=>({})})
+        h.ctx.chrome.tabs.captureVisibleTab=(id,options,callback)=>{
+            h.events.activate.listener({tabId:2,windowId:10})
+            h.events.activate.listener({tabId:1,windowId:10})
+            callback('data:image/jpeg;base64,YQ==')
+        }
+        assert.equal((await h.run('captureScreenshotAndSend()')).changed,false)
+        assert.equal(h.run('tabs[1].lastStrBlob'),undefined)
+        assert.equal(h.run('captureRequested'),true,'The later switch still needs a capture')
+    })
+    await check('stalled capture releases the refresh loop and ignores its late callback', async()=>{
+        const h=harness()
+        let completeCapture
+        h.run(`toConnect=false;contentNeedsLoad=false;appIsShowing=true;tabsListDirty=false;lastOpenTabsSyncAt=Date.now();resizeAndCompressImage=async()=>({});blobToBase64=async()=> 'YQ=='`)
+        h.ctx.fetch=async()=>({blob:async()=>({})})
+        h.ctx.chrome.tabs.captureVisibleTab=(id,options,callback)=>{completeCapture=callback}
+        const loop=h.run('runScreenshotLoop()')
+        await new Promise(resolve=>setImmediate(resolve))
+        h.fireTimer(3500)
+        await loop
+        assert.equal(h.run('screenshotInProgress'),false)
+        completeCapture('data:image/jpeg;base64,YQ==')
+        await new Promise(resolve=>setImmediate(resolve))
+        assert.equal(h.run('tabs[1].lastStrBlob'),undefined)
+        h.advance(2000)
+        h.ctx.chrome.tabs.captureVisibleTab=(id,options,callback)=>callback('data:image/jpeg;base64,YQ==')
+        assert.equal((await h.run('captureScreenshotAndSend()')).changed,true)
+    })
+    await check('failed metadata delivery cannot acknowledge previews that the view would ignore', async()=>{
+        const h=harness(),v=viewHarness(),messages=[]
+        h.ctx.deliver=message=>{messages.push(message);return v.run(message)}
+        h.run(`toConnect=false;contentNeedsLoad=false;appIsShowing=true;captureScreenshotAndSend=async()=>({changed:false});tabs[1]={id:1,lastStrBlob:'YQ==',lastFrameFingerprint:'frame',needsResend:true};sendJsMessage=async message=>!message.startsWith('syncSafariTabs') && (deliver(message),true)`)
+        await h.run('runScreenshotLoop()')
+        assert.equal(messages.length,0)
+        assert.equal(h.run('tabs[1].needsResend'),true)
+        h.run('sendJsMessage=async message=>{deliver(message);return true}')
+        await h.run('runScreenshotLoop()');v.flush()
+        assert.equal(v.run('vars.safari.slides.length'),1)
+        assert.equal(h.run('tabs[1].needsResend'),false)
+    })
+    await check('title-only changes do not re-encode or resend identical preview pixels', async()=>{
+        const h=harness()
+        let encodes=0
+        h.run(`appIsShowing=true; blobToBase64=async()=> 'YQ=='`)
+        h.ctx.chrome.tabs.captureVisibleTab=(id,options,callback)=>callback('data:image/jpeg;base64,YQ==')
+        h.ctx.resizeAndCompressImage=async()=>{encodes++;return {}}
+        h.ctx.fetch=async()=>({blob:async()=>({})})
+        assert.equal((await h.run('captureScreenshotAndSend()')).changed,true)
+        h.run('tabs[1].needsResend=false')
+        h.setTabs([{id:1,windowId:10,index:0,active:true,title:'Changed title',url:'https://example.test'}])
+        h.advance(2000)
+        assert.equal((await h.run('captureScreenshotAndSend()')).reason,'sameRawFrame')
+        assert.equal(encodes,1)
+        assert.equal(h.run('tabs[1].needsResend'),false)
+        assert.equal(h.run('tabs[1].title'),'Changed title')
+    })
+    await check('frame fingerprints detect changes outside the old sampled JPEG regions', ()=>{
+        const h=harness()
+        assert.notEqual(h.run(`makeFrameFingerprint('a'.repeat(2000))`),h.run(`makeFrameFingerprint('a'.repeat(400)+'b'+'a'.repeat(1599))`))
+    })
+    await check('capture awaits callback-only Safari query and capture APIs', async()=>{
+        const h=harness()
+        h.run(`appIsShowing=true;resizeAndCompressImage=async()=>({});blobToBase64=async()=> 'YQ=='`)
+        h.ctx.fetch=async()=>({blob:async()=>({})})
+        h.ctx.chrome.tabs.query=(query,callback)=>callback([{id:1,windowId:10,index:0,active:true,title:'One',url:'https://example.test'}])
+        h.ctx.chrome.tabs.captureVisibleTab=(id,options,callback)=>callback('data:image/jpeg;base64,YQ==')
+        assert.equal((await h.run('captureScreenshotAndSend()')).changed,true)
+    })
+    await check('an expired inventory query cannot remove cached previews when its callback eventually arrives', async()=>{
+        const h=harness()
+        let completeQuery
+        h.run(`tabs[1]={id:1,lastStrBlob:'YQ=='};sendJsMessage=async()=>true`)
+        h.ctx.chrome.tabs.query=(query,callback)=>{completeQuery=callback}
+        const sync=h.run('checkOpenTabs()')
+        const rejected=assert.rejects(sync,/timed out/)
+        await new Promise(resolve=>setImmediate(resolve));h.fireTimer(3500);await rejected
+        completeQuery([])
+        await new Promise(resolve=>setImmediate(resolve))
+        assert.equal(h.run('tabs[1].lastStrBlob'),'YQ==')
     })
     completed = true
     console.log(`${checks} Web Extension regression checks passed.`)

@@ -32,6 +32,9 @@ weak_handler = view[a:b]
 a = view.index('    public func userContentController(', b)
 b = view.index('    // Implement WKNavigationDelegate', a)
 handler = view[a:b]
+a = view.index('    public func webView(_ webView: WKWebView, didFinish')
+b = view.index('    public func userContentController(', a)
+navigation_finished = view[a:b]
 fixture = r'''
 import Foundation
 import CryptoKit
@@ -57,6 +60,8 @@ class AppExtension {
 }
 class Manager {
     var apps: [String: AppExtension] = [:]
+    var documentLoads = 0
+    func webViewDidFinishLoading() { documentLoads += 1 }
     private let tokenClockSkewSeconds: Int64 = 3
     private let pollWhenMessagePendingMs = 160, pollWhenShowingMs = 700, pollWhenHiddenMs = 3200
     TOKENS
@@ -86,6 +91,12 @@ class Display {
     }
 }
 class WKWebView { var curApp: Display.AppWindows? }
+class WKNavigation {}
+class AppExtensionWKWV: WKWebView {
+    var presentations = 0
+    func setCurrentApp(app: Display.AppWindows) { presentations += 1; curApp = app }
+    func sendCurrentVersion() {}
+}
 class WKUserContentController {}
 protocol WKScriptMessageHandler: AnyObject {
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage)
@@ -94,12 +105,17 @@ struct Frame { var isMainFrame: Bool }
 struct WKScriptMessage { let webView: WKWebView?; let frameInfo: Frame; let body: Any }
 struct AppExtensionWebView { let wkwv: WKWebView }
 struct JSMessage: Decodable { let type: String; let value: String?; let strId: String? }
-enum Static { static var appExtensionManager: Manager? }
+enum Static {
+    static var appExtensionManager: Manager?
+    static var AppExtensionWebView: WKWebView?
+    static var OnAppExtensionZone = false
+}
 WEAK_HANDLER
 class AppExtensionWebViewCoordinator: NSObject {
     let parent: AppExtensionWebView
     init(parent: AppExtensionWebView) { self.parent = parent }
     HANDLER
+    NAVIGATION_FINISHED
 }
 @main struct DeliveryTests {
     @MainActor static func main() async {
@@ -143,10 +159,24 @@ class AppExtensionWebViewCoordinator: NSObject {
         precondition(request("/ackStatusMessages", body:ack).description == "appNotConnected")
 
         manager.apps[ext.bundleId] = ext
-        let display = Display(), webView = WKWebView(), controller = WKUserContentController()
+        let display = Display(), webView = AppExtensionWKWV(), controller = WKUserContentController()
         let owner = Display.AppWindows(ext, display)
         webView.curApp = owner
         var coordinator: AppExtensionWebViewCoordinator? = AppExtensionWebViewCoordinator(parent:AppExtensionWebView(wkwv:webView))
+        Static.AppExtensionWebView = webView
+        Static.OnAppExtensionZone = true
+        coordinator!.webView(webView, didFinish: WKNavigation())
+        precondition(webView.presentations == 1, "A replaced document must restore the currently visible extension")
+        Static.OnAppExtensionZone = false
+        coordinator!.webView(webView, didFinish: WKNavigation())
+        precondition(webView.presentations == 1, "Hidden extensions must not reopen on navigation")
+        Static.OnAppExtensionZone = true
+        manager.apps[ext.bundleId] = AppExtension("other identity")
+        coordinator!.webView(webView, didFinish: WKNavigation())
+        precondition(webView.presentations == 1, "A different approved identity must not regain the retired presentation")
+        manager.apps[ext.bundleId] = ext
+        coordinator!.webView(WKWebView(), didFinish: WKNavigation())
+        precondition(manager.documentLoads == 3, "Retired views must not reset the live document")
         func send(_ body: Any, main: Bool = true, source: WKWebView? = webView) {
             coordinator!.userContentController(controller, didReceive:WKScriptMessage(webView:source, frameInfo:Frame(isMainFrame:main), body:body))
         }
@@ -182,7 +212,8 @@ class AppExtensionWebViewCoordinator: NSObject {
 }
 '''
 for key, value in [('MAILBOX_METHODS', mailbox_methods), ('TOKENS', tokens), ('AUTH', auth),
-                   ('ROUTES', routes), ('REPLY', reply), ('WEAK_HANDLER', weak_handler), ('HANDLER', handler)]:
+                   ('ROUTES', routes), ('REPLY', reply), ('WEAK_HANDLER', weak_handler), ('HANDLER', handler),
+                   ('NAVIGATION_FINISHED', navigation_finished)]:
     fixture = fixture.replace(key, value)
 with tempfile.TemporaryDirectory(prefix='mih-extension-delivery-') as temp:
     source = Path(temp) / 'DeliveryTests.swift'

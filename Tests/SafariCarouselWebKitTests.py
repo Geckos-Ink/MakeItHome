@@ -22,6 +22,7 @@ import WebKit
 
 class Fixture: NSObject, WKNavigationDelegate {
     let view: WKWebView
+    var reloaded = false
     init(configuration: WKWebViewConfiguration) {
         view = WKWebView(frame: NSRect(x: 0, y: 0, width: 400, height: 1000), configuration: configuration)
         super.init()
@@ -47,6 +48,7 @@ class Fixture: NSObject, WKNavigationDelegate {
         window.sendStatus=value=>statuses.push(JSON.parse(value));
         window.focusOnMe=value=>focusRequests.push(JSON.parse(value));
         window.fixtureContent=PAYLOAD;
+        window.recoveryPosition=\(reloaded ? "{id:3,index:2}" : "null");
         createAppExtension('com.apple.Safari');setContent('com.apple.Safari',fixtureContent);
         showAppExtension('com.apple.Safari',false);
         const canvas=document.createElement('canvas');canvas.width=640;canvas.height=360;
@@ -55,8 +57,8 @@ class Fixture: NSObject, WKNavigationDelegate {
         canvas.width=360;canvas.height=640;context.fillRect(0,0,360,640);
         window.framePortrait=canvas.toDataURL('image/jpeg').split(',')[1];
         window.infos=Array.from({length:10},(_,i)=>({id:i+1,title:'Tab '+(i+1)+' — cached preview title'}));
-        infos[2].title='<img src=x onerror="window.injected=true"> — title is literal text';
-        window.populate=()=>{syncSafariTabs(infos);applySafariScreenshots(infos.map(tabInfo=>({tabInfo,blob:tabInfo.id%2?frameLandscape:framePortrait})))};
+        infos[2].title='<img src=x onerror="window.injected=true"> — title is literal text '+ 'LongTitle'.repeat(40);
+        window.populate=()=>{syncSafariTabs(infos,recoveryPosition);applySafariScreenshots(infos.map(tabInfo=>({tabInfo,blob:tabInfo.id%2?frameLandscape:framePortrait})))};
         window.expect=(condition,message)=>{if(!condition)throw Error(message)};
         window.check=(count,id)=>{
             expect(vars.safari.slides.length===count,'Preview count changed');
@@ -73,10 +75,13 @@ class Fixture: NSObject, WKNavigationDelegate {
             const card=slide.getBoundingClientRect();
             expect(title.width>0 && title.height>=29,'Title row collapsed');
             expect(title.bottom<=card.bottom+0.5 && title.top>=card.top,'Title outside card');
+            expect(title.left>=card.left-0.5 && title.right<=card.right+0.5,'Long title overflows card width');
             expect(image.bottom<=title.top+0.5,'Preview overlaps title');
         };
         populate();
-        """) { self.after { self.normalReopen() } }
+        """) { self.after {
+            if self.reloaded { self.verifyReload() } else { self.normalReopen() }
+        } }
     }
     func normalReopen() {
         js("check(10,1);clickedOnSafariTab(3);exitingAppExtension();document.getElementById('com-apple-Safari').style.display='none';") {
@@ -151,10 +156,25 @@ class Fixture: NSObject, WKNavigationDelegate {
         showAppExtension('com.apple.Safari',false);
         """) { self.after {
             self.js("check(10,3)") {
-                print("SafariCarouselWebKitTests: PASS (real host/Swiper, JPEG decode, click/reopen, idempotent/changed content, explicit reset, order, live wheel updates, fractional position, orientation, titles, hidden replacements)")
-                exit(0)
+                // Actual document replacement clears host visibility and JS
+                // state. Native restores show; browser replays its saved ID,
+                // metadata and only the reported missing runtime frames.
+                self.reloaded = true
+                self.start()
             }
         } }
+    }
+    func verifyReload() {
+        js("""
+        check(10,3);
+        expect(isShowing && !isHorizontal,'Reload lost presentation or orientation');
+        const ready=statuses.find(status=>status.type==='safariViewReady');
+        expect(ready && !ready.inventoryReady && ready.previewIds.length===0,'New document did not request cache recovery');
+        expect(new Set(vars.safari.slides.map(slide=>slide.id)).size===10,'Recovery duplicated cards');
+        """) {
+            print("SafariCarouselWebKitTests: PASS (real host/Swiper, JPEG decode, click/reopen, content/reset/order, gestures, orientation, long titles, hidden replacements, document reload recovery)")
+            exit(0)
+        }
     }
 }
 NSApplication.shared.setActivationPolicy(.prohibited)

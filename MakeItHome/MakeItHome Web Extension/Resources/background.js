@@ -299,6 +299,7 @@ const screenshotPolicy = {
     statusPollIdleMs: 3200,
     statusRequestTimeoutMs: 3500,
     statusMaxInFlightMs: 12000,
+    captureTimeoutMs: 3500,
     maxSendWhenShowing: 4,
     maxPreviewCount: 60,
     maxPreviewChars: 8 * 1024 * 1024,
@@ -311,6 +312,7 @@ let activeTabId = null
 let lastActiveAt = 0
 let lastCaptureAt = 0
 let captureRequested = false
+let captureRevision = 0 // Switch/navigation edges, including an away-and-back switch.
 let lastOpenTabsSyncAt = 0
 let tabsListDirty = true
 let tabsListRevision = 0
@@ -528,17 +530,16 @@ function makeFrameFingerprint(str){
         return "0:empty"
     }
     
-    let chunk = 180
-    let size = str.length
-    let first = str.slice(0, chunk)
-    let middleStart = Math.max(0, Math.floor(size / 2) - Math.floor(chunk / 2))
-    let middle = str.slice(middleStart, middleStart + chunk)
-    let tail = str.slice(Math.max(0, size - chunk))
-    return `${size}:${first}:${middle}:${tail}`
+    let first = 2166136261, second = 5381
+    for(let i=0; i<str.length; i++){
+        first = Math.imul(first ^ str.charCodeAt(i), 16777619)
+        second = Math.imul(second, 33) ^ str.charCodeAt(i)
+    }
+    return `${str.length}:${first >>> 0}:${second >>> 0}`
 }
 
 async function getAllOpenTabs(){
-    const allTabs = await safariAPI(chrome.tabs, 'query', {})
+    const allTabs = await boundedOperation(()=>safariAPI(chrome.tabs, 'query', {}), screenshotPolicy.captureTimeoutMs)
     return Object.fromEntries(allTabs.filter(tab=>tab && Number.isSafeInteger(tab.id) && tab.id >= 0).map(tab=>[tab.id, tab]))
 }
 
@@ -546,7 +547,7 @@ async function checkOpenTabs(options = {}){
     const tabsObj = await getAllOpenTabs()
     for(const source of Object.values(tabsObj)){
         const tab = normalizeTabInfo(source)
-        tabs[tab.id] = {...(tabs[tab.id] || {}), ...tab}
+        Object.assign(tabs[tab.id] ||= {}, tab)
     }
     // A successful empty query is authoritative too (e.g. the final window
     // closed). API failures reject and retain the previous inventory.
@@ -573,12 +574,14 @@ async function checkOpenTabs(options = {}){
             pendingViewPosition = null
         } else {
             markTabsDirty()
+            return false
         }
     }
 
     if(options.refreshPreviews === true){
         await sendAllTabsScreenshot({force: true, onlyFocused: false})
     }
+    return true
 }
 
 // currently used due to api limitations
@@ -1022,16 +1025,7 @@ function trimPreviewCache(){
 }
 
 async function captureVisibleTabAsDataUrl(windowId){
-    return new Promise((resolve, reject)=>{
-        chrome.tabs.captureVisibleTab(windowId, { format: "jpeg", quality: 50 }, (dataUrl)=>{
-            if(chrome.runtime.lastError){
-                reject(chrome.runtime.lastError)
-                return
-            }
-            
-            resolve(dataUrl)
-        })
-    })
+    return safariAPI(chrome.tabs, 'captureVisibleTab', windowId, {format: 'jpeg', quality: 50})
 }
 
 function getCaptureIntervalMs(){
@@ -1058,7 +1052,7 @@ async function shouldSkipBackgroundCapture(){
     }
 
     try {
-        let win = await chrome.windows.getLastFocused()
+        let win = await safariAPI(chrome.windows, 'getLastFocused')
         if(win && win.focused === false){
             return true
         }
@@ -1077,17 +1071,33 @@ function scheduleScreenshotLoop(delayMs = getCaptureIntervalMs()){
 }
 
 async function captureScreenshotAndSend() {
+    let expired = false
+    try {
+        return await boundedOperation(()=>captureScreenshot(()=>!expired), screenshotPolicy.captureTimeoutMs, ()=>{expired = true})
+    } catch(error){
+        // The entire pipeline (queries, capture and encoding) has a deadline.
+        // Late API callbacks cannot publish into a subsequent capture run.
+        return {changed: false, reason: 'error'}
+    }
+}
+
+async function captureScreenshot(isCurrent) {
+    const revision = captureRevision
+    const valid = ()=>isCurrent() && revision === captureRevision
     try {
         if(Date.now() - lastCaptureAt < (captureRequested ? screenshotPolicy.minCaptureGapMs : getCaptureIntervalMs())){
             return {changed: false, reason: "throttled"}
         }
 
         if(await shouldSkipBackgroundCapture()){
+            if(!valid()) return {changed: false, reason: 'captureSuperseded'}
             captureRequested = false
             return {changed: false, reason: "windowUnfocused"}
         }
 
-        const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true })
+        if(!valid()) return {changed: false, reason: 'captureSuperseded'}
+        const [activeTab] = await safariAPI(chrome.tabs, 'query', {active: true, currentWindow: true})
+        if(!valid()) return {changed: false, reason: 'captureSuperseded'}
         if(!activeTab){
             captureRequested = false
             return {changed: false, reason: "noActiveTab"}
@@ -1101,49 +1111,46 @@ async function captureScreenshotAndSend() {
             captureRequested = false
             return {changed: false, reason: 'unaddressableTab'}
         }
-        let tabState = tabs[tabInfo.id] = {
-            ...(tabs[tabInfo.id] || {}),
-            ...tabInfo
-        }
-        tabState.lastCaptureAt = Date.now()
-        
-        let strTabInfo = JSON.stringify(tabInfo)
-        let tabInfoChanged = tabState.lastStrTabInfo !== strTabInfo
-        tabState.lastStrTabInfo = strTabInfo
+        const tabState = tabs[tabInfo.id] ||= {}
+        Object.assign(tabState, tabInfo)
 
         // Pace attempts as well as changed frames, including failed captures.
         lastCaptureAt = Date.now()
         captureRequested = false
         const dataUrl = await captureVisibleTabAsDataUrl(activeTab.windowId)
-        const [stillActive] = await chrome.tabs.query({active: true, windowId: activeTab.windowId})
-        if(!stillActive || stillActive.id !== activeTab.id || stillActive.url !== activeTab.url || tabs[tabInfo.id] !== tabState){
+        if(!valid()) return {changed: false, reason: 'captureSuperseded'}
+        const [stillActive] = await safariAPI(chrome.tabs, 'query', {active: true, windowId: activeTab.windowId})
+        if(!valid() || !stillActive || stillActive.id !== activeTab.id || stillActive.url !== activeTab.url || tabs[tabInfo.id] !== tabState){
             return {changed: false, reason: "tabChangedDuringCapture"}
         }
         let rawFrameFingerprint = makeFrameFingerprint(dataUrl)
-        if(tabState.lastRawFrameFingerprint === rawFrameFingerprint && !tabInfoChanged){
+        if(tabState.lastStrBlob && tabState.lastRawFrameFingerprint === rawFrameFingerprint){
             return {changed: false, reason: "sameRawFrame"}
         }
         
         let response = await fetch(dataUrl)
         let blob = await response.blob()
+        if(!valid()) return {changed: false, reason: 'captureSuperseded'}
         blob = await resizeAndCompressImage(blob)
+        if(!valid()) return {changed: false, reason: 'captureSuperseded'}
         
         let strBlob = await blobToBase64(blob)
         if(strBlob.length > screenshotPolicy.maxFrameChars){
             return {changed: false, reason: "frameTooLarge"}
         }
-        if(tabs[tabInfo.id] !== tabState || tabState.url !== tabInfo.url){
+        if(!valid() || tabs[tabInfo.id] !== tabState || tabState.url !== tabInfo.url){
             return {changed: false, reason: "tabChangedDuringCompression"}
         }
         
         tabState.lastRawFrameFingerprint = rawFrameFingerprint
         let frameFingerprint = makeFrameFingerprint(strBlob)
-        if(tabState.lastFrameFingerprint === frameFingerprint && !tabInfoChanged){
+        if(tabState.lastStrBlob && tabState.lastFrameFingerprint === frameFingerprint){
             return {changed: false, reason: "sameCompressedFrame"}
         }
         
         tabState.lastFrameFingerprint = frameFingerprint
         tabState.lastStrBlob = strBlob
+        tabState.lastCaptureAt = Date.now()
         tabState.needsResend = true
         
         trimPreviewCache()
@@ -1241,9 +1248,12 @@ async function runScreenshotLoop(){
         let deepIdle = !appIsShowing && now - lastActiveAt > screenshotPolicy.deepIdleAfterMs
         if(tabsListDirty || (!deepIdle && now - lastOpenTabsSyncAt > screenshotPolicy.tabSyncIntervalMs)){
             const revision = tabsListRevision
-            await checkOpenTabs()
+            const metadataReady = await checkOpenTabs()
             tabsListDirty = tabsListRevision !== revision
             lastOpenTabsSyncAt = Date.now()
+            // Images for unknown IDs are intentionally ignored by the view.
+            // Do not acknowledge them before its inventory has been delivered.
+            if(!metadataReady) return
         }
         
         // Deliver cached previews first; capture/encoding must not delay them.
@@ -1298,8 +1308,7 @@ async function installExtensionContent(options){
     for(const tab of Object.values(tabs)) tab.needsResend = true
     markTabsDirty()
     // Native queues messages until content is ready; no fixed 1.5-second sleep.
-    await checkOpenTabs()
-    await sendAllTabsScreenshot()
+    if(await checkOpenTabs()) await sendAllTabsScreenshot()
     scheduleScreenshotLoop(100)
 }
 
@@ -1321,6 +1330,7 @@ chrome.tabs.onActivated.addListener((activeInfo)=>{
     }
     
     confirmTabOrder(activeInfo.tabId)
+    captureRevision++
     captureRequested = true
     markTabsDirty()
     scheduleScreenshotLoop(120)
@@ -1330,10 +1340,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab)=>{
     if(tab){
         let normalized = normalizeTabInfo(tab)
         if(normalized){
-            tabs[tabId] = {
-                ...(tabs[tabId] || {}),
-                ...normalized
-            }
+            Object.assign(tabs[tabId] ||= {}, normalized)
             
             let nextTabInfo = JSON.stringify(normalized)
             tabs[tabId].lastStrTabInfo = nextTabInfo
@@ -1348,6 +1355,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab)=>{
         }
     }
     
+    if(changeInfo.url || changeInfo.status === 'loading') captureRevision++
     // Ignore intermediate "loading" events: pages can fire dozens of them,
     // and title tickers on background tabs must not tighten the capture loop
     let meaningfulChange = changeInfo.status === "complete" || changeInfo.url || changeInfo.title || changeInfo.favIconUrl
@@ -1362,12 +1370,14 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab)=>{
 
 for(const event of [chrome.tabs.onCreated, chrome.tabs.onMoved, chrome.tabs.onAttached, chrome.tabs.onDetached]){
     event.addListener(()=>{
+        captureRevision++
         markTabsDirty()
         scheduleScreenshotLoop(150)
     })
 }
 
 chrome.tabs.onRemoved.addListener((tabId)=>{
+    captureRevision++
     if(tabId === pendingTabFocusId) cancelTabFocusRetry()
     delete tabs[tabId]
     let index = orderedTabs.indexOf(tabId)

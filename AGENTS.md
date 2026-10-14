@@ -91,6 +91,13 @@ No nested `AGENTS.md` files exist at this revision. This root file applies to th
 - **Clipboard resource bounds and ordering:** Native clipboard history is newest-first and capped by `Static.ClipboardForgetElementsOlderThan`; page updates are batched oldest-first so CSS Grid appends the newest item at the visual bottom. [`BoundedFIFOQueue`](MakeItHome/Helpers/ClipboardResourceBounds.swift) caps native-to-page messages while WebKit is unavailable. [`ClipboardPreviewImage`](MakeItHome/Views/Overscreen/WidgetZoneView.swift) limits only the base64 preview sent to the Widgets Zone (160 px, 128 KiB); never use that derivative for pasteboard re-copy, whose raw representations remain in `Clipboard.Element`. The grid's persistent, centered `clipboard-notch-spacer` reserves its first row so cards stay below a MacBook display notch; clear/replace operations must remove `.item` cards only. Do not reintroduce unbounded history/queues, one timer per item, Masonry transform ownership, collection mutation during iteration, or whole-grid `.empty()` calls.
 - **Clipboard rich text:** RTF is decoded and converted to Cocoa-generated HTML in [`Clipboard.Element.setRtf`](MakeItHome/Managers/New%20Group/Clipboard.swift). [`script.js`](MakeItHome/Resources/assets/script.js) renders only an allowlisted subset inside a Shadow DOM, with sanitized Cocoa CSS. Never inject raw clipboard strings or unscoped rich-text CSS into the Widgets Zone document.
 
+**Safari recovery invariants:**
+
+- `AppExtensionWebViewCoordinator.webView(_:didFinish:)` restores the current owner's show state and orientation after document replacement only while the native extension zone is active and the approved identity still matches. Hidden/retired owners must not reopen. Rebuilding HTML alone leaves the new host unable to initialize its carousel or report missing cached previews.
+- Safari `checkOpenTabs` returns metadata-delivery readiness. Refresh and install paths must wait for successful metadata delivery before sending images; otherwise unknown-tab frames can be ignored by the view yet acknowledged by the browser.
+- Inventory queries and the entire capture/query/encoding pipeline expire after 3.5 seconds. Late callbacks cannot mutate inventory or publish expired frames. `captureRevision` invalidates captures across switch/navigation/topology events, including a switch away and back to the same ID/URL.
+- Metadata refreshes mutate each tab's stable runtime state so title-only updates cannot discard valid pending captures. `makeFrameFingerprint` inspects the entire frame; unchanged pixels bypass encoding/resending even when titles change. Images remain runtime-only.
+
 ## Architecture and Data/Control Flow
 
 Native startup:
@@ -321,7 +328,7 @@ Shared native App Extension `WKWebView`, its script-message bridge and legacy na
 - **Key symbols:** `AppExtensionWebView.sharedWKWV`, `AppExtensionWebViewCoordinator` and `WeakAppExtensionMessageHandler` (including combined `focusOnMe`/status routing), `AppExtensionWKWV.setCurrentApp`, `exiting`, and `forceReload`.
 - **Depends on:** [`MakeItHome/Resources/assets/appExtensionView.html`](MakeItHome/Resources/assets/appExtensionView.html) and `AppExtension`.
 - **Tests:** [`Tests/AppExtensionDeliveryTests.py`](Tests/AppExtensionDeliveryTests.py) compiles production dispatch with WebKit/process doubles for frame/source checks, reconnect/revocation and weak-handler lifetime. The actual host/carousel rendering and recovery are exercised by [`Tests/SafariCarouselWebKitTests.py`](Tests/SafariCarouselWebKitTests.py); installed Safari integration remains manual.
-- **Common mistakes:** Navigation replaces the JavaScript context; notify the manager so every extension container is recreated and queued messages are flushed. Focus the displayed extension owner and deliver any combined follow-up status only after the native close/focus handoff.
+- **Common mistakes:** Navigation replaces the JavaScript context; notify the manager so every extension container is recreated and queued messages are flushed, then restore the approved visible owner's presentation so the new document requests missing cached previews. Focus the displayed extension owner and deliver any combined follow-up status only after the native close/focus handoff.
 
 ### [`MakeItHome/Resources/assets/appExtensionView.html`](MakeItHome/Resources/assets/appExtensionView.html)
 
@@ -348,7 +355,7 @@ Manifest V3 declaration for the bundled Safari extension, including tabs, active
 
 Safari-side App Extension client: stable client identity, secret/token generation, connection/reconnect policy, adaptive status polling, tab tracking, screenshot pacing, and HTML/JavaScript payload delivery.
 
-- **Key functions:** `makeRequestUrl`, `getRollingToken`, `connect`, `checkOpenTabs`, `markTabsDirty`, `trimPreviewCache`, `sendAllTabsScreenshot`, `safariAPI`, `resolveSafariTab`, `focusOnTab`, `requestTabFocus`, `handleStatusEvents`, `fetchJSONWithTimeout`, screenshot/status loops, `setHtmlContent`, and `sendJsMessage`.
+- **Key functions:** `makeRequestUrl`, `getRollingToken`, `connect`, `checkOpenTabs`, `markTabsDirty`, `trimPreviewCache`, `sendAllTabsScreenshot`, `captureScreenshotAndSend`/`captureScreenshot`, `makeFrameFingerprint`, `safariAPI`, `resolveSafariTab`, `focusOnTab`, `requestTabFocus`, `handleStatusEvents`, `fetchJSONWithTimeout`, screenshot/status loops, `setHtmlContent`, and `sendJsMessage`.
 - **Depends on:** loopback `/appExtension/*`, Chrome/Safari extension APIs, and packaged extension HTML.
 - **Tests:** [`Tests/WebExtensionTests.cjs`](Tests/WebExtensionTests.cjs) executes the production browser/view scripts with deterministic API/DOM doubles. App flood harness validates the native protocol; signed Safari capture/permission behavior remains manual.
 - **Common mistakes:** Do not reset a valid secret on `connectionIgnored`/`connectionDeferred`; honor server-suggested poll intervals, abort timed-out fetches, back off unavailable connections, and bound preview sends even during recovery. Send metadata without waiting for capture, acknowledge only successfully delivered frame versions and the matching preview-delivery revision, recover missing frames on `safariViewReady`, and supply unchanged HTML without `forceReload` on reconnect so the native view retains its DOM.
@@ -440,6 +447,8 @@ Extracts and compiles the production `Display.focusAppExtension` method with det
 
 Extracts and compiles production non-connect secret/token checks, token validation, reliable polling/ACK routes, `AppExtension` mailbox methods, and coordinator script-message dispatch with dependency doubles. Tests invalid/missing credentials, malformed/oversized ACKs, lost-poll redelivery, legacy consumption, repeated messages, wrong frames/views/bundles, reconnect/revocation during animation, and weak-handler lifetime. It does not exercise the full connection approval path or real HTTP/WebKit transport. Runs through [`Tests/run.sh`](Tests/run.sh).
 
+The native delivery suite also compiles production navigation completion and asserts visible-document recovery without reopening hidden or retired identities.
+
 ### [`Tests/AppExtensionContentLifecycleTests.py`](Tests/AppExtensionContentLifecycleTests.py)
 
 Compiles the entire production `AppExtension` class with controlled WebKit/owner doubles. Covers identical-content no-ops, transient/unknown health errors, confirmed missing DOM, explicit forced Reset, and cancellation of old sync/health results across document generations and shared-view replacement and connection teardown. Runs through [`Tests/run.sh`](Tests/run.sh).
@@ -447,6 +456,8 @@ Compiles the entire production `AppExtension` class with controlled WebKit/owner
 ### [`Tests/SafariCarouselWebKitTests.py`](Tests/SafariCarouselWebKitTests.py)
 
 Loads the actual App Extension host, bundled Swiper and Safari carousel in a nonpersistent `WKWebView` using generated JPEGs and literal synthetic titles. Checks click/reopen, identical HTML/image no-ops, cache/order retention across content changes, explicit Reset, saved selection and fractional position during real wheel input/background card arrival, portrait/landscape title geometry, orientation changes and repeated hidden-frame replacement. Run separately with Python 3 and Swift on macOS; it does not open Safari, activate a window, capture the screen or verify installed extension permissions.
+
+The WebKit carousel suite additionally checks long-title containment and actual document navigation followed by show/cache replay, with saved selection, orientation and unique cards.
 
 ### [`Tests/ClipboardResourceStressTests.swift`](Tests/ClipboardResourceStressTests.swift)
 
@@ -538,6 +549,13 @@ Angular/Fuse source templates and built distributions used for the Notes/Tasks e
 - **Risk area:** `AppExtensionManager.httpRequest`, recent-approval tracking, and Safari reconnect handling.
 - **Safe pattern / regression check:** Reuse the approved identity/connection within the grace window; run the App Extension stress mode and manually validate ignored/deferred retry.
 - **Status:** Previously fixed failure mode and active regression risk.
+
+### Safari previews disappear or repeat after switching/refresh
+
+- **Cause and invariant:** A replaced WebKit document loses its show state; a stalled Safari API blocks refresh; failed metadata delivery can leave images acknowledged but absent; a switch away/back can cache the intervening tab's image. Title/inventory updates must not replace a pending capture's state object or force unchanged-image encoding.
+- **Owners:** `AppExtensionWebViewCoordinator.webView(_:didFinish:)`, Safari `checkOpenTabs`, `captureScreenshotAndSend`/`captureScreenshot`, and the screenshot loop.
+- **Regression checks:** Browser doubles cover capture/metadata deadlines, late callbacks, away/back switches, stable title/inventory state, metadata failure, full-frame fingerprints, callback-only APIs and unchanged-image encoding. Native delivery and isolated WebKit tests cover document recovery, long titles and unique cards. Signed Safari multi-window switching, website permissions, actual capture and CPU/memory remain manual checks.
+- **Status:** Covered in the 2.1.1 development tree; signed Safari integration remains unverified.
 
 ## Interface Ownership Map
 

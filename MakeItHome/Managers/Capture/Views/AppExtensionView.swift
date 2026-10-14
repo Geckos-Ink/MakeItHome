@@ -108,6 +108,16 @@ public class AppExtensionWebViewCoordinator: NSObject, WKNavigationDelegate, Dra
 
         Static.appExtensionManager?.webViewDidFinishLoading()
         (webView as? AppExtensionWKWV)?.sendCurrentVersion()
+        // A new document resets the host's visibility, orientation and show
+        // handlers. Restore the live presentation so its ready report requests
+        // cached previews even if the pointer never leaves the extension zone.
+        if Static.OnAppExtensionZone,
+           let extensionView = webView as? AppExtensionWKWV,
+           let owner = extensionView.curApp, let displayed = owner.appExtension,
+           let current = Static.appExtensionManager?.apps[displayed.bundleId],
+           current.identity == displayed.identity {
+            extensionView.setCurrentApp(app: owner)
+        }
     }
 
     public func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
