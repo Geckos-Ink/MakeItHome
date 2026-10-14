@@ -90,13 +90,32 @@ class ScreenRecorder: ObservableObject {
     
     // Combine subscribers.
     private var subscriptions = Set<AnyCancellable>()
+    private var permissionRequestGate = ScreenRecordingPermissionGate()
+
+    /// Both startup checks and display refreshes can trigger the macOS permission prompt.
+    private func shareableContent(excludingDesktopWindows: Bool,
+                                  onScreenWindowsOnly: Bool) async throws -> SCShareableContent? {
+        let needsPermission = !CGPreflightScreenCaptureAccess()
+        if needsPermission {
+            guard permissionRequestGate.beginRequest(now: ProcessInfo.processInfo.systemUptime) else {
+                return nil
+            }
+        }
+        defer {
+            if needsPermission {
+                permissionRequestGate.finishRequest()
+            }
+        }
+        return try await SCShareableContent.excludingDesktopWindows(excludingDesktopWindows,
+                                                                   onScreenWindowsOnly: onScreenWindowsOnly)
+    }
     
     var canRecord: Bool {
         get async {
             do {
                 // If the app doesn't have Screen Recording permission, this call generates an exception.
-                try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-                return true
+                return try await shareableContent(excludingDesktopWindows: false,
+                                                  onScreenWindowsOnly: true) != nil
             } catch {
                 return false
             }
@@ -430,8 +449,8 @@ class ScreenRecorder: ObservableObject {
     public func refreshAvailableContent() async {
         do {
             // Retrieve the available screen content to capture.
-            let availableContent = try await SCShareableContent.excludingDesktopWindows(true,
-                                                                                        onScreenWindowsOnly: false) // INVERTED(?)
+            guard let availableContent = try await shareableContent(excludingDesktopWindows: true,
+                                                                   onScreenWindowsOnly: false) else { return }
             availableDisplays = availableContent.displays
             
             let windows = filterWindows(availableContent.windows)

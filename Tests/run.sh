@@ -30,6 +30,10 @@ swiftc -O -parse-as-library "$CLIPBOARD_BOUNDS" "$CLIPBOARD_TESTS" -o "$TEST_DIR
 swiftc -O -parse-as-library "$PREVIEW_TITLE_TEXT" "$PREVIEW_TITLE_TESTS" -o "$TEST_DIR/preview-title-text-tests"
 "$TEST_DIR/preview-title-text-tests"
 
+swiftc -O -parse-as-library "$ROOT/MakeItHome/Helpers/ScreenRecordingPermissionGate.swift" \
+    "$ROOT/Tests/ScreenRecordingPermissionGateTests.swift" -o "$TEST_DIR/screen-recording-permission-gate-tests"
+"$TEST_DIR/screen-recording-permission-gate-tests"
+
 swiftc -O -parse-as-library "$ROOT/MakeItHome/Helpers/CaptureLifecycle.swift" \
     "$ROOT/Tests/CaptureLifecycleTests.swift" -o "$TEST_DIR/capture-lifecycle-tests"
 "$TEST_DIR/capture-lifecycle-tests"

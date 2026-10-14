@@ -110,12 +110,23 @@ public class SwifterPanel<Content: View> : NSPanel {
         super.close()
     }
     
-    func show(originOnClick: Bool = false) {        
+    func show(originOnClick: Bool = false, centered: Bool = false) {
         if(originOnClick){
             ///# Set menu below mouseclick
             var origin = NSEvent.mouseLocation
             origin.x -= Static.MenuBarPopupWidth / 2
             self.setFrameOrigin(origin)
+        } else if centered {
+            // Hosting content can resize the initial 200 × 200 panel. Size it before centering.
+            if let contentView {
+                contentView.layoutSubtreeIfNeeded()
+                setContentSize(contentView.fittingSize)
+            }
+            if let screen = screen ?? NSScreen.main {
+                let visibleFrame = screen.visibleFrame
+                setFrameOrigin(NSPoint(x: visibleFrame.midX - frame.width / 2,
+                                       y: visibleFrame.midY - frame.height / 2))
+            }
         }
         
         NSApplication.shared.activate(ignoringOtherApps: true)

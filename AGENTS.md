@@ -69,6 +69,7 @@ No nested `AGENTS.md` files exist at this revision. This root file applies to th
 
 - **Capture lifecycle serialization:** [`CaptureEngineOperationGate`](MakeItHome/Helpers/CaptureLifecycle.swift) serializes `SCStream` start, update, and stop. [`ScreenRecorder`](MakeItHome/Managers/Capture/ScreenRecorder.swift) publishes its stop task before awaiting configuration work, uses intent/run IDs, and releases the engine when frame iteration ends or is canceled. Never overlap raw `SCStream` mutations or clear a newer run's state after an older stop resumes.
 - **Capture frame ownership:** [`LatestCaptureFrames`](MakeItHome/Helpers/CaptureLifecycle.swift) retains only one newest queued frame. Each `CaptureEngineStreamOutput` yields to its own immutable channel; late callbacks must never look up the engine's current continuation. `CaptureEngine.startCapture` stops any previously owned stream before replacement. Screen frames stay in memory.
+- **Startup Screen Recording requests:** [`ScreenRecorder.shareableContent`](MakeItHome/Managers/Capture/ScreenRecorder.swift) gates permission-triggering content queries through [`ScreenRecordingPermissionGate`](MakeItHome/Helpers/ScreenRecordingPermissionGate.swift) on main, using monotonic uptime. While access is absent, allow the first request immediately, then at most one every 15 seconds, with no overlapping requests. Both `canRecord` and content refreshes must use this boundary; preflight-granted access bypasses the retry delay. `ContentView` polls authorization every 15 seconds and shows the instruction video with `SwifterPanel.show(centered: true)` after sizing its hosting content.
 - **Preview flow gate:** [`PreviewFlowGate`](MakeItHome/Helpers/PreviewFlowGate.swift) is the canonical state machine for fullscreen, Space-change, duplicate-placeholder, missing-placeholder, focus-restore, and recorder eligibility. [`Display.checkForScreenshot`](MakeItHome/Managers/Displays.swift) must call stale recovery on an every-tick path, including paths that return before the window list is evaluated. Covered by [`Tests/PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift).
 - **Fullscreen detection:** A normal maximized window that leaves the menu-bar area visible is not automatically native fullscreen. Use `isFullscreenCandidateFrame` plus Accessibility full-screen state, and accept a complete display frame directly. Do not regress Stage Manager or multi-display geometry.
 - **Space topology:** A fullscreen Space legitimately has no MakeItHome placeholder. A single placeholder must settle before it becomes authoritative; duplicate IDs are repairable only after their stable grace period. Never repair a missing placeholder while fullscreen.
@@ -132,7 +133,7 @@ Composes the SceneKit capture preview and widget/App Extension overlays, owns `S
 
 - **Key symbols:** `StoreView` owns the recorder and AppKit window; `StoreVars` owns overlay geometry; `ContentView` wires native surfaces; `checkCanRecord` updates authorization state.
 - **Depends on:** [`MakeItHome/Managers/Displays.swift`](MakeItHome/Managers/Displays.swift), [`MakeItHome/Managers/Capture/ScreenRecorder.swift`](MakeItHome/Managers/Capture/ScreenRecorder.swift), [`MakeItHome/Views/Overscreen/WidgetZoneView.swift`](MakeItHome/Views/Overscreen/WidgetZoneView.swift), and [`MakeItHome/Managers/Capture/Views/AppExtensionView.swift`](MakeItHome/Managers/Capture/Views/AppExtensionView.swift).
-- **Tests:** No automated UI/startup coverage.
+- **Tests:** Request cadence is covered by [`Tests/ScreenRecordingPermissionGateTests.swift`](Tests/ScreenRecordingPermissionGateTests.swift); actual permission dialogs and video-window placement remain manual.
 - **Common mistakes:** Published/AppKit changes belong on main. Do not recreate overlay web views while changing their frames.
 
 ### [`MakeItHome/Static.swift`](MakeItHome/Static.swift)
@@ -165,6 +166,10 @@ Pure, AppKit-free state machine for preview/recorder gating and Space topology. 
 ### [`MakeItHome/Helpers/CaptureLifecycle.swift`](MakeItHome/Helpers/CaptureLifecycle.swift)
 
 AppKit-free capture primitives: `CaptureEngineOperationGate` serializes suspending operations, and `LatestCaptureFrames` creates a separate newest-one channel for each capture run. Both are used by `CaptureEngine` and covered by [`Tests/CaptureLifecycleTests.swift`](Tests/CaptureLifecycleTests.swift).
+
+### [`MakeItHome/Helpers/ScreenRecordingPermissionGate.swift`](MakeItHome/Helpers/ScreenRecordingPermissionGate.swift)
+
+Pure request pacing for first-launch Screen Recording authorization. `beginRequest(now:)` reserves an immediate first request, a 15-second minimum between starts, and at most one in-flight request; `finishRequest` releases the reservation after success or failure. Owned by main-actor `ScreenRecorder` and covered by [`Tests/ScreenRecordingPermissionGateTests.swift`](Tests/ScreenRecordingPermissionGateTests.swift) through [`Tests/run.sh`](Tests/run.sh).
 
 ### [`MakeItHome/Helpers/StressProcessSample.swift`](MakeItHome/Helpers/StressProcessSample.swift)
 
@@ -201,9 +206,9 @@ Lowest ScreenCaptureKit boundary. It creates `SCStream`, serializes stream mutat
 
 Main-actor capture coordinator. Selects the display/window filter, switches low/high capture profiles, serializes intent changes, consumes frames, and hands them to the preview.
 
-- **Key methods:** `start`, `stop`, `stopCaptureEngine`, `updateEngine`, `refreshAvailableContent`, `contentFilter`, and `streamConfiguration`.
+- **Key methods:** `start`, `stop`, `stopCaptureEngine`, `updateEngine`, `canRecord`, `shareableContent`, `refreshAvailableContent`, `contentFilter`, and `streamConfiguration`.
 - **Depends on:** [`CaptureEngine`](MakeItHome/Managers/Capture/CaptureEngine.swift), [`CapturePreview`](MakeItHome/Managers/Capture/Views/CapturePreview.swift), and `Static` performance constants.
-- **Tests:** Recorder eligibility is modeled in flow-gate tests; real capture requires Screen Recording permission.
+- **Tests:** Recorder eligibility is modeled in flow-gate tests; permission request pacing is covered by [`Tests/ScreenRecordingPermissionGateTests.swift`](Tests/ScreenRecordingPermissionGateTests.swift); real capture requires Screen Recording permission.
 - **Common mistakes:** Prefer an in-place configuration update when the target stream is current. Publish pending stops before suspending, validate intent IDs after suspension, stop the engine on consumer cancellation/error, and avoid post-await state writes from an older stop.
 
 ### [`MakeItHome/Managers/Capture/Views/CapturePreview.swift`](MakeItHome/Managers/Capture/Views/CapturePreview.swift)
@@ -394,7 +399,7 @@ AppKit/SwiftUI window wrappers and graphics helpers. [`SwifterWindow.swift`](Mak
 
 - **Called by:** Startup panels, menu UI, display/Space tracking, and preview processing.
 - **Tests:** No focused tests.
-- **Common mistakes:** A placeholder’s title/window identity is part of Space detection. AppKit window/layer operations remain main-thread-only.
+- **Common mistakes:** A placeholder’s title/window identity is part of Space detection. AppKit window/layer operations remain main-thread-only. Use `SwifterPanel.show(centered: true)` for the Screen Recording instruction video so centering uses its final hosting size and the screen's visible frame.
 
 ### [`MakeItHome/Views/`](MakeItHome/Views/)
 
@@ -593,6 +598,7 @@ There is no root lint/format task, CI workflow, automated UI suite, checked-in a
 - Cross-Space activation and focus restoration → [`PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift).
 - Capture queue retention, cancellation/channel isolation, and suspending operation serialization → [`CaptureLifecycleTests.swift`](Tests/CaptureLifecycleTests.swift).
 - Stress sampler Mach thread-right lifetime → [`StressProcessSampleTests.swift`](Tests/StressProcessSampleTests.swift).
+- Startup Screen Recording request interval and in-flight exclusion → [`ScreenRecordingPermissionGateTests.swift`](Tests/ScreenRecordingPermissionGateTests.swift); real first-launch permission dialogs and centered video placement remain manual, including small and multiple displays.
 - Recorder eligibility state → [`PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift); real ScreenCaptureKit lifecycle is manual.
 - Preview-title wrapping and transient zero-width geometry → [`PreviewTitleTextTests.swift`](Tests/PreviewTitleTextTests.swift).
 - SceneKit churn, virtual app counts, and frame updates → [`VirtualOverscreenStressTest.swift`](MakeItHome/StressTests/VirtualOverscreenStressTest.swift).
@@ -638,7 +644,6 @@ There is no root lint/format task, CI workflow, automated UI suite, checked-in a
 - [`WhatsNew.md`](WhatsNew.md) remains the standalone 2.0.9 release-note file; the 2.1.0 summary currently lives in [`README.md`](README.md) and the Mac App Store listing.
 - The parent app build number is 164 and embedded Web Extension build number is 1, producing an Xcode validation warning.
 - The app target also copies its processed [`Info.plist`](MakeItHome/Info.plist) in the Resources phase, producing an Xcode build warning.
-- `ContentView.swift` has an `@available (` whitespace warning that becomes an error in Swift 6 mode.
 - App Extension tutorial/API documentation remains incomplete.
 - Automated coverage is concentrated in `PreviewFlowGate`; security, WebKit, clipboard, calendar, capture, and end-to-end UI paths remain gaps.
 - Release/signing/notarization procedure and continuous integration are not checked in.
