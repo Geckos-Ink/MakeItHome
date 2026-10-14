@@ -41,12 +41,18 @@ function harness(){
                 onActivated:event('activate'), onUpdated:event('update'), onRemoved:event('remove'),
                 onCreated:event('create'), onMoved:event('move'), onAttached:event('attach'), onDetached:event('detach')
             },
-            windows: {getLastFocused:async()=>({focused:true}), update:async()=>{}}
+            windows: {getLastFocused:async()=>({id:10, focused:true}), update:async()=>{}}
         }
     })
     vm.runInContext(background, ctx)
     return {ctx, timers, events, writes, run:code=>vm.runInContext(code, ctx),
-        setTabs(value){openTabs = value}, advance(ms){now += ms}}
+        setTabs(value){openTabs = value}, advance(ms){now += ms},
+        fireTimer(delay){
+            const match = [...timers.entries()].find(([,timer])=>timer.delay === delay)
+            assert.ok(match, `expected a ${delay} ms timer`)
+            timers.delete(match[0]); now += delay
+            return match[1].fn()
+        }}
 }
 class Element {
     constructor(tag){this.tagName = tag; this.children = []; this.attrs = {}; this.style = {}}
@@ -55,31 +61,48 @@ class Element {
     removeAttribute(key){delete this.attrs[key]}
     append(...nodes){for(const node of nodes){node.remove(); node.parentNode = this; this.children.push(node)}}
     replaceChildren(...nodes){for(const node of this.children) node.parentNode = null; this.children = []; this.append(...nodes)}
+    insertBefore(node, before){
+        if(node === before) return
+        node.remove()
+        const index = before ? this.children.indexOf(before) : this.children.length
+        this.children.splice(index, 0, node); node.parentNode = this
+    }
+    replaceWith(node){
+        const parent = this.parentNode
+        if(!parent) return
+        const index = parent.children.indexOf(this)
+        node.remove(); parent.children[index] = node; node.parentNode = parent; this.parentNode = null
+    }
     remove(){if(this.parentNode) this.parentNode.children = this.parentNode.children.filter(child=>child !== this); this.parentNode = null}
     getBoundingClientRect(){return {width:1200, height:600}}
 }
 function viewHarness(){
-    let timerId = 0, urlId = 0, updates = 0, creates = 0
-    const timers = new Map(), events = {}, urls = new Set(), statuses = []
+    let timerId = 0, urlId = 0, updates = 0, creates = 0, now = 1000000
+    const timers = new Map(), events = {}, urls = new Set(), statuses = [], focusRequests = []
     const container = new Element('div'), wrapper = new Element('div')
     const ctx = vm.createContext({
-        vars:{}, isShowing:true, isHorizontal:true, console, Blob, Uint8Array, atob,
-        setTimeout(fn){const id = ++timerId; timers.set(id, fn); return id}, clearTimeout:id=>timers.delete(id),
-        setEvent:(name, fn)=>events[name] = fn, sendStatus:msg=>statuses.push(JSON.parse(msg)), focusOnMe(){},
+        vars:{}, isShowing:true, isHorizontal:true, settingContentBundleId:null,curBundleId:'com-apple-Safari',console, Blob, Uint8Array, atob,
+        Date: class extends Date {static now(){return now}},
+        setTimeout(fn, delay){const id = ++timerId; timers.set(id, {fn,delay}); return id}, clearTimeout:id=>timers.delete(id),
+        setEvent:(name, fn)=>events[name] = fn, sendStatus:msg=>statuses.push(JSON.parse(msg)), focusOnMe:status=>focusRequests.push(JSON.parse(status)),
         URL:{createObjectURL(){const url = 'blob:' + ++urlId; urls.add(url); return url}, revokeObjectURL:url=>urls.delete(url)},
         document: {getElementById:()=>container, querySelector:()=>wrapper, createElement:tag=>new Element(tag), addEventListener(){}},
         Swiper: class {
-            constructor(selector, options){creates++; this.activeIndex = options.initialSlide; this.options = options; this.keyboard = {enable(){}, disable(){}}}
+            constructor(selector, options){creates++; this.slides = [...wrapper.children]; this.activeIndex = options.initialSlide; this.options = options; this.keyboard = {enable(){}, disable(){}}}
             slideTo(index, speed, callbacks = true){this.activeIndex = index; if(callbacks) this.options.on.slideChange()}
-            update(){updates++}
+            update(){updates++; this.slides = [...wrapper.children]}
             setTranslate(){}
             destroy(){this.destroyed = true}
         }
     })
     vm.runInContext(view, ctx)
-    return {ctx, events, urls, statuses, run:code=>vm.runInContext(code, ctx),
-        flush(){let count = 0; while(timers.size){const current = [...timers.entries()]; timers.clear(); for(const [,fn] of current) fn(); assert.ok(++count < 30, 'bounded timers')}},
-        inject(){vm.runInContext(view, ctx)}, get creates(){return creates}, get updates(){return updates}}
+    return {ctx, events, urls, statuses, focusRequests, run:code=>vm.runInContext(code, ctx),
+        flush(){let count = 0; while(timers.size){const current = [...timers.entries()]; timers.clear(); for(const [,timer] of current){now += timer.delay || 0; timer.fn()}; assert.ok(++count < 30, 'bounded timers')}},
+        advance(ms){now += ms},
+        inject(force = false){if(force) vm.runInContext("vars['com-apple-Safari_forceReload']=true", ctx); vm.runInContext(view, ctx)}, get creates(){return creates}, get updates(){return updates}}
+}
+function seedPreviews(h, infos, position = null){
+    h.run(`syncSafariTabs(${JSON.stringify(infos)}, ${JSON.stringify(position)}); applySafariScreenshots(${JSON.stringify(infos.map(tabInfo=>({blob:'YQ==',tabInfo})))})`)
 }
 ;(async()=>{
     await check('content script creates no per-page timers or messages', ()=>{
@@ -222,17 +245,21 @@ function viewHarness(){
         assert.equal(messages.length, 0)
         assert.equal(h.run('tabs[1].needsResend'), false)
     })
-    await check('titles are safe text and every uncaptured tab has a selectable card', ()=>{
+    await check('metadata-only tabs stay out of the carousel; captured titles remain safe text', ()=>{
         const h = viewHarness()
         h.run(`syncSafariTabs([{id:1,title:'<img src=x onerror=alert(1)>'},{id:2,title:'Second'}])`)
         h.flush()
-        assert.equal(h.run('vars.safari.slides.length'), 2)
+        assert.equal(h.run('vars.safari.slides.length'), 0)
+        assert.equal(h.run('Object.keys(vars.safari.tabs).length'), 0)
+        h.run(`applySafariScreenshots([{blob:'YQ==',tabInfo:{id:1,title:'Stale title'}}])`)
+        h.flush()
+        assert.equal(h.run('vars.safari.slides.length'), 1)
         assert.equal(h.run('vars.safari.tabs[1].title.textContent'), '<img src=x onerror=alert(1)>')
-        assert.equal(h.run('vars.safari.tabs[1].img.hidden'), true)
+        assert.equal(h.run('vars.safari.tabs[2]'), undefined)
     })
     await check('position survives reopen, orientation, metadata updates, closure, and content reinjection', ()=>{
         const h = viewHarness()
-        h.run(`syncSafariTabs([{id:1,title:'One'},{id:2,title:'Two'},{id:3,title:'Three'}], {id:2,index:1})`)
+        seedPreviews(h, [{id:1,title:'One'},{id:2,title:'Two'},{id:3,title:'Three'}], {id:2,index:1})
         h.flush()
         assert.equal(h.run('vars.safari.swiper.activeIndex'), 1)
         h.events.exit(); h.run('isShowing=false')
@@ -240,7 +267,7 @@ function viewHarness(){
         assert.equal(h.run('vars.safari.swiper.activeIndex'), 1)
         h.run(`syncSafariTabs([{id:2,title:'Updated'},{id:3,title:'Three'}])`); h.flush()
         assert.equal(h.run('vars.safari.swiper.activeIndex'), 0)
-        h.inject(); h.run(`syncSafariTabs([{id:2,title:'Updated'},{id:3,title:'Three'}])`); h.flush()
+        h.inject(); seedPreviews(h, [{id:2,title:'Updated'},{id:3,title:'Three'}]); h.flush()
         assert.equal(h.run('vars.safari.swiper.activeIndex'), 0)
         h.run(`syncSafariTabs([{id:3,title:'Three'}])`); h.flush()
         assert.equal(h.run('vars.safari.swiper.activeIndex'), 0)
@@ -251,18 +278,541 @@ function viewHarness(){
         assert.equal(h.urls.size, 1)
         h.run(`applySafariScreenshots([{blob:'Yg==',tabInfo:{id:1,title:'One'}}])`)
         assert.equal(h.urls.size, 1)
-        h.inject()
+        h.inject(true)
         assert.equal(h.urls.size, 0)
-        h.run(`applySafariScreenshots([{blob:'YQ==',tabInfo:{id:1,title:'One'}}]); removeSafariTab(1)`)
+        h.run(`syncSafariTabs([{id:1,title:'One'}]); applySafariScreenshots([{blob:'YQ==',tabInfo:{id:1,title:'One'}}]); removeSafariTab(1)`)
         assert.equal(h.urls.size, 0)
     })
     await check('a screenshot batch avoids per-image carousel layout updates', ()=>{
         const h = viewHarness()
-        h.run(`syncSafariTabs([{id:1,title:'One'},{id:2,title:'Two'}])`); h.flush()
+        seedPreviews(h, [{id:1,title:'One'},{id:2,title:'Two'}]); h.flush()
         const before = h.updates
         h.run(`applySafariScreenshots([{blob:'YQ==',tabInfo:{id:1,title:'One'}},{blob:'Yg==',tabInfo:{id:2,title:'Two'}}])`)
         h.flush()
         assert.equal(h.updates, before)
+    })
+    await check('closed and undecodable preview tabs cannot reappear or receive a click', ()=>{
+        const h = viewHarness()
+        seedPreviews(h, [{id:1,title:'One'},{id:2,title:'Two'}]); h.flush()
+        h.run(`syncSafariTabs([{id:2,title:'Two'}]); applySafariScreenshots([{blob:'YQ==',tabInfo:{id:1,title:'Closed'}}]); vars.safari.tabs[2].img.onerror(); clickedOnSafariTab(1); clickedOnSafariTab(2)`)
+        h.flush()
+        assert.equal(h.run('vars.safari.slides.length'), 0)
+        assert.equal(h.urls.size, 0)
+        assert.equal(h.focusRequests.length, 0)
+    })
+    await check('evicting a preview removes its card without disturbing the selected remaining tab', ()=>{
+        const h = viewHarness()
+        seedPreviews(h, [{id:1,title:'One'},{id:2,title:'Two'}], {id:2,index:1}); h.flush()
+        h.run('releaseSafariPreview(vars.safari.tabs[1]); refreshSafariSlides()'); h.flush()
+        assert.equal(h.run('vars.safari.slides.length'), 1)
+        assert.equal(h.run('vars.safari.swiper.activeIndex'), 0)
+        assert.equal(h.run('vars.safari.slides[0].getAttribute("tabId")'), '2')
+    })
+    await check('click sends one combined focus/selection request with the selected position', ()=>{
+        const h = viewHarness()
+        seedPreviews(h, [{id:1,title:'One'},{id:2,title:'Two'}]); h.flush()
+        h.run('clickedOnSafariTab(2)'); h.flush()
+        assert.equal(JSON.stringify(h.focusRequests), '[{"type":"clickedOn","id":2,"index":1}]')
+        assert.equal(h.statuses.filter(status=>status.type==='clickedOn').length, 0)
+        const host = fs.readFileSync(path.join(__dirname, '../MakeItHome/Resources/assets/appExtensionView.html'), 'utf8')
+        const focusBridge = host.match(/function focusOnMe\([^]*?\n        }/)[0]
+        const messages = []
+        const bridge = vm.createContext({sendMessage:message=>messages.push(message)})
+        vm.runInContext(focusBridge, bridge)
+        vm.runInContext('focusOnMe("selection"); focusOnMe()', bridge)
+        assert.equal(JSON.stringify(messages), '[{"type":"focusOnMe","value":"selection"},{"type":"focusOnMe","value":null}]')
+    })
+    await check('browser awaits Safari window focus before selecting the tab', async()=>{
+        const h = harness(), calls = []
+        let ready
+        h.ctx.chrome.windows.update = async(id, options)=>{calls.push(['window', id, options.focused]); await new Promise(resolve=>ready=resolve)}
+        h.ctx.chrome.tabs.update = async(id, options)=>calls.push(['tab', id, options.active])
+        const switchTask = h.run('focusOnTab(1)')
+        await new Promise(resolve=>setImmediate(resolve))
+        assert.equal(JSON.stringify(calls), '[["window",10,true]]')
+        ready()
+        await new Promise(resolve=>setImmediate(resolve))
+        assert.equal(JSON.stringify(calls), '[["window",10,true]]')
+        h.fireTimer(150)
+        await switchTask
+        assert.equal(JSON.stringify(calls), '[["window",10,true],["tab",1,true]]')
+        h.setTabs([])
+        await h.run('focusOnTab(1)')
+        assert.equal(calls.length, 2)
+    })
+    await check('selection waits 150 ms, retries exactly once after 400 ms, and re-focuses its window', async()=>{
+        const h = harness(), calls = []
+        h.ctx.chrome.windows.update = async(id)=>calls.push(['window',id])
+        h.ctx.chrome.tabs.update = async(id)=>calls.push(['tab',id])
+        const request = h.run('requestTabFocus(1)')
+        await new Promise(resolve=>setImmediate(resolve))
+        assert.equal(JSON.stringify(calls), '[["window",10]]')
+        h.fireTimer(150)
+        await new Promise(resolve=>setImmediate(resolve))
+        assert.equal(JSON.stringify(calls), '[["window",10],["tab",1]]')
+        h.fireTimer(400)
+        assert.equal(await request, 'selected')
+        assert.equal(JSON.stringify(calls), '[["window",10],["tab",1],["window",10],["tab",1]]')
+        assert.equal(h.run('tabFocusRetryTimer'), null)
+        assert.equal(h.run('pendingTabFocusId'), null)
+        assert.equal([...h.timers.values()].filter(timer=>timer.delay===400).length,0)
+    })
+    await check('one retry also recovers an initial API rejection', async()=>{
+        const h = harness(), calls = []
+        let fail = true
+        h.ctx.chrome.windows.update = async(id)=>calls.push(['window',id])
+        h.ctx.chrome.tabs.update = async(id)=>{calls.push(['tab',id]); if(fail){fail=false; throw Error('fixture')}}
+        const request = h.run('requestTabFocus(1)')
+        await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(150)
+        await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(400)
+        assert.equal(await request, 'selected')
+        assert.equal(calls.filter(call=>call[0]==='tab').length,2)
+        assert.equal(h.run('tabFocusRetryTimer'), null)
+    })
+    await check('a newer focus request cancels both pending selection and the older retry', async()=>{
+        const h = harness(), calls = []
+        h.setTabs([{id:1,windowId:10},{id:2,windowId:20}])
+        h.ctx.chrome.windows.update = async(id)=>calls.push(['window',id])
+        h.ctx.chrome.tabs.update = async(id)=>calls.push(['tab',id])
+        const first = h.run('requestTabFocus(1)')
+        await new Promise(resolve=>setImmediate(resolve))
+        const second = h.run('requestTabFocus(2)')
+        await new Promise(resolve=>setImmediate(resolve))
+        h.fireTimer(150); await first
+        h.fireTimer(150); await new Promise(resolve=>setImmediate(resolve))
+        h.fireTimer(400); await second
+        assert.equal(JSON.stringify(calls.filter(call=>call[0]==='tab')), '[["tab",2],["tab",2]]')
+    })
+    await check('late Safari activation events do not cancel the retry; closing the target does', async()=>{
+        for(const action of ['activate','remove']){
+            const h = harness(), calls = []
+            h.ctx.chrome.tabs.update = async(id)=>calls.push(id)
+            const request = h.run('requestTabFocus(1)')
+            await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(150)
+            await new Promise(resolve=>setImmediate(resolve))
+            if(action==='activate'){
+                h.events.activate.listener({tabId:2})
+                assert.notEqual(h.run('tabFocusRetryTimer'),null)
+                h.fireTimer(400); await request
+                assert.equal(calls.length,2)
+            } else {
+                h.events.remove.listener(1)
+                assert.equal(h.run('tabFocusRetryTimer'),null)
+                assert.equal([...h.timers.values()].filter(timer=>timer.delay===400).length,0)
+                assert.equal(calls.length,1)
+                assert.equal(await request, 'superseded')
+            }
+        }
+    })
+    await check('WebKit bridge delivers repeated clicks and captures their owner without navigation', ()=>{
+        const host = fs.readFileSync(path.join(__dirname, '../MakeItHome/Resources/assets/appExtensionView.html'), 'utf8')
+        const script = host.match(/function sendMessage\(message\)[^]*?\n        function sendStatus/)[0].replace(/\n        function sendStatus$/, '')
+        const messages = [], navigations = []
+        const location = {set href(value){navigations.push(value)}}
+        const ctx = vm.createContext({curBundleId:'com-apple-Safari', window:{location, webkit:{messageHandlers:{appExtensionMessage:{postMessage:message=>messages.push(message)}}}}})
+        vm.runInContext(script, ctx)
+        vm.runInContext(`sendMessage({type:'focusOnMe',value:'same'}); sendMessage({type:'focusOnMe',value:'same'}); curBundleId='other'; sendMessage({type:'status',value:'position'})`,ctx)
+        assert.equal(messages.length,3)
+        assert.equal(messages[0].strId,'com-apple-Safari')
+        assert.equal(messages[1].strId,'com-apple-Safari')
+        assert.equal(messages[2].strId,'other')
+        assert.equal(navigations.length,0)
+        vm.runInContext(`delete window.webkit; sendMessage({type:'focusOnMe'})`,ctx)
+        assert.equal(navigations.length,1)
+    })
+    await check('a resolved tabs.update without an actual switch is detected and recovered by the retry', async()=>{
+        const h = harness()
+        h.setTabs([{id:1,windowId:10,active:false},{id:2,windowId:10,active:true}])
+        let calls = 0
+        h.ctx.chrome.tabs.update = async()=>{if(++calls===2) h.setTabs([{id:1,windowId:10,active:true}])}
+        const request = h.run('requestTabFocus(1)')
+        await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(150)
+        await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(400)
+        assert.equal(await request,'selected')
+        assert.equal(calls,2)
+    })
+    await check('selection is unconfirmed when its window remains unfocused, even if the tab API resolves', async()=>{
+        const h = harness()
+        h.ctx.chrome.windows.getLastFocused = async()=>({id:10,focused:false})
+        const request = h.run('requestTabFocus(1)')
+        await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(150)
+        await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(400)
+        assert.equal(await request,'failed')
+        assert.equal(h.run('pendingTabFocusId'),null)
+    })
+    await check('expired window focus operations cannot later select a tab and polling remains recoverable', async()=>{
+        const h = harness(), completions = [], selections = []
+        h.ctx.chrome.windows.update = ()=>new Promise(resolve=>completions.push(resolve))
+        h.ctx.chrome.tabs.update = async id=>selections.push(id)
+        const request = h.run('requestTabFocus(1)')
+        await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(1200)
+        await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(400)
+        await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(1200)
+        assert.equal(await request,'failed')
+        for(const resolve of completions) resolve()
+        await new Promise(resolve=>setImmediate(resolve))
+        assert.deepEqual(selections,[])
+    })
+    await check('ACK loss redelivers the same request without repeating tab selection', async()=>{
+        const h = harness(), acks = [], selections = []
+        h.ctx.chrome.tabs.update = async id=>selections.push(id)
+        h.ctx.fetch = async(url,options)=>{
+            acks.push({url, body:JSON.parse(options.body)})
+            if(acks.length===1) throw Error('lost response')
+            return {ok:true,json:async()=>({status:'ok'})}
+        }
+        const events = JSON.stringify([{id:'fixture:1',value:JSON.stringify({type:'clickedOn',id:1,index:0})}])
+        const first = h.run(`handleStatusEvents(${events})`)
+        await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(150)
+        await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(400)
+        await first
+        assert.deepEqual(selections,[1,1])
+        await h.run(`handleStatusEvents(${events})`)
+        assert.deepEqual(selections,[1,1])
+        assert.equal(acks.length,2)
+        assert.deepEqual(acks[1].body,{ids:['fixture:1']})
+        assert.match(acks[1].url,/\/ackStatusMessages\?/)
+    })
+    await check('concurrent delivery shares in-flight completion and ACK follows the final verification', async()=>{
+        const h = harness(), acks = [], selections = []
+        h.ctx.chrome.tabs.update = async id=>selections.push(id)
+        h.ctx.fetch = async(url,options)=>{acks.push(JSON.parse(options.body));return {ok:true,json:async()=>({status:'ok'})}}
+        const events = JSON.stringify([{id:'fixture:1',value:'{"type":"clickedOn","id":1}'}])
+        const first = h.run(`handleStatusEvents(${events})`)
+        const duplicate = h.run(`handleStatusEvents(${events})`)
+        await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(150)
+        await new Promise(resolve=>setImmediate(resolve))
+        assert.equal(acks.length,0)
+        h.fireTimer(400); await Promise.all([first,duplicate])
+        assert.deepEqual(selections,[1,1])
+        assert.equal(acks.length,2)
+    })
+    await check('position-storage failures do not block requested tab selection', async()=>{
+        const h = harness(), selections = []
+        h.run('tabs[1]={id:1}; chrome.storage.local.set=async()=>{throw Error("fixture")}')
+        h.ctx.chrome.tabs.update = async id=>selections.push(id)
+        const task = h.run('handleStatusMessages([\'{"type":"clickedOn","id":1,"index":0}\'])')
+        await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(150)
+        await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(400); await task
+        assert.deepEqual(selections,[1,1])
+    })
+    await check('poll timeout covers the response body and a late stale body cannot execute selection', async()=>{
+        const h = harness(), selections = []
+        let resolveBody, signal
+        h.run('toConnect=false')
+        h.ctx.fetch = async(url,options)=>{
+            assert.match(url,/reliableStatus=1/)
+            signal = options.signal
+            return {ok:true,json:()=>new Promise(resolve=>resolveBody=resolve)}
+        }
+        h.ctx.chrome.tabs.update = async id=>selections.push(id)
+        const poll = h.run('waitForStatus()')
+        await new Promise(resolve=>setImmediate(resolve))
+        h.fireTimer(3500); await poll
+        assert.equal(signal.aborted,true)
+        assert.equal(h.run('waitForStatusInFlight'),false)
+        resolveBody({status:'ok',statusEvents:[{id:'stale',value:'{"type":"clickedOn","id":1}'}]})
+        await new Promise(resolve=>setImmediate(resolve))
+        assert.deepEqual(selections,[])
+    })
+    await check('failed polls retain requests for the next response, and authentication errors never execute statuses', async()=>{
+        const h = harness(), acks = [], selections = []
+        h.run('toConnect=false')
+        let polls = 0
+        h.ctx.chrome.tabs.update = async id=>selections.push(id)
+        const events = [{id:'native:1',value:'{"type":"clickedOn","id":1}'}]
+        h.ctx.fetch = async(url,options)=>{
+            if(url.includes('/ackStatusMessages')){acks.push(JSON.parse(options.body)); return {ok:true,json:async()=>({status:'ok'})}}
+            if(++polls===1) throw Error('lost poll response')
+            return {ok:true,json:async()=>({status:'ok',statusEvents:events})}
+        }
+        await h.run('waitForStatus()')
+        assert.deepEqual(selections,[])
+        const retry = h.run('waitForStatus()')
+        await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(150)
+        await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(400); await retry
+        assert.deepEqual(selections,[1,1])
+        assert.equal(acks.length,1)
+        h.ctx.fetch = async()=>({ok:true,json:async()=>({status:'error',description:'invalidSecret',statusEvents:events})})
+        await h.run('waitForStatus()')
+        assert.equal(h.run('toConnect'),true)
+        assert.deepEqual(selections,[1,1])
+    })
+    await check('receipt cache stays bounded while preserving IDs still pending on the server', async()=>{
+        const h = harness()
+        h.ctx.fetch = async()=>({ok:true,json:async()=>({status:'ok'})})
+        const pinned = {id:'pinned',value:'{"type":"ignored"}'}
+        for(let batch=0; batch<10; batch++){
+            const events = [pinned, ...Array.from({length:127},(_,i)=>({id:`${batch}:${i}`,value:'{"type":"ignored"}'}))]
+            await h.run(`handleStatusEvents(${JSON.stringify(events)})`)
+            assert.ok(h.run('statusReceipts.size')<=128)
+            assert.equal(h.run('statusReceipts.has("pinned")'),true)
+        }
+    })
+    await check('a stalled connection response releases reconnect state and the next connection can succeed', async()=>{
+        const h = harness()
+        h.ctx.fetch = async()=>({ok:true,json:()=>new Promise(()=>{})})
+        const connect = h.run('connect()')
+        await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(5000)
+        assert.equal(await connect,false)
+        assert.equal(h.run('connectInFlight'),false)
+        h.advance(2000)
+        h.ctx.fetch = async()=>({ok:true,json:async()=>({status:'ok',secret:'fixture-only'})})
+        assert.equal(await h.run('connect()'),true)
+        assert.equal(h.run('toConnect'),false)
+    })
+    await check('preview delivery times out through the body and retries once without leaving a pending send', async()=>{
+        const h = harness()
+        let fetches = 0
+        h.run('toConnect=false')
+        h.ctx.fetch = async()=>{fetches++; return {ok:true,json:()=>new Promise(()=>{})}}
+        const send = h.run('sendJsMessage("synthetic")')
+        await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(5000)
+        await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(120)
+        await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(5000)
+        assert.equal(await send,false)
+        assert.equal(fetches,2)
+    })
+    await check('reopen reports cached preview IDs and old image errors cannot delete a replacement', ()=>{
+        const h = viewHarness()
+        seedPreviews(h,[{id:1,title:'One'},{id:2,title:'Two'}]); h.flush()
+        const oldImage = h.run('vars.safari.tabs[1].img'), oldError = oldImage.onerror
+        h.run(`applySafariScreenshots([{blob:'Yg==',tabInfo:{id:1,title:'One'}}])`)
+        assert.notEqual(oldImage,h.run('vars.safari.tabs[1].img'))
+        assert.equal(oldImage.onerror,null)
+        oldError()
+        assert.equal(h.run('vars.safari.slides.length'),2)
+        assert.equal(h.urls.size,2)
+        h.run('clickedOnSafariTab(2)');h.events.exit();h.run('isShowing=false;isShowing=true');h.events.show();h.flush()
+        assert.equal(h.run('vars.safari.swiper.activeIndex'),1)
+        assert.deepEqual(h.statuses.findLast(status=>status.type==='safariViewReady'),{type:'safariViewReady',inventoryReady:true,position:{id:2,index:1},previewIds:[1,2]})
+        assert.equal(h.run('vars.safari.tabs[2].title.textContent'),'Two')
+    })
+    await check('show callbacks observe visible host state before they run', ()=>{
+        const host = fs.readFileSync(path.join(__dirname, '../MakeItHome/Resources/assets/appExtensionView.html'),'utf8')
+        const show = host.match(/function showAppExtension\([^]*?\n        function exitingAppExtension/)[0].replace(/\n        function exitingAppExtension$/,'')
+        const calls=[]
+        const ctx=vm.createContext({isShowing:false,isHorizontal:true,curBundleId:'',vars:{},$:()=>({hide(){},show(){}}),calls})
+        vm.runInContext(show,ctx)
+        vm.runInContext(`vars['com-apple-Safari_event_show']=()=>calls.push(isShowing);showAppExtension('com.apple.Safari',false)`,ctx)
+        assert.deepEqual(calls,[true])
+    })
+    await check('missing view previews recover from the Safari cache after clicking and content reconstruction', async()=>{
+        const h = harness(), v = viewHarness()
+        const infos=[{id:1,windowId:10,index:0,active:true,title:'One'}, {id:2,windowId:10,index:1,title:'Two'}, {id:3,windowId:10,index:2,title:'Three'}]
+        h.setTabs(infos)
+        h.ctx.deliver = message=>v.run(message)
+        h.run(`toConnect=false; contentNeedsLoad=false; appIsShowing=true; sendJsMessage=async message=>{deliver(message);return true}`)
+        await h.run('checkOpenTabs()')
+        h.run(`for(const tab of Object.values(tabs)){tab.lastStrBlob='YQ==';tab.lastFrameFingerprint=String(tab.id);tab.needsResend=true}`)
+        await h.run('sendAllTabsScreenshot()');v.flush()
+        assert.equal(v.run('vars.safari.slides.length'),3)
+        v.run('clickedOnSafariTab(2)');v.events.exit();v.run('isShowing=false')
+        h.ctx.chrome.tabs.update=async id=>h.setTabs(infos.map(tab=>({...tab,active:tab.id===id})))
+        const focus=h.run(`handleStatusMessages(['{"type":"clickedOn","id":2,"index":1}'])`)
+        await new Promise(resolve=>setImmediate(resolve));h.fireTimer(150)
+        await new Promise(resolve=>setImmediate(resolve));h.fireTimer(400);await focus
+        v.inject(true);v.run('isShowing=true');v.events.show();v.flush()
+        assert.equal(v.run('vars.safari.slides.length'),0)
+        const ready=JSON.stringify(v.statuses.findLast(status=>status.type==='safariViewReady'))
+        await h.run(`handleStatusMessages([${JSON.stringify(ready)}])`)
+        h.run('captureScreenshotAndSend=async()=>({changed:false})')
+        await h.run('runScreenshotLoop()');v.flush()
+        assert.equal(v.run('vars.safari.slides.length'),3)
+        assert.equal(v.run('vars.safari.tabs[2].title.textContent'),'Two')
+        assert.equal(v.run('vars.safari.swiper.activeIndex'),1)
+        assert.equal(h.run('pendingPreviewTabs().length'),0)
+        await h.run(`handleStatusMessages(['{"type":"safariViewReady","previewIds":[1,2,3]}'])`)
+        assert.equal(h.run('pendingPreviewTabs().length'),0,'Retained cards must not resend frames on normal reopen')
+    })
+    await check('partial recovery sends missing previews only, and a racing old ACK cannot clear recovery work', async()=>{
+        const h=harness(),messages=[]
+        h.ctx.messages=messages
+        h.run(`tabs={1:{id:1,lastStrBlob:'YQ==',lastFrameFingerprint:'1',lastSentFrameFingerprint:'1'},2:{id:2,lastStrBlob:'Yg==',lastFrameFingerprint:'2',lastSentFrameFingerprint:'2'}}; sendJsMessage=async message=>{messages.push(message);return true}`)
+        await h.run(`handleStatusMessages(['{"type":"safariViewReady","previewIds":[1]}'])`)
+        assert.equal(h.run('pendingPreviewTabs().map(tab=>tab.id).join()'),'2')
+        await h.run('sendAllTabsScreenshot()')
+        assert.match(messages[0],/"id":2/)
+        assert.doesNotMatch(messages[0],/"id":1/)
+        h.run(`tabs[2].needsResend=true; sendJsMessage=async()=>{await handleStatusMessage('{"type":"safariViewReady","previewIds":[]}');return true}`)
+        await h.run('sendAllTabsScreenshot()')
+        assert.equal(h.run('tabs[2].needsResend'),true)
+        h.run(`sendJsMessage=async()=>{await handleStatusMessage('{"type":"safariViewReady","previewIds":[1,2]}');return true}`)
+        await h.run('sendAllTabsScreenshot({maxTabs:2})')
+        assert.equal(h.run('tabs[2].needsResend'),false,'A retained in-flight image needs no extra resend on normal reopen')
+    })
+    await check('callback-only Safari APIs select exact non-sequential IDs, including tab/window zero', async()=>{
+        for(const id of [0,800003]){
+            const h=harness(),calls=[],windowId=id===0?0:99
+            let tab={id,windowId,active:false},focused={id:windowId,focused:false}
+            h.ctx.chrome.tabs.get=(target,callback)=>{assert.equal(target,id);h.ctx.setTimeout(()=>callback({...tab}),40)}
+            h.ctx.chrome.windows.update=(target,options,callback)=>{
+                calls.push(['window',target]);h.ctx.setTimeout(()=>{focused={id:target,focused:true};callback(focused)},80)
+            }
+            h.ctx.chrome.tabs.update=(target,options,callback)=>{
+                calls.push(['tab',target]);h.ctx.setTimeout(()=>{tab.active=true;callback({...tab})},50)
+            }
+            h.ctx.chrome.windows.getLastFocused=callback=>{h.ctx.setTimeout(()=>callback(focused),30)}
+            const request=h.run(`requestTabFocus(${id})`)
+            const tick=async delay=>{h.fireTimer(delay);await new Promise(resolve=>setImmediate(resolve))}
+            await new Promise(resolve=>setImmediate(resolve))
+            await tick(40)
+            assert.deepEqual(calls,[['window',windowId]])
+            await tick(80);await tick(150);await tick(40)
+            await tick(50);await tick(30);await tick(40)
+            await tick(400);await tick(40);await tick(80);await tick(40)
+            await tick(50);await tick(30);await tick(40)
+            assert.equal(await request,'selected')
+            assert.deepEqual(calls,[['window',windowId],['tab',id],['window',windowId],['tab',id]])
+        }
+    })
+    await check('a rejected window-focus API cannot suppress selection within the active Safari window', async()=>{
+        const h=harness(),calls=[]
+        h.setTabs([{id:1,windowId:10,active:false},{id:2,windowId:10,active:true}])
+        h.ctx.chrome.windows.update=async()=>{throw Error('window focus unsupported')}
+        h.ctx.chrome.tabs.update=async id=>{calls.push(id);h.setTabs([{id,windowId:10,active:true}])}
+        const request=h.run('requestTabFocus(1)')
+        await new Promise(resolve=>setImmediate(resolve));h.fireTimer(150)
+        await new Promise(resolve=>setImmediate(resolve));h.fireTimer(400)
+        assert.equal(await request,'selected')
+        assert.deepEqual(calls,[1,1])
+    })
+    await check('a tab moved during activation focuses its new window and uses the same exact tab ID', async()=>{
+        const h=harness(),windows=[],selections=[]
+        let tab={id:773,windowId:10,active:false},focused=10
+        h.ctx.chrome.tabs.get=async id=>{assert.equal(id,773);return {...tab}}
+        h.ctx.chrome.windows.update=async id=>{windows.push(id);focused=id;if(id===10)tab.windowId=20}
+        h.ctx.chrome.tabs.update=async id=>{selections.push(id);tab.active=true}
+        h.ctx.chrome.windows.getLastFocused=async()=>({id:focused,focused:true})
+        const request=h.run('requestTabFocus(773)')
+        await new Promise(resolve=>setImmediate(resolve));h.fireTimer(150)
+        await new Promise(resolve=>setImmediate(resolve));h.fireTimer(400)
+        assert.equal(await request,'selected')
+        assert.deepEqual(windows,[10,20,20])
+        assert.deepEqual(selections,[773,773])
+    })
+    await check('minimized target windows restore before selection; wrong-ID results never select a substitute', async()=>{
+        const h=harness(),options=[]
+        h.ctx.chrome.windows.get=async()=>({id:10,state:'minimized'})
+        h.ctx.chrome.windows.update=async(id,value)=>options.push(value)
+        const request=h.run('requestTabFocus(1)')
+        await new Promise(resolve=>setImmediate(resolve));h.fireTimer(150)
+        await new Promise(resolve=>setImmediate(resolve));h.fireTimer(400);await request
+        assert.equal(options[0].state,'normal')
+        h.ctx.chrome.tabs.get=async()=>({id:99,windowId:10,active:true})
+        h.ctx.chrome.tabs.update=async()=>{throw Error('must not select substitute')}
+        const invalid=h.run('requestTabFocus(1)')
+        await new Promise(resolve=>setImmediate(resolve));h.fireTimer(400)
+        assert.equal(await invalid,'failed')
+        assert.equal(h.run('lastTabFocusFailureStage'),'resolveTab')
+    })
+    await check('preview arrival order and active-tab metadata cannot reorder the logical carousel', ()=>{
+        const h=viewHarness()
+        h.run(`syncSafariTabs([{id:91,title:'First'},{id:3,title:'Second'},{id:70,title:'Third'}]);applySafariScreenshots([{blob:'YQ==',tabInfo:{id:70}}])`);h.flush()
+        h.run(`applySafariScreenshots([{blob:'YQ==',tabInfo:{id:91}}])`);h.flush()
+        assert.equal(h.run('vars.safari.slides.map(slide=>slide.getAttribute("tabId")).join()'),'91,70')
+        assert.equal(h.run('safariPositionIndex()'),1)
+        h.run(`applySafariScreenshots([{blob:'YQ==',tabInfo:{id:3}}]);syncSafariTabs([{id:70,title:'Third',active:true},{id:3,title:'Renamed'},{id:91,title:'First'}])`);h.flush()
+        assert.equal(h.run('vars.safari.slides.map(slide=>slide.getAttribute("tabId")).join()'),'91,3,70')
+        assert.equal(h.run('vars.safari.swiper.activeIndex'),2)
+    })
+    await check('incoming cards wait during navigation and preserve the current tab after the gesture', ()=>{
+        const h=viewHarness()
+        seedPreviews(h,[{id:91,title:'First'},{id:3,title:'Second'},{id:70,title:'Third'}]);h.flush()
+        h.run(`noteSafariInteraction({type:'keydown',key:'ArrowDown'});vars.safari.swiper.slideTo(1,0);syncSafariTabs([{id:91},{id:3},{id:70},{id:4}]);applySafariScreenshots([{blob:'YQ==',tabInfo:{id:4}}])`)
+        assert.equal(h.run('vars.safari.slides.length'),3)
+        assert.equal(h.run('vars.safari.position.id'),3)
+        const updates=h.updates
+        h.run(`noteSafariInteraction({type:'keydown',key:'ArrowDown'});vars.safari.swiper.slideTo(2,0)`)
+        assert.equal(h.updates,updates)
+        h.flush()
+        assert.equal(h.run('vars.safari.slides.length'),4)
+        assert.equal(h.run('vars.safari.position.id'),70)
+        assert.equal(h.run('vars.safari.swiper.activeIndex'),2)
+    })
+    await check('duplicate images and content reinjection retain cached nodes, URLs, order and selected tab', ()=>{
+        const h=viewHarness()
+        seedPreviews(h,[{id:91,title:'First'},{id:3,title:'Second'},{id:70,title:'Third'}]);h.flush()
+        h.run('clickedOnSafariTab(3)')
+        const image=h.run('vars.safari.tabs[3].img'),url=h.run('vars.safari.tabs[3].previewURL'),updates=h.updates
+        h.run(`applySafariScreenshots([{blob:'YQ==',tabInfo:{id:3}}])`);h.flush()
+        assert.equal(h.run('vars.safari.tabs[3].img'),image)
+        assert.equal(h.run('vars.safari.tabs[3].previewURL'),url)
+        assert.equal(h.updates,updates)
+        h.inject();h.flush()
+        assert.equal(h.run('vars.safari.tabs[3].img'),image)
+        assert.equal(h.run('vars.safari.tabs[3].previewURL'),url)
+        assert.equal(h.run('vars.safari.slides.map(slide=>slide.getAttribute("tabId")).join()'),'91,3,70')
+        assert.equal(h.run('vars.safari.swiper.activeIndex'),1)
+        assert.equal(h.urls.size,3)
+    })
+    await check('cache eviction protects the selected tab without exceeding preview budgets', ()=>{
+        const h=viewHarness(),infos=Array.from({length:120},(_,i)=>({id:i+1,title:'Tab '+(i+1)}))
+        h.run(`syncSafariTabs(${JSON.stringify(infos)});applySafariScreenshots(${JSON.stringify(infos.slice(0,60).map(tabInfo=>({tabInfo,blob:'YQ=='})))})`);h.flush()
+        h.run('clickedOnSafariTab(2)');h.advance(2000)
+        h.run(`applySafariScreenshots(${JSON.stringify(infos.slice(60).map(tabInfo=>({tabInfo,blob:'Yg=='})))})`);h.flush()
+        assert.equal(h.urls.size,60)
+        assert.ok(h.run('vars.safari.tabs[2].previewURL'))
+        assert.equal(h.run('vars.safari.slides[vars.safari.swiper.activeIndex].getAttribute("tabId")'),'2')
+    })
+    await check('a warm view-ready report causes no metadata or image resend', async()=>{
+        const h=harness()
+        h.run(`tabs[1]={id:1,lastStrBlob:'YQ==',lastFrameFingerprint:'same',lastSentFrameFingerprint:'same'};lastConfirmedTabsSignature='warm';tabsListDirty=false`)
+        await h.run(`handleStatusMessage('{"type":"safariViewReady","inventoryReady":true,"previewIds":[1]}')`)
+        assert.equal(h.run('lastConfirmedTabsSignature'),'warm')
+        assert.equal(h.run('tabsListDirty'),false)
+        assert.equal(h.run('pendingPreviewTabs().length'),0)
+    })
+    await check('a cold WebKit page restores saved non-private position with its missing cached previews', async()=>{
+        const h=harness(),v=viewHarness()
+        h.setTabs([{id:1,windowId:10,index:0,title:'One'},{id:2,windowId:10,index:1,title:'Two'}])
+        h.ctx.deliver=message=>v.run(message)
+        h.run(`appIsShowing=true;storage.tabPosition={id:2,index:1};tabs={1:{id:1,lastStrBlob:'YQ==',lastFrameFingerprint:'1',lastSentFrameFingerprint:'1'},2:{id:2,lastStrBlob:'Yg==',lastFrameFingerprint:'2',lastSentFrameFingerprint:'2'}};sendJsMessage=async message=>{deliver(message);return true}`)
+        await h.run(`handleStatusMessage('{"type":"safariViewReady","inventoryReady":false,"position":null,"previewIds":[]}')`)
+        await h.run('checkOpenTabs()');await h.run('sendAllTabsScreenshot()');v.flush()
+        assert.equal(v.run('vars.safari.swiper.activeIndex'),1)
+        assert.equal(v.run('vars.safari.position.id'),2)
+        assert.equal(h.run('pendingViewPosition'),null)
+    })
+    await check('direct tab/window read rejections still allow exact-ID inventory resolution and window activation', async()=>{
+        const h=harness(),windows=[]
+        h.ctx.chrome.tabs.get=async()=>{throw Error('read unsupported')}
+        h.ctx.chrome.windows.get=async()=>{throw Error('read unsupported')}
+        h.ctx.chrome.windows.update=async id=>windows.push(id)
+        const request=h.run('requestTabFocus(1)')
+        await new Promise(resolve=>setImmediate(resolve));h.fireTimer(150)
+        await new Promise(resolve=>setImmediate(resolve));h.fireTimer(400)
+        assert.equal(await request,'selected')
+        assert.deepEqual(windows,[10,10])
+    })
+    await check('browser-side logical order survives window/index changes and a cold native view replay', async()=>{
+        const h=harness(),messages=[]
+        h.ctx.messages=messages
+        h.run('sendJsMessage=async message=>{messages.push(message);return true}')
+        h.setTabs([{id:91,windowId:10,index:0},{id:3,windowId:10,index:1},{id:70,windowId:20,index:0}])
+        await h.run('checkOpenTabs()')
+        h.setTabs([{id:70,windowId:10,index:0},{id:91,windowId:20,index:1},{id:3,windowId:20,index:0}])
+        await h.run('checkOpenTabs()')
+        assert.equal(h.run('safariCarouselOrder.join()'),'91,3,70')
+        await h.run(`handleStatusMessage('{"type":"safariViewReady","inventoryReady":false,"position":null,"previewIds":[]}')`)
+        await h.run('checkOpenTabs()')
+        const replay=JSON.parse(messages.at(-1).slice('syncSafariTabs('.length,-1).replace(/,null$/,''))
+        assert.deepEqual(replay.map(tab=>tab.id),[91,3,70])
+        h.setTabs([{id:91,windowId:20,index:1},{id:4,windowId:20,index:0}])
+        await h.run('checkOpenTabs()')
+        assert.equal(h.run('safariCarouselOrder.join()'),'91,4')
+    })
+    await check('placeholder/invalid tab IDs never enter the preview inventory; zero remains selectable', async()=>{
+        const h=harness(),v=viewHarness(),messages=[]
+        h.setTabs([{id:-1,windowId:10,title:'Placeholder'},{id:1.5,windowId:10,title:'Invalid'},{id:0,windowId:10,title:'Valid zero'}])
+        h.ctx.messages=messages
+        h.run('sendJsMessage=async message=>{messages.push(message);return true}')
+        await h.run('checkOpenTabs()')
+        assert.equal(h.run('Object.keys(tabs).join()'),'0')
+        assert.equal(h.run('normalizeTabInfo({id:-1})'),null)
+        v.run(`syncSafariTabs([{id:-1},{id:0}]);applySafariScreenshots([{blob:'YQ==',tabInfo:{id:-1}},{blob:'Yg==',tabInfo:{id:0}}])`);v.flush()
+        assert.equal(v.run('vars.safari.slides.length'),1)
+        assert.equal(v.run('vars.safari.slides[0].getAttribute("tabId")'),'0')
     })
     completed = true
     console.log(`${checks} Web Extension regression checks passed.`)

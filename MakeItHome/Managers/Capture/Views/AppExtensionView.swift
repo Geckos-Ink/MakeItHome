@@ -43,6 +43,9 @@ public struct AppExtensionWebView: NSViewRepresentable {
         wkwv.registerForDraggedTypes([.fileURL, .png, .string])
         wkwv.uiDelegate = context.coordinator
         wkwv.navigationDelegate = context.coordinator
+        let controller = wkwv.configuration.userContentController
+        controller.removeScriptMessageHandler(forName: "appExtensionMessage")
+        controller.add(WeakAppExtensionMessageHandler(context.coordinator), name: "appExtensionMessage")
         
         //wkwv.configuration.setValue(true, forKey: "_allowUniversalAccessFromFileURLs")
         wkwv.configuration.userInterfaceDirectionPolicy = .system
@@ -74,7 +77,15 @@ public struct AppExtensionWebView: NSViewRepresentable {
     var delegate: DragDropDelegate? // to remove
 }
 
-public class AppExtensionWebViewCoordinator: NSObject, WKNavigationDelegate, DragDropDelegate, WKUIDelegate {
+private final class WeakAppExtensionMessageHandler: NSObject, WKScriptMessageHandler {
+    private weak var target: AppExtensionWebViewCoordinator?
+    init(_ target: AppExtensionWebViewCoordinator) { self.target = target }
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        target?.userContentController(userContentController, didReceive: message)
+    }
+}
+
+public class AppExtensionWebViewCoordinator: NSObject, WKNavigationDelegate, DragDropDelegate, WKUIDelegate, WKScriptMessageHandler {
     
     public func didDrop(files: [URL]) {
         //...
@@ -99,6 +110,43 @@ public class AppExtensionWebViewCoordinator: NSObject, WKNavigationDelegate, Dra
         (webView as? AppExtensionWKWV)?.sendCurrentVersion()
     }
 
+    public func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.webView === parent.wkwv, message.frameInfo.isMainFrame,
+              JSONSerialization.isValidJSONObject(message.body),
+              let data = try? JSONSerialization.data(withJSONObject: message.body) else { return }
+        handleMessageData(data)
+    }
+
+    private func handleMessageData(_ data: Data) {
+        guard data.count <= AppExtensionStatusMailbox.maxMessageBytes,
+              let json = try? JSONDecoder().decode(JSMessage.self, from: data),
+              let owner = parent.wkwv.curApp, let displayed = owner.appExtension,
+              let current = Static.appExtensionManager?.apps[displayed.bundleId],
+              current.identity == displayed.identity else { return }
+        if let source = json.strId,
+           source != displayed.bundleId.replacingOccurrences(of: ".", with: "-") { return }
+
+        if json.type == "status", let value = json.value {
+            current.addMessage(msg: value)
+        } else if json.type == "closeOverscreen" {
+            owner.display.activateNewApp = true
+            owner.display.aboveBy = 0
+            owner.display.ignoreMousePositionForAboveBy = 10
+        } else if json.type == "focusOnMe" {
+            // Pin the displayed process; re-resolve the approved connection after
+            // animation so a reconnect cannot strand a click in an old instance.
+            let identity = current.identity
+            let bundleId = current.bundleId
+            Task { @MainActor in
+                owner.display.focusAppExtension(app: owner) {
+                    guard let live = Static.appExtensionManager?.apps[bundleId],
+                          live.identity == identity else { return }
+                    if let status = json.value { live.addMessage(msg: status) }
+                }
+            }
+        }
+    }
+
     // Implement WKNavigationDelegate method to allow navigation for dropped items
     public func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         
@@ -107,7 +155,6 @@ public class AppExtensionWebViewCoordinator: NSObject, WKNavigationDelegate, Dra
             return
         }
         
-        print("AppExtension received url ", url)
         
         if(url.scheme == "file"){
             //print("AppExtension file lastPathComponent", url.lastPathComponent)
@@ -120,55 +167,8 @@ public class AppExtensionWebViewCoordinator: NSObject, WKNavigationDelegate, Dra
            url.scheme == "myapp",
            url.host == "message",
            let message = url.queryParameters?["text"] {
-            // Handle the message from JavaScript
-            print("Message from JavaScript: \(message)")
-            
-            //pasteFile(filePath: "file:///Users/riccardo/Sources/GitHub/Extension-Twitch-LowLatency/stuff/forward.png")
-            
-            var isJson = false
-            var json : JSMessage?
-            
-            do {
-                let jsonDecoder = JSONDecoder()
-                json = try jsonDecoder.decode(JSMessage.self, from: message.data(using: .utf8)!)
-                isJson = true
-            }
-            catch{
-                let err = error.localizedDescription
-                print(error, err)
-                isJson = false
-            }
-            
-            if isJson {
-                if json?.type == "jsError"{
-                    print(json?.value);
-                }
-                
-                if json?.type == "status" && json?.value != nil {
-                    let curApp = Static.AppExtensionWebView?.curApp
-                    
-                    if curApp?.appExtension != nil {
-                        let ext = curApp?.appExtension
-                        ext?.addMessage(msg: json!.value!)
-                    }
-                }
-                
-                if json?.type == "closeOverscreen" {
-                    print("close overscreen")
-                    Static.curDisplay?.activateNewApp = true
-                    Static.curDisplay?.aboveBy = 0
-                    Static.curDisplay?.ignoreMousePositionForAboveBy = 10
-                }
-                
-                if json?.type == "focusOnMe" {
-                    print("focus on extension's app")
-                    Static.LastAppPreviewMouseOver?.activate(win: Static.LastAppPreviewMouseOver?.lastWindow, force: true)
-                }
-                
-                //...
-                
-                decisionHandler(.cancel)
-                return
+            if navigationAction.targetFrame?.isMainFrame == true {
+                handleMessageData(Data(message.utf8))
             }
             decisionHandler(.cancel)
             return

@@ -28,6 +28,41 @@ import CoreGraphics
 
 struct PreviewFlowGate {
 
+    /// Deliberate app/extension selections invalidate queued overscreen shows.
+    /// Pointer input re-arms on returning inside the display, with a bounded
+    /// uptime deadline so a failed browser handoff cannot wedge edge activation.
+    static let interactionDismissalDuration: TimeInterval = 1.5
+    private(set) var presentationGeneration: UInt64 = 0
+    private(set) var interactionDismissalUntil: TimeInterval = 0
+
+    mutating func beginInteractionDismissal(now: TimeInterval) {
+        presentationGeneration &+= 1
+        interactionDismissalUntil = now + Self.interactionDismissalDuration
+    }
+
+    mutating func endInteractionDismissal() {
+        interactionDismissalUntil = 0
+    }
+
+    func allowsScheduledPresentation(generation: UInt64, now: TimeInterval) -> Bool {
+        generation == presentationGeneration && now >= interactionDismissalUntil
+    }
+
+    mutating func allowsPointerPresentation(pointer: CGPoint, displayFrame: CGRect,
+                                           edgeInset: CGFloat, now: TimeInterval) -> Bool {
+        guard interactionDismissalUntil > now else {
+            endInteractionDismissal()
+            return true
+        }
+        let insetX = min(max(0, edgeInset), displayFrame.width / 4)
+        let insetY = min(max(0, edgeInset), displayFrame.height / 4)
+        if displayFrame.insetBy(dx: insetX, dy: insetY).contains(pointer) {
+            endInteractionDismissal()
+            return true
+        }
+        return false
+    }
+
     /// A native fullscreen window covers the complete display, including the menu-bar area.
     /// A maximized window on a normal Desktop covers only the visible frame and must not disable
     /// MakeItHome or prevent that Desktop from receiving a placeholder.

@@ -25,8 +25,7 @@ async function sendJsMessage(msg){
     }
     
     try{
-        let res = await makePost(req, body)
-        let json = await res.json()
+        let json = await makePost(req, body)
         if(json.status === "error"){
             if(json.description === "appNotConnected" || json.description === "invalidSecret" || json.description === "invalidToken" || json.description === "missingToken"){
                 resetSecret = true
@@ -36,7 +35,7 @@ async function sendJsMessage(msg){
         }
         return true
     } catch(err) {
-        console.error("sendJsMessage failed", err)
+        console.warn('Extension preview delivery failed')
         return false
     }
 }
@@ -214,7 +213,7 @@ async function readTextFile(asset) {
 
 
 async function makeGet(url){
-    return await fetchWithTimeout(url)
+    return await fetchJSONWithTimeout(url, {}, 5000)
 }
 
 async function makePost(url, body, maxRetries = 1){
@@ -224,14 +223,14 @@ async function makePost(url, body, maxRetries = 1){
 
     for(let attempt = 0; attempt <= maxRetries; attempt++){
         try{
-            return await fetchWithTimeout(url, {
+            return await fetchJSONWithTimeout(url, {
                 method: "POST",
                 body: body,
                 headers: {
                     "Content-Type": "application/json",
                     "Body-Length": body.length.toString()
                 }
-            })
+            }, 5000)
         }
         catch(error){
             if(attempt >= maxRetries){
@@ -286,6 +285,7 @@ function getCurrentTabInfo() {
 
 let tabs = {}
 let orderedTabs = []
+let safariCarouselOrder = [] // Runtime ID order, independent of capture/MRU priority.
 
 const screenshotPolicy = {
     minCaptureGapMs: 1000,
@@ -298,7 +298,7 @@ const screenshotPolicy = {
     statusPollActiveMs: 700,
     statusPollIdleMs: 3200,
     statusRequestTimeoutMs: 3500,
-    statusMaxInFlightMs: 7000,
+    statusMaxInFlightMs: 12000,
     maxSendWhenShowing: 4,
     maxPreviewCount: 60,
     maxPreviewChars: 8 * 1024 * 1024,
@@ -328,6 +328,7 @@ let cachedExtensionPayload = null
 let contentNeedsLoad = true
 let contentLoadInFlight = false
 let previewRetryAfter = 0
+let previewDeliveryRevision = 0
 
 let waitForStatusInFlight = false
 let waitForStatusStartedAt = 0
@@ -339,15 +340,148 @@ function spliceOrderedTabs(index){
     orderedTabs.splice(index, 1)
 }
 
-async function focusOnTab(id){
-    let tabsObj = await getAllOpenTabs()
-    let tab = tabsObj[id]
-    if(!tab){
-        return
+let tabFocusRunId = 0
+let tabFocusRetryTimer = null
+let tabFocusRetryResolve = null
+let pendingTabFocusId = null
+
+function cancelTabFocusRetry(){
+    tabFocusRunId++
+    clearTimeout(tabFocusRetryTimer)
+    tabFocusRetryTimer = null
+    if(tabFocusRetryResolve) tabFocusRetryResolve()
+    tabFocusRetryResolve = null
+    pendingTabFocusId = null
+}
+
+function boundedOperation(operation, timeoutMs, onTimeout = ()=>{}){
+    let timer
+    return Promise.race([
+        Promise.resolve().then(operation),
+        new Promise((_, reject)=>{
+            timer = setTimeout(()=>{onTimeout(); reject(new Error('Operation timed out'))}, timeoutMs)
+        })
+    ]).finally(()=>clearTimeout(timer))
+}
+
+// Safari supports callback-style Chrome APIs as well as Promise implementations.
+// Await the actual completion in either case; awaiting undefined ends too early.
+function safariAPI(owner, method, ...args){
+    return new Promise((resolve, reject)=>{
+        const callback = value=>{
+            const failure = chrome.runtime.lastError
+            if(failure) reject(new Error('Safari API rejected '+method))
+            else resolve(value)
+        }
+        try {
+            const result = owner[method](...args, callback)
+            if(result && typeof result.then === 'function') result.then(resolve, reject)
+        } catch(error){ reject(error) }
+    })
+}
+
+async function resolveSafariTab(id){
+    if(!Number.isSafeInteger(id) || id < 0) return null
+    if(typeof chrome.tabs.get === 'function'){
+        try {
+            const tab = await safariAPI(chrome.tabs, 'get', id)
+            return tab && tab.id === id ? tab : null
+        } catch(error){
+            // Older Safari implementations can reject a direct lookup. A fresh
+            // inventory may resolve only the same ID, never a URL/index alias.
+        }
     }
-    console.log("opening tab", id, tab)
-    await chrome.tabs.update(tab.id, { active: true });
-    await chrome.windows.update(tab.windowId, { focused: true });
+    const inventory = await getAllOpenTabs()
+    return inventory[id] || null
+}
+
+let lastTabFocusFailureStage = null // runtime diagnostic; no titles, URLs or credentials
+async function focusOnTab(id, options = {}){
+    const isCurrent = ()=> (options.runId === undefined || options.runId === tabFocusRunId) &&
+                           (!options.isCurrent || options.isCurrent())
+    lastTabFocusFailureStage = 'resolveTab'
+    let tab = await resolveSafariTab(id)
+    if(!tab || !isCurrent()) return false
+    const focusWindow = async windowId=>{
+        lastTabFocusFailureStage = 'focusWindow'
+        const options = {focused: true}
+        if(typeof chrome.windows.get === 'function'){
+            try {
+                const window = await safariAPI(chrome.windows, 'get', windowId)
+                if(window?.state === 'minimized') options.state = 'normal'
+            } catch(error){ /* A read failure must not suppress window activation. */ }
+        }
+        if(!isCurrent()) return
+        try {
+            await safariAPI(chrome.windows, 'update', windowId, options)
+        } catch(error){
+            // A window-focus rejection must not suppress selection of a valid
+            // tab in the Safari app that native code has already activated.
+        }
+    }
+    await focusWindow(tab.windowId)
+    if(!isCurrent()) return false
+    const settleMs = options.settleMs ?? 150
+    if(settleMs > 0) await new Promise(resolve=>setTimeout(resolve, settleMs))
+    if(!isCurrent()) return false
+    // The tab can move/detach while its window is being activated. Re-resolve
+    // the exact ID rather than using an old window/index or substituting a tab.
+    const current = await resolveSafariTab(id)
+    if(!current || !isCurrent()) return false
+    if(current.windowId !== tab.windowId){
+        await focusWindow(current.windowId)
+        if(!isCurrent()) return false
+    }
+    tab = current
+    lastTabFocusFailureStage = 'selectTab'
+    await safariAPI(chrome.tabs, 'update', id, {active: true})
+    if(!isCurrent()) return false
+    lastTabFocusFailureStage = 'verifyTab'
+    const [selected, focusedWindow] = await Promise.all([
+        resolveSafariTab(id), safariAPI(chrome.windows, 'getLastFocused')
+    ])
+    const confirmed = isCurrent() && selected?.id === id && selected.active === true &&
+                      focusedWindow?.id === selected.windowId && focusedWindow.focused === true
+    if(confirmed) lastTabFocusFailureStage = null
+    else if(isCurrent()) lastTabFocusFailureStage = selected?.id !== id ? 'verifyTabId' :
+        selected.active !== true ? 'verifyActiveTab' : 'verifyFocusedWindow'
+    return confirmed
+}
+
+async function requestTabFocus(id){
+    cancelTabFocusRetry()
+    const runId = tabFocusRunId
+    pendingTabFocusId = id
+    async function attempt(settleMs){
+        let expired = false
+        try {
+            return await boundedOperation(()=>focusOnTab(id, {
+                runId, settleMs, isCurrent:()=>!expired
+            }), 1200, ()=>{expired = true})
+        } catch(error){
+            return false
+        }
+    }
+    try {
+        await attempt(150)
+        if(runId !== tabFocusRunId) return 'superseded'
+        // Complete the receipt only after the single requested retry finishes.
+        await new Promise(resolve=>{
+            tabFocusRetryResolve = resolve
+            tabFocusRetryTimer = setTimeout(()=>{
+                tabFocusRetryTimer = null
+                tabFocusRetryResolve = null
+                resolve()
+            }, 400)
+        })
+        if(runId !== tabFocusRunId) return 'superseded'
+        const selected = await attempt(0)
+        if(runId !== tabFocusRunId) return 'superseded'
+        if(!selected) console.warn('Safari tab selection unconfirmed after one retry; tab ID:', id, 'stage:', lastTabFocusFailureStage)
+        return selected ? 'selected' : 'failed'
+    } finally {
+        if(runId === tabFocusRunId) pendingTabFocusId = null
+    }
 }
 
 const maxOpenedTabs = 10
@@ -372,7 +506,7 @@ function confirmTabOrder(id, markActive = true){
 }
 
 function normalizeTabInfo(tab){
-    if(!tab){
+    if(!tab || !Number.isSafeInteger(tab.id) || tab.id < 0){
         return null
     }
     
@@ -404,8 +538,8 @@ function makeFrameFingerprint(str){
 }
 
 async function getAllOpenTabs(){
-    const allTabs = await chrome.tabs.query({})
-    return Object.fromEntries(allTabs.map(tab=>[tab.id, tab]))
+    const allTabs = await safariAPI(chrome.tabs, 'query', {})
+    return Object.fromEntries(allTabs.filter(tab=>tab && Number.isSafeInteger(tab.id) && tab.id >= 0).map(tab=>[tab.id, tab]))
 }
 
 async function checkOpenTabs(options = {}){
@@ -421,10 +555,16 @@ async function checkOpenTabs(options = {}){
     }
     orderedTabs = orderedTabs.filter(id=>tabsObj[id])
 
-    // Titles and placeholders do not wait for a screenshot. Keep existing tab
+    // Title metadata does not wait for a screenshot. Keep existing tab
     // order in the view; newly discovered tabs follow Safari window/index order.
-    let tabInfos = Object.values(tabsObj).map(normalizeTabInfo)
+    const inventory = Object.values(tabsObj).map(normalizeTabInfo)
         .sort((a, b)=>a.windowId - b.windowId || a.index - b.index)
+    safariCarouselOrder = safariCarouselOrder.filter(id=>tabsObj[id])
+    const known = new Set(safariCarouselOrder)
+    for(const info of inventory){
+        if(!known.has(info.id)){safariCarouselOrder.push(info.id); known.add(info.id)}
+    }
+    const tabInfos = safariCarouselOrder.map(id=>normalizeTabInfo(tabsObj[id]))
     let tabsSignature = JSON.stringify(tabInfos)
     if(tabsSignature !== lastConfirmedTabsSignature){
         let sent = await sendJsMessage('syncSafariTabs('+tabsSignature+','+JSON.stringify(pendingViewPosition)+')')
@@ -464,46 +604,103 @@ function nextWaitForStatus(delayMs = getStatusPollIntervalMs()){
     }, Math.max(160, delayMs));
 }
 
-async function fetchWithTimeout(url, options = {}, timeoutMs = 5000){
+// Include the response body in the deadline; fetch alone ends at the headers.
+async function fetchJSONWithTimeout(url, options = {}, timeoutMs = 3500){
     const controller = new AbortController()
-    const timeout = setTimeout(()=>controller.abort(), timeoutMs)
-    try {
-        return await fetch(url, {...options, signal: controller.signal})
-    } finally {
-        clearTimeout(timeout)
-    }
+    return boundedOperation(async()=>{
+        const response = await fetch(url, {...options, signal: controller.signal})
+        if(!response.ok) throw new Error('Local extension request failed')
+        return await response.json()
+    }, timeoutMs, ()=>controller.abort())
 }
 
-async function makeGetWithTimeout(url, timeoutMs){
-    return fetchWithTimeout(url, {}, timeoutMs)
+async function handleStatusMessage(msg){
+    const status = JSON.parse(msg)
+    if(status.type === 'safariViewReady'){
+        if(!Array.isArray(status.previewIds)) return 'ignored'
+        const present = new Set(status.previewIds.filter(Number.isInteger).slice(0, screenshotPolicy.maxPreviewCount))
+        const deliveryRevision = ++previewDeliveryRevision
+        let missing = false
+        for(const tab of Object.values(tabs)){
+            if(tab.lastStrBlob && !present.has(tab.id)){
+                missing = true
+                tab.needsResend = true
+                tab.previewDeliveryRevision = deliveryRevision
+            }
+        }
+        // Recovery needs authoritative metadata before image batches, even
+        // when the Safari inventory itself has not changed since the last send.
+        if(missing || status.inventoryReady !== true){
+            if(!status.position) pendingViewPosition = storage.tabPosition || null
+            lastConfirmedTabsSignature = ''
+            markTabsDirty()
+            scheduleScreenshotLoop(100)
+        }
+        return 'ready'
+    }
+    if(status.type === 'clickedOn' || status.type === 'tabPosition'){
+        const id = Number(status.id), index = Number(status.index)
+        if(!Number.isInteger(id)) return 'ignored'
+        const focus = status.type === 'clickedOn' ? requestTabFocus(id) : null
+        if(Number.isInteger(index) && index >= 0 && tabs[id] && !tabs[id].incognito){
+            storage.tabPosition = {id, index}
+            try { await boundedOperation(()=>chrome.storage.local.set({tabPosition: storage.tabPosition}), 1200) }
+            catch(error){ console.warn('Safari carousel position could not be saved') }
+        }
+        if(focus){
+            const outcome = await focus
+            scheduleScreenshotLoop(120)
+            return outcome
+        }
+    }
+    return 'ignored'
 }
 
 async function handleStatusMessages(statusMessages){
-    if(!statusMessages){
-        return
+    for(const msg of statusMessages || []){
+        try { await handleStatusMessage(msg) }
+        catch(error){ console.warn('Invalid or failed extension status message') }
     }
-    
-    for(let msg of statusMessages){
-        try {
-            let status = JSON.parse(msg)
-            if(status.type === "clickedOn"){
-                let id = parseInt(status.id, 10)
-                if(Number.isFinite(id)){
-                    await focusOnTab(id)
-                    scheduleScreenshotLoop(120)
-                }
-            } else if(status.type === "tabPosition"){
-                const id = Number(status.id)
-                const index = Number(status.index)
-                if(Number.isInteger(id) && Number.isInteger(index) && index >= 0 && tabs[id] && !tabs[id].incognito){
-                    storage.tabPosition = {id, index}
-                    await chrome.storage.local.set({tabPosition: storage.tabPosition})
-                }
+}
+
+// Runtime-only receipts: repeated delivery after an ACK loss cannot repeat a
+// selection. In-flight entries share their completion rather than racing it.
+const statusReceipts = new Map()
+async function handleStatusEvents(events){
+    if(!Array.isArray(events)) return
+    const ids = []
+    const pendingIds = new Set(events.map(event=>event.id))
+    for(const event of events.slice(0, 128)){
+        if(typeof event.id !== 'string' || event.id.length > 128 || !event.id ||
+           typeof event.value !== 'string') continue
+        let receipt = statusReceipts.get(event.id)
+        if(!receipt){
+            // Native mailbox capacity is also 128. Do not evict unfinished work.
+            if(statusReceipts.size >= 128){
+                const oldest = [...statusReceipts].find(([id,value])=>value.done && !pendingIds.has(id))
+                if(!oldest) continue
+                statusReceipts.delete(oldest[0])
             }
+            receipt = {done: false}
+            statusReceipts.set(event.id, receipt)
+            receipt.promise = handleStatusMessage(event.value).catch(()=>{
+                console.warn('Extension status request failed')
+                return 'failed'
+            }).then(outcome=>{receipt.done = true; return outcome})
         }
-        catch (err){
-            console.error("error in status message:", msg, err)
-        }
+        await receipt.promise
+        ids.push(event.id)
+    }
+    if(!ids.length) return
+    try {
+        const req = await makeRequestUrl('/ackStatusMessages')
+        const result = await fetchJSONWithTimeout(req, {
+            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ids})
+        }, 1200)
+        if(result.status !== 'ok') throw new Error('Acknowledgement rejected')
+    } catch(error){
+        // Keep receipts: the next poll redelivers and retries the ACK only.
+        console.warn('Extension acknowledgement pending; will retry on redelivery')
     }
 }
 
@@ -537,17 +734,15 @@ async function waitForStatus() {
     let runId = ++waitForStatusRunId
 
     try {
-        let req = await makeRequestUrl('/checkStatus')
-        let res = await makeGetWithTimeout(req, screenshotPolicy.statusRequestTimeoutMs);
-
-        res = await res.json();
+        let req = await makeRequestUrl('/checkStatus?reliableStatus=1')
+        let res = await fetchJSONWithTimeout(req, {}, screenshotPolicy.statusRequestTimeoutMs)
+        if(runId !== waitForStatusRunId) return
         if(Number.isFinite(res.nextPollInMs)){
             lastServerSuggestedStatusPollMs = res.nextPollInMs
         } else {
             lastServerSuggestedStatusPollMs = null
         }
 
-        await handleStatusMessages(res.statusMessages)
         
         if (res.status === "error") {
             if (res.description === "appNotConnected") {
@@ -564,6 +759,11 @@ async function waitForStatus() {
             }
         }
         
+        if(res.status === 'ok'){
+            if(Array.isArray(res.statusEvents)) await handleStatusEvents(res.statusEvents)
+            else await handleStatusMessages(res.statusMessages) // older native versions
+        }
+        if(runId !== waitForStatusRunId) return
         let nextAppIsShowing = !!res.appExtensionIsShowing
         if(appIsShowing != nextAppIsShowing){
             appIsShowing = nextAppIsShowing
@@ -575,8 +775,10 @@ async function waitForStatus() {
         }
         
     } catch (err) {
-        console.error("waitForStatus: ", err)
-        lastServerSuggestedStatusPollMs = null
+        if(runId === waitForStatusRunId){
+            console.warn('Extension status poll failed; pending requests remain queued')
+            lastServerSuggestedStatusPollMs = null
+        }
     } finally {
         if(runId == waitForStatusRunId){
             waitForStatusInFlight = false
@@ -626,11 +828,9 @@ async function runConnect(){
         includeExtensionMeta: true
     })
 
-    let res = null
     let json = null
     try {
-        res = await makeGet(req)
-        json = await res.json()
+        json = await makeGet(req)
     } catch(err){
         connectionBlockedUntil = Date.now() + connectionRetryMs
         connectionRetryMs = Math.min(30000, connectionRetryMs * 2)
@@ -756,8 +956,7 @@ async function setHtmlContent(html, options = {}){
     }
     
     try {
-        let res = await makePost(req, body)
-        let json = await res.json()
+        let json = await makePost(req, body)
 
         if(json.status === "error"){
             if(json.description === "appNotConnected" || json.description === "invalidSecret" || json.description === "invalidToken" || json.description === "missingToken"){
@@ -769,7 +968,7 @@ async function setHtmlContent(html, options = {}){
 
         return true
     } catch(err){
-        console.error("setHtmlContent failed", err)
+        console.warn('Extension content delivery failed')
         return false
     }
 }
@@ -898,6 +1097,10 @@ async function captureScreenshotAndSend() {
         activeTabId = activeTab.id
         
         let tabInfo = normalizeTabInfo(activeTab)
+        if(!tabInfo){
+            captureRequested = false
+            return {changed: false, reason: 'unaddressableTab'}
+        }
         let tabState = tabs[tabInfo.id] = {
             ...(tabs[tabInfo.id] || {}),
             ...tabInfo
@@ -981,7 +1184,7 @@ function getTabPriorityScore(tabId){
 }
 
 function pendingPreviewTabs(options = {}){
-    return Object.values(tabs).filter(tab=>tab.lastStrBlob &&
+    return Object.values(tabs).filter(tab=>Number.isSafeInteger(tab.id) && tab.id >= 0 && tab.lastStrBlob &&
         (!options.onlyFocused || tab.id === activeTabId) &&
         (options.force || tab.needsResend || tab.lastSentFrameFingerprint !== tab.lastFrameFingerprint))
         .sort((a, b)=>getTabPriorityScore(b.id) - getTabPriorityScore(a.id))
@@ -993,7 +1196,8 @@ async function sendAllTabsScreenshot(options = {}){
     let chars = 0
     for(const tab of pendingPreviewTabs(options)){
         if(batch.length >= maxTabs || chars + tab.lastStrBlob.length > screenshotPolicy.maxBatchChars) break
-        batch.push({tab, blob: tab.lastStrBlob, info: normalizeTabInfo(tab), fingerprint: tab.lastFrameFingerprint})
+        batch.push({tab, blob: tab.lastStrBlob, info: normalizeTabInfo(tab), fingerprint: tab.lastFrameFingerprint,
+                    deliveryRevision: tab.previewDeliveryRevision || 0})
         chars += tab.lastStrBlob.length
     }
     if(!batch.length || Date.now() < previewRetryAfter) return false
@@ -1009,7 +1213,7 @@ async function sendAllTabsScreenshot(options = {}){
         // the exact version sent, retaining new work and all failed sends.
         item.tab.lastSentFrameFingerprint = item.fingerprint
         item.tab.lastSentAt = Date.now()
-        item.tab.needsResend = item.tab.lastFrameFingerprint !== item.fingerprint
+        item.tab.needsResend = (item.tab.previewDeliveryRevision || 0) !== item.deliveryRevision || item.tab.lastFrameFingerprint !== item.fingerprint
     }
     return true
 }
@@ -1164,6 +1368,7 @@ for(const event of [chrome.tabs.onCreated, chrome.tabs.onMoved, chrome.tabs.onAt
 }
 
 chrome.tabs.onRemoved.addListener((tabId)=>{
+    if(tabId === pendingTabFocusId) cancelTabFocusRetry()
     delete tabs[tabId]
     let index = orderedTabs.indexOf(tabId)
     if(index >= 0){

@@ -42,4 +42,12 @@ swiftc -O -D STRESS_TEST_APP -parse-as-library "$ROOT/MakeItHome/Helpers/StressP
     "$ROOT/Tests/StressProcessSampleTests.swift" -o "$TEST_DIR/stress-process-sample-tests"
 "$TEST_DIR/stress-process-sample-tests"
 
+swiftc -O -parse-as-library "$ROOT/MakeItHome/Helpers/AppExtensionStatusMailbox.swift" \
+    "$ROOT/Tests/AppExtensionStatusMailboxTests.swift" -o "$TEST_DIR/app-extension-status-mailbox-tests"
+"$TEST_DIR/app-extension-status-mailbox-tests"
+
+python3 "$ROOT/Tests/ExtensionFocusHandoffTests.py"
+python3 "$ROOT/Tests/AppExtensionDeliveryTests.py"
+python3 "$ROOT/Tests/AppExtensionContentLifecycleTests.py"
+
 zsh "$ROOT/Tests/StressDiagnosticChecksTests.zsh"

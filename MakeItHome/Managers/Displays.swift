@@ -2085,7 +2085,12 @@ public class Display : Equatable {
                     }
                 }
                 
-                appWin.app?.runningApp = self.curFrontApp! // better update it(?)
+                // Window discovery can race app activation. Never overwrite a
+                // tracked owner's process with the app that happens to be frontmost.
+                if let owner = appWin.app, let frontApp = self.curFrontApp,
+                   frontApp.processIdentifier == owner.id {
+                    owner.runningApp = frontApp
+                }
                 lastAppWin = appWin
                 
                 for app in self.apps {
@@ -2794,6 +2799,123 @@ public class Display : Equatable {
     private var frontAppBefore : NSRunningApplication?
     private var frontSpaceBefore = -1
     fileprivate var pendingWindowAfterClose : AppWindows.Window?
+    // A browser extension selects its own window after the native surface is
+    // dismissed. Resolve its immutable process identity, not a mutable scan cache.
+    @MainActor
+    func focusAppExtension(app: AppWindows, completion: @escaping () -> Void) {
+        precondition(Thread.isMainThread)
+        guard !fullOverscreenMode,
+              let target = NSRunningApplication(processIdentifier: app.id),
+              !target.isTerminated,
+              target.bundleIdentifier == app.bundleId else { return }
+
+        pendingWindowAfterClose = nil
+        curFrontWindow = nil
+        frontAppBefore = nil
+        frontSpaceBefore = -1
+        let closingSide = sideToClose >= 0 ? sideToClose : side
+        flowGate.beginInteractionDismissal(now: ProcessInfo.processInfo.systemUptime)
+        shortcutOpenTimer?.invalidate()
+        shortcutOpenTimer = nil
+        shortcutAnimationInProgress = false
+        cancelRecorderPrewarm()
+
+        let generation = flowGate.presentationGeneration
+        let finish = { [weak self] in
+            guard let self,
+                  self.flowGate.presentationGeneration == generation else { return }
+            self.finishAppExtensionFocus(target: target, closingSide: closingSide, completion: completion)
+        }
+        if windowHidden || aboveByPixels <= 0 || closingSide < 0 || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            finish()
+            return
+        }
+
+        let startPixels = aboveByPixels
+        let startTime = ProcessInfo.processInfo.systemUptime
+        shortcutAnimationInProgress = true
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] timer in
+            MainActor.assumeIsolated {
+                guard let self, self.flowGate.presentationGeneration == generation else {
+                    timer.invalidate()
+                    return
+                }
+                let progress = min(1, max(0, (ProcessInfo.processInfo.systemUptime - startTime) / 0.12))
+                // Smooth both ends of the short close instead of snapping the
+                // doubled extension surface down to the normal strip first.
+                let eased = progress * progress * (3 - 2 * progress)
+                self.prevAboveByPixels = self.aboveByPixels
+                self.aboveByPixels = startPixels * CGFloat(1 - eased)
+                self.aboveBy = self.aboveByPixels / max(1, Static.OverscreenSize)
+                if #available(macOS 12.3, *) {
+                    (self.manager.capturePreview as? CapturePreview)?.setCurrentAbove(side: closingSide,
+                                                                                    aboveBy: self.aboveByPixels,
+                                                                                    display: self)
+                }
+                if progress >= 1 {
+                    timer.invalidate()
+                    finish()
+                }
+            }
+        }
+        shortcutOpenTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    @MainActor private func finishAppExtensionFocus(target: NSRunningApplication, closingSide: Int,
+                                                   completion: @escaping () -> Void) {
+        shortcutOpenTimer?.invalidate()
+        shortcutOpenTimer = nil
+        shortcutAnimationInProgress = false
+        // Always end at zero before activation, even when the last animation
+        // frame is delayed. Selection still never waits on the normal hide timer.
+        aboveBy = 0
+        aboveByPixels = 0
+        prevAboveByPixels = 0
+        forceAboveBy = 0
+        overrideAboveByDiff = 0
+        ignoreMousePositionForAboveBy = 0
+        side = -1
+        sideToClose = -1
+        activateNewApp = false
+        checkedDragging = false
+        timerHideWindowStarted = false
+        onMoreAboveBy = false
+        edgeActivationPressure = [CGFloat](repeating: 0, count: 4)
+        resetMouseTrackingForShortcutAnimation(mouse: NSEvent.mouseLocation)
+        lastMotionSampleTime = ProcessInfo.processInfo.systemUptime
+        previousMotionSpeed = 0
+        lastAcceleratedPointerPosition = nil
+        Static.OnAppExtensionZone = false
+        Static.isDraggingInside = false
+        Static.AppExtensionWebView?.exiting()
+
+        if #available(macOS 12.3, *), closingSide >= 0, closingSide != 3 {
+            (manager.capturePreview as? CapturePreview)?.setCurrentAbove(side: closingSide, aboveBy: 0, display: self)
+            (manager.capturePreview as? CapturePreview)?.captureView.unset()
+        }
+        manager.window?.orderOut(nil)
+        manager.window?.alphaValue = 0
+        manager.window?.isOpaque = false
+        windowHidden = true
+        Static.mainWindowInUsing = false
+        updatePerformanceActivity()
+        if #available(macOS 12.3, *) {
+            (manager.contentView?.store.screenRecorder as? ScreenRecorder)?.windowShowing = false
+            setRecorderProfile(lowProfile: true)
+        }
+
+        guard !target.isTerminated else { return }
+        curFrontApp = target
+        if #available(macOS 14.0, *) {
+            NSApplication.shared.yieldActivation(to: target)
+            target.activate(from: .current, options: [])
+        } else {
+            target.activate(options: [.activateIgnoringOtherApps])
+        }
+        // The browser adds its own short settle delay and one bounded retry.
+        completion()
+    }
 
     private func restoreFocusAfterHiding() {
         defer {
@@ -2836,7 +2958,10 @@ public class Display : Equatable {
     }
 
     func showWindow(){
+        let presentationGeneration = flowGate.presentationGeneration
         DispatchQueue.main.async {
+            guard self.flowGate.allowsScheduledPresentation(generation: presentationGeneration,
+                                                           now: ProcessInfo.processInfo.systemUptime) else { return }
             if self.checkWindowStatus(reclose: false){
                 return
             }
@@ -2899,6 +3024,9 @@ public class Display : Equatable {
             
             // Delay because it use to slow down performances for some reason
             delay(ms: 25){
+                guard !self.windowHidden,
+                      self.flowGate.allowsScheduledPresentation(generation: presentationGeneration,
+                                                               now: ProcessInfo.processInfo.systemUptime) else { return }
                 NSApplication.shared.activate(ignoringOtherApps: true)
             }
             
@@ -2949,24 +3077,22 @@ public class Display : Equatable {
             return
         }
         
+        let presentationGeneration = flowGate.presentationGeneration
         DispatchQueue.main.async {
             Timer.scheduledTimer(withTimeInterval: 0.1, repeats: false) { timer in
                 // Search may have entered fullscreen after this close was scheduled.
-                guard !self.fullOverscreenMode else { return }
-                
-                // Force it elsewhere
-                //manager.window?.setFrame(NSRect(origin: NSPoint(x:self.screen.frame.minX-5000, y: self.screen.frame.minY-5000), size: NSSize(width: 0, height: 0)), display: false)
-                
-                if(!self.debugDontHide && !self.spaceIsChanging){ // buh
+                guard self.flowGate.presentationGeneration == presentationGeneration,
+                      !self.fullOverscreenMode, !self.windowHidden,
+                      !self.shortcutAnimationInProgress else { return }
+
+                if !self.debugDontHide && !self.spaceIsChanging {
                     self.manager.window?.orderBack(nil)
                     NSApplication.shared.deactivate()
                 }
-                
-                //TODO: check if spaceChanged is still an useful condition
                 if !self.spaceIsChanging {
                     self.restoreFocusAfterHiding()
                 }
-                
+
                 //curFrontApp = nil
                 //curFrontWindow = nil
                 
@@ -2980,7 +3106,7 @@ public class Display : Equatable {
                 self.windowHidden = true
                 self.outFullOverscreenMode()
                 self.updatePerformanceActivity()
-                
+
                 if #available(macOS 12.3, *){
                     if(self.side != 3){
                         (self.manager.capturePreview as? CapturePreview)?.captureView.unset()
@@ -3029,6 +3155,7 @@ public class Display : Equatable {
             return
         }
                 
+        flowGate.endInteractionDismissal()
         Static.mouseInDisplay = self
         Static.curDisplay = self
         manager.curDisplay = self
@@ -3605,6 +3732,15 @@ public class Display : Equatable {
             return
         }
         
+        let now = ProcessInfo.processInfo.systemUptime
+        if !flowGate.allowsPointerPresentation(pointer: mouse, displayFrame: frame,
+                                              edgeInset: activateOnPixelsLimit, now: now) {
+            resetMouseTrackingForShortcutAnimation(mouse: mouse)
+            lastMotionSampleTime = now
+            previousMotionSpeed = 0
+            return
+        }
+
         if shortcutAnimationInProgress {
             resetMouseTrackingForShortcutAnimation(mouse: mouse)
             return

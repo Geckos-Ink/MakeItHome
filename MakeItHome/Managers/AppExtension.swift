@@ -456,9 +456,30 @@ class AppExtensionManager {
             return reply
         }
         
+        // This route shares the secret/token checks above with every other operation.
+        if req.hasPrefix("/ackStatusMessages") {
+            guard let body = dataReq.flatMap({ jsonStringToDictionary(jsonString: $0) }),
+                  let ids = body["ids"] as? [String], ids.count <= AppExtensionStatusMailbox.maxCount,
+                  ids.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 128 }) else {
+                reply.status = "error"
+                reply.description = "invalidAcknowledgement"
+                return reply
+            }
+            app!.acknowledgeStatusEvents(ids: ids)
+            reply.status = "ok"
+            return reply
+        }
+
         if req.hasPrefix("/checkStatus"){
             let isShowing = app!.imShowing()
-            let statusMessages = app!.consumeStatusMessages()
+            let statusMessages: [String]?
+            if query["reliableStatus"] == "1" {
+                let events = app!.pendingStatusEvents()
+                reply.statusEvents = events
+                statusMessages = events.isEmpty ? nil : events.map(\.value)
+            } else {
+                statusMessages = app!.consumeStatusMessages()
+            }
             
             reply.appExtensionIsShowing = isShowing
             reply.statusMessages = statusMessages
@@ -904,6 +925,7 @@ struct AppExtensionMsg : Codable {
     
     var appExtensionIsShowing : Bool?
     var statusMessages : [String]?
+    var statusEvents : [AppExtensionStatusEvent]?
     
     var appLinked : Bool?
     var nextPollInMs : Int?
@@ -920,6 +942,8 @@ class AppExtension {
     private var lastAppliedContentRevision = 0
     private var needsContainer = true
     private var syncInFlight = false
+    private var contentSyncGeneration = 0
+    private var forceContentReloadPending = false
     private var healthCheckInFlight = false
     private var lastSyncAttemptAt: TimeInterval = 0
     private var lastHealthCheckAt: TimeInterval = 0
@@ -928,8 +952,7 @@ class AppExtension {
     private let healthCheckInterval: TimeInterval = 2.0
     private let maxQueuedMessages = 200
     
-    var hasStatusUpdate : Bool = false
-    var statusMessages : [String] = []
+    private var statusMailbox = AppExtensionStatusMailbox()
     
     var jsMessages : [String] = []
     
@@ -944,6 +967,7 @@ class AppExtension {
     
     func setHTMLContent(content: String, forceReload: Bool = false){
         if forceReload {
+            forceContentReloadPending = true
             markNeedsContainer()
         }
 
@@ -1012,26 +1036,32 @@ class AppExtension {
     }
     
     func addMessage(msg: String){
-        statusMessages.append(msg)
-        hasStatusUpdate = true
+        let type = jsonStringToDictionary(jsonString: msg)?["type"] as? String
+        let isSafari = bundleId == "com.apple.Safari"
+        let replace = isSafari && (type == "clickedOn" || type == "tabPosition" || type == "safariViewReady") ? type : nil
+        statusMailbox.append(msg, replacementKey: replace,
+                             lifetime: isSafari && type == "clickedOn" ? 15 : nil,
+                             now: AppExtensionStatusMailbox.now)
     }
-    
+
+    func pendingStatusEvents() -> [AppExtensionStatusEvent] {
+        statusMailbox.pending(now: AppExtensionStatusMailbox.now)
+    }
+
+    func acknowledgeStatusEvents(ids: [String]) {
+        statusMailbox.acknowledge(ids, now: AppExtensionStatusMailbox.now)
+    }
+
     func consumeStatusMessages() -> [String]? {
-        guard !statusMessages.isEmpty else {
-            hasStatusUpdate = false
-            return nil
-        }
-        
-        let messages = statusMessages
-        statusMessages = []
-        hasStatusUpdate = false
-        return messages
+        statusMailbox.consumeLegacy(now: AppExtensionStatusMailbox.now)
     }
-    
+
     func teardown() {
+        contentSyncGeneration += 1
+        syncInFlight = false
+        healthCheckInFlight = false
         jsMessages = []
-        statusMessages = []
-        hasStatusUpdate = false
+        statusMailbox.clear()
     }
 
     func webViewDidFinishLoading() {
@@ -1057,6 +1087,9 @@ class AppExtension {
             return
         }
         
+        let generation = contentSyncGeneration
+        let webViewIdentity = ObjectIdentifier(webView)
+        let forceReload = forceContentReloadPending
         let shouldCreate = needsContainer
         let targetRevision = contentRevision
         let shouldSetContent = hasReceivedContent && lastAppliedContentRevision != targetRevision
@@ -1072,17 +1105,19 @@ class AppExtension {
         var scriptParts: [String] = []
         
         if shouldCreate {
-            scriptParts.append("createAppExtension(\(bundleIdLiteral));")
+            scriptParts.append("createAppExtension(\(bundleIdLiteral), \(forceReload ? "true" : "false"));")
         }
         
         if shouldSetContent {
             let contentLiteral = jsStringLiteral(htmlContent)
-            scriptParts.append("setContent(\(bundleIdLiteral), \(contentLiteral));")
+            scriptParts.append("setContent(\(bundleIdLiteral), \(contentLiteral), \(forceReload ? "true" : "false"));")
         }
         
         let script = scriptParts.joined()
         
         evaluateJavascript(script) { _, error in
+            guard self.contentSyncGeneration == generation,
+                  Static.AppExtensionWebView.map({ ObjectIdentifier($0) }) == webViewIdentity else { return }
             self.syncInFlight = false
             
             if error == nil {
@@ -1092,6 +1127,7 @@ class AppExtension {
                 
                 if shouldSetContent && self.contentRevision == targetRevision {
                     self.lastAppliedContentRevision = targetRevision
+                    self.forceContentReloadPending = false
                 }
             }
             
@@ -1107,8 +1143,12 @@ class AppExtension {
     func scheduleHealthCheckIfNeeded(force: Bool = false) {
         guard self.imShowing() else { return }
         guard !healthCheckInFlight else { return }
-        guard Static.AppExtensionWebView != nil else { return }
-        
+        guard !syncInFlight, !needsContainer,
+              let webView = Static.AppExtensionWebView, !webView.isLoading else { return }
+        let generation = contentSyncGeneration
+        let webViewIdentity = ObjectIdentifier(webView)
+        let revision = contentRevision
+
         let now = Date.now.timeIntervalSince1970
         if !force && (now - lastHealthCheckAt) < healthCheckInterval {
             return
@@ -1122,9 +1162,14 @@ class AppExtension {
         let script = "Boolean(document.getElementById(\(elementLiteral)))"
         
         evaluateJavascript(script) { result, error in
+            guard self.contentSyncGeneration == generation,
+                  Static.AppExtensionWebView.map({ ObjectIdentifier($0) }) == webViewIdentity else { return }
             self.healthCheckInFlight = false
-            
-            let isReady = (result as? Bool) == true && error == nil
+            // An execution error/late result is not evidence that the DOM is
+            // missing. Rebuilding on those errors interrupts carousel browsing.
+            guard error == nil, let isReady = result as? Bool,
+                  !webView.isLoading, !self.syncInFlight,
+                  self.contentRevision == revision else { return }
             if !isReady {
                 self.markNeedsContainer()
                 self.syncIfNeeded(force: true)
@@ -1151,6 +1196,9 @@ class AppExtension {
     }
     
     private func markNeedsContainer() {
+        contentSyncGeneration += 1
+        syncInFlight = false
+        healthCheckInFlight = false
         needsContainer = true
         lastAppliedContentRevision = -1
     }

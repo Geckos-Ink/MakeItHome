@@ -525,6 +525,47 @@ enum PreviewFlowGateTests {
                      "desktop settling cannot trigger repair on the fullscreen display")
     }
 
+    static func testInteractionDismissalCannotReopenFromStaleWork() {
+        Check.section("Extension dismissal cancels stale presentation and re-arms")
+        var gate = PreviewFlowGate()
+        let frame = CGRect(x: 1920, y: -300, width: 1440, height: 900)
+        let edge = CGPoint(x: frame.minX + 1, y: frame.midY)
+        let now: TimeInterval = 100
+        let oldGeneration = gate.presentationGeneration
+        gate.beginInteractionDismissal(now: now)
+        let newGeneration = gate.presentationGeneration
+        Check.expect(!gate.allowsScheduledPresentation(generation: oldGeneration, now: now + 0.1),
+                     "a show queued before the click cannot undo the close")
+        Check.expect(!gate.allowsScheduledPresentation(generation: newGeneration, now: now + 0.1),
+                     "a new edge show waits while the pointer remains at the clicked edge")
+        for tick in 0..<100 {
+            Check.expect(!gate.allowsPointerPresentation(pointer: edge, displayFrame: frame,
+                                                         edgeInset: 35, now: now + Double(tick) / 100),
+                         "pointer tick \(tick) cannot reopen during dismissal")
+        }
+        Check.expect(gate.allowsPointerPresentation(pointer: CGPoint(x: frame.midX, y: frame.midY),
+                                                    displayFrame: frame, edgeInset: 35, now: now + 1),
+                     "moving into the display immediately permits a fresh interaction")
+        Check.expect(gate.allowsScheduledPresentation(generation: newGeneration, now: now + 1),
+                     "fresh presentation works after pointer re-entry")
+        Check.expect(!gate.allowsScheduledPresentation(generation: oldGeneration, now: now + 10),
+                     "cancelled show callbacks stay cancelled after the gate re-arms")
+
+        gate.beginInteractionDismissal(now: now + 20)
+        Check.expect(gate.allowsPointerPresentation(pointer: edge, displayFrame: frame, edgeInset: 35,
+                                                    now: now + 20 + PreviewFlowGate.interactionDismissalDuration),
+                     "the deadline recovers without requiring a browser acknowledgement")
+        gate.beginInteractionDismissal(now: now + 30)
+        gate.endInteractionDismissal()
+        Check.expect(gate.allowsScheduledPresentation(generation: gate.presentationGeneration, now: now + 30),
+                     "an explicit shortcut can open immediately")
+        Check.expect(!gate.allowsScheduledPresentation(generation: oldGeneration, now: now + 30),
+                     "explicit re-entry does not revive pre-click show work")
+        let otherDisplay = PreviewFlowGate()
+        Check.expect(otherDisplay.allowsScheduledPresentation(generation: otherDisplay.presentationGeneration, now: now),
+                     "another display is not affected by the handoff")
+    }
+
     // --- Runner --------------------------------------------------------------------------------
 
     static func main() {
@@ -552,6 +593,7 @@ enum PreviewFlowGateTests {
         testFullscreenNeverRepairsItsMissingPlaceholder()
         testMissingPlaceholderRepairHasGrace()
         testMultiDisplayTopologiesSettleIndependently()
+        testInteractionDismissalCannotReopenFromStaleWork()
 
         print("\n────────────────────────────────────────")
         if Check.failed == 0 {

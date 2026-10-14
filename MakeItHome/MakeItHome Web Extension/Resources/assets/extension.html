@@ -4,16 +4,17 @@
 #safariTabs .swiper-slide {
     pointer-events: auto;
     box-sizing: border-box;
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) 30px;
     align-items: center;
-    justify-content: center;
+    justify-items: center;
+    min-height: 0;
     gap: 8px;
     padding: 12px;
     cursor: pointer;
     backface-visibility: hidden;
 }
-#safariTabs img { max-height: calc(100% - 48px); max-width: 100%; object-fit: contain; border-radius: 6px; }
+#safariTabs img { width: 100%; height: 100%; min-height: 0; min-width: 0; object-fit: contain; border-radius: 6px; }
 #safariTabs img[hidden] { display: none; }
 #safariTabs .safari-tab-title {
     width: 100%;
@@ -38,18 +39,41 @@
 </div>
 <script>
     vars.safari = vars.safari || {}
-    // Content reinjection replaces the DOM. Preserve navigation, release images
-    // and listeners from the old instance, and rebuild only for this new content.
+    // Identical content never re-runs this script. For a genuine content update,
+    // reuse bounded runtime image nodes/order instead of emptying a warm cache.
     rememberSafariPosition(false)
     destroySwiper()
-    for(const tab of Object.values(vars.safari.tabs || {})) releaseSafariPreview(tab)
     for(const name of ['swiperRetryTimer', 'swiperRefreshTimer', 'positionTimer']){
         clearTimeout(vars.safari[name])
         vars.safari[name] = null
     }
-    vars.safari.slides = []
-    vars.safari.tabs = {}
+    if(vars[(settingContentBundleId || curBundleId)+'_forceReload']){
+        for(const tab of Object.values(vars.safari.tabs || {})) releaseSafariPreview(tab)
+        vars.safari.tabs = {}
+        vars.safari.tabInfos = {}
+        vars.safari.inventoryReady = false
+        vars.safari.order = []
+        delete vars[(settingContentBundleId || curBundleId)+'_forceReload']
+    }
+    vars.safari.slides = vars.safari.slides || []
+    vars.safari.tabs = vars.safari.tabs || {}
+    vars.safari.tabInfos = vars.safari.tabInfos || {}
+    vars.safari.order = vars.safari.order || vars.safari.slides.map(slide=>Number(slide.getAttribute('tabId')))
     vars.safari.restoring = false
+    vars.safari.interactionUntil = 0
+    refreshSafariSlides(true)
+
+    function safariIsInteracting(){
+        return isShowing && (Date.now() < (vars.safari.interactionUntil || 0) ||
+            (vars.safari.swiper?.animating && Date.now() < (vars.safari.lastInteractionAt || 0) + 1500))
+    }
+
+    function noteSafariInteraction(event){
+        const keyboard = event.type === 'keydown' && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)
+        if(!isShowing || (!keyboard && !event.target?.closest('#safariTabs'))) return
+        vars.safari.lastInteractionAt = Date.now()
+        vars.safari.interactionUntil = Date.now() + 300
+    }
 
     function swiperHasLayout(){
         const container = document.getElementById('safariTabs')
@@ -70,10 +94,16 @@
         const swiper = vars.safari.swiper
         if(!swiper || swiper.destroyed || vars.safari.restoring) return
         const index = swiper.activeIndex
-        const slide = vars.safari.slides[index]
+        const slide = swiper.slides?.[index] || vars.safari.slides[index]
         if(!slide) return
+        // Keep a saved tab that is still open while its preview batch is loading.
+        if(vars.safari.position && vars.safari.tabInfos[vars.safari.position.id] &&
+           !vars.safari.slides.some(item=>Number(item.getAttribute('tabId')) === Number(vars.safari.position.id)) &&
+           !safariIsInteracting()) return
         const id = Number(slide.getAttribute('tabId'))
         vars.safari.position = {id, index}
+        const size = swiper.slidesSizesGrid?.[index] || 1
+        vars.safari.positionOffset = (swiper.translate + (swiper.slidesGrid?.[index] || 0)) / size || 0
         clearTimeout(vars.safari.positionTimer)
         if(notify && isShowing){
             // Coalesce wheel/drag changes; persist only an ID and fallback index.
@@ -88,30 +118,41 @@
         const swiper = vars.safari.swiper
         if(!swiper || swiper.destroyed) return
         vars.safari.restoring = true
-        swiper.slideTo(safariPositionIndex(), 0, false)
+        const index = safariPositionIndex()
+        swiper.slideTo(index, 0, false)
+        if(vars.safari.positionOffset && swiper.slidesSizesGrid){
+            swiper.setTranslate(swiper.translate + vars.safari.positionOffset * (swiper.slidesSizesGrid[index] || 0))
+            swiper.updateProgress()
+            swiper.updateActiveIndex()
+            swiper.updateSlidesClasses()
+        }
         vars.safari.restoring = false
     }
 
     function scheduleSwiperRefresh(attempt = 0){
         clearTimeout(vars.safari.swiperRefreshTimer)
-        // The native overlay animates its geometry. All retries are bounded and
-        // stop while hidden; adding a batch needs only one layout update.
-        const delays = [0, 16, 50, 120, 250]
+        const wait = safariIsInteracting() ? Math.max(80, vars.safari.interactionUntil - Date.now() + 16) : (attempt ? 120 : 0)
         vars.safari.swiperRefreshTimer = setTimeout(()=>{
             vars.safari.swiperRefreshTimer = null
-            if(swiperHasLayout()){
-                ensureSwiper()
-                const swiper = vars.safari.swiper
-                if(swiper && !swiper.destroyed){
-                    vars.safari.restoring = true
-                    swiper.update()
-                    vars.safari.restoring = false
-                    restoreSafariPosition()
-                    swiper.setTranslate(swiper.translate)
-                }
+            if(!isShowing) return
+            if(safariIsInteracting()) { scheduleSwiperRefresh(); return }
+            if(!swiperHasLayout()){
+                if(attempt < 10) scheduleSwiperRefresh(attempt + 1)
+                return
             }
-            if(isShowing && attempt + 1 < delays.length) scheduleSwiperRefresh(attempt + 1)
-        }, delays[attempt])
+            if(vars.safari.slidesDirty) { refreshSafariSlides(); return }
+            const hadSwiper = !!vars.safari.swiper
+            ensureSwiper()
+            const swiper = vars.safari.swiper
+            if(hadSwiper && swiper && !swiper.destroyed){
+                vars.safari.restoring = true
+                swiper.update()
+                restoreSafariPosition()
+                vars.safari.restoring = false
+            }
+            // ResizeObserver belongs to Swiper. Do not repeatedly re-center a
+            // free-mode carousel after successful layout while the user scrolls.
+        }, wait)
     }
 
     function ensureSwiper(attempt = 0){
@@ -145,7 +186,9 @@
             preventClicks: false,
             coverflowEffect: {rotate: 5, stretch: 0, depth: 100, modifier: 1, slideShadows: false},
             keyboard: {enabled: true, onlyInViewport: true},
-            on: {slideChange: ()=>rememberSafariPosition()}
+            on: {slideChange: ()=>{
+                if(safariIsInteracting()) rememberSafariPosition()
+            }}
         })
         vars.safari.restoring = false
     }
@@ -170,9 +213,14 @@
         }
         if(vars.safari.swiper) vars.safari.swiper.keyboard.enable()
         scheduleSwiperRefresh()
+        // A WebKit reload/content recovery may clear this cache while Safari
+        // still regards its frames as delivered. Report IDs, never image data.
+        sendStatus(JSON.stringify({type: 'safariViewReady', inventoryReady: !!vars.safari.inventoryReady, position: vars.safari.position || null, previewIds:
+            Object.values(vars.safari.tabs).filter(tab=>tab.previewURL).map(tab=>Number(tab.info.id))}))
     })
     setEvent('exit', ()=>{
         rememberSafariPosition()
+        vars.safari.interactionUntil = 0
         clearTimeout(vars.safari.swiperRefreshTimer)
         clearTimeout(vars.safari.swiperRetryTimer)
         vars.safari.swiperRefreshTimer = null
@@ -196,7 +244,6 @@
             title.className = 'safari-tab-title'
             slide.append(img, title)
             tab = vars.safari.tabs[tabInfo.id] = {slide, img, title}
-            vars.safari.slides.push(slide)
         }
         tab.info = tabInfo
         // Website-controlled titles must never be interpolated as HTML.
@@ -208,17 +255,53 @@
     }
 
     function syncSafariTabs(tabInfos, position = null){
+        tabInfos = tabInfos.filter(info=>info && Number.isSafeInteger(info.id) && info.id >= 0)
         if(!vars.safari.position && position) vars.safari.position = position
+        rememberSafariPosition(false)
         const openIds = new Set(tabInfos.map(tab=>String(tab.id)))
         vars.safari.restoring = true
         for(const id of Object.keys(vars.safari.tabs)){
             if(!openIds.has(id)) removeSafariTab(id, false)
         }
-        for(const info of tabInfos) upsertSafariTab(info)
+        vars.safari.tabInfos = Object.fromEntries(tabInfos.map(info=>[info.id, info]))
+        vars.safari.inventoryReady = true
+        vars.safari.order = vars.safari.order.filter(id=>openIds.has(String(id)))
+        const known = new Set(vars.safari.order)
+        for(const info of tabInfos){
+            if(!known.has(info.id)){vars.safari.order.push(info.id); known.add(info.id)}
+        }
+        // Metadata updates titles of existing previews. Never create a card
+        // for a tab that Safari has not captured yet.
+        for(const info of tabInfos){
+            if(vars.safari.tabs[info.id]) upsertSafariTab(info)
+        }
         vars.safari.restoring = false
+        refreshSafariSlides()
+    }
+
+    function refreshSafariSlides(force = false){
+        const slides = vars.safari.order.map(id=>vars.safari.tabs[id])
+            .filter(tab=>tab?.previewURL).map(tab=>tab.slide)
+        const changed = slides.length !== vars.safari.slides.length || slides.some((slide, index)=>slide !== vars.safari.slides[index])
+        if(!changed && !force) return
+        if(!force && safariIsInteracting()){
+            vars.safari.slidesDirty = true
+            scheduleSwiperRefresh()
+            return
+        }
+        rememberSafariPosition(false)
+        vars.safari.restoring = true
+        vars.safari.slides = slides
+        vars.safari.slidesDirty = false
         const wrapper = document.querySelector('#safariTabs .swiper-wrapper')
-        // Move existing nodes in one operation. Their images and selection survive.
-        wrapper.replaceChildren(...vars.safari.slides)
+        // Only insert/remove changed cards. Moving the entire wrapper destroys
+        // pointer targets and lets activeIndex refer to a different tab.
+        const included = new Set(slides)
+        for(const child of Array.from(wrapper.children)) if(!included.has(child)) child.remove()
+        slides.forEach((slide, index)=>{
+            if(wrapper.children[index] !== slide) wrapper.insertBefore(slide, wrapper.children[index] || null)
+        })
+        vars.safari.restoring = false
         scheduleSwiperRefresh()
     }
 
@@ -226,7 +309,11 @@
         if(tab.previewURL) URL.revokeObjectURL(tab.previewURL)
         tab.previewURL = null
         tab.previewChars = 0
+        tab.previewFingerprint = null
         if(tab.img){
+            // Detach handlers before revoking/resetting the old resource.
+            tab.img.onload = null
+            tab.img.onerror = null
             tab.img.removeAttribute('src')
             tab.img.hidden = true
         }
@@ -234,7 +321,7 @@
 
     function trimSafariPreviews(){
         const previews = Object.values(vars.safari.tabs).filter(tab=>tab.previewURL)
-            .sort((a, b)=>b.previewAt - a.previewAt)
+            .sort((a, b)=>Number(b.info.id === vars.safari.position?.id) - Number(a.info.id === vars.safari.position?.id) || b.previewAt - a.previewAt)
         let chars = 0
         previews.forEach((tab, index)=>{
             chars += tab.previewChars
@@ -243,13 +330,35 @@
     }
 
     function addScreenshot(blob, tabInfo){
-        const tab = upsertSafariTab(tabInfo)
+        // Inventory is authoritative: late frames must not resurrect closed tabs.
+        const currentInfo = vars.safari.tabInfos[tabInfo.id]
+        if(!blob || !currentInfo) return
+        const tab = upsertSafariTab(currentInfo)
+        let first = 2166136261, second = 5381
+        for(let i=0; i<blob.length; i++){
+            first = Math.imul(first ^ blob.charCodeAt(i), 16777619)
+            second = Math.imul(second, 33) ^ blob.charCodeAt(i)
+        }
+        const fingerprint = `${blob.length}:${first >>> 0}:${second >>> 0}`
+        if(tab.previewURL && tab.previewFingerprint === fingerprint) return
         const bytes = Uint8Array.from(atob(blob), char=>char.charCodeAt(0))
         const url = URL.createObjectURL(new Blob([bytes], {type: 'image/jpeg'}))
         releaseSafariPreview(tab)
+        // Use a new element per resource: a queued error from a replaced image
+        // must never run the replacement image's handler and evict its preview.
+        const img = document.createElement('img')
+        img.alt = ''
+        tab.img.replaceWith(img)
+        tab.img = img
         tab.previewURL = url
+        tab.previewFingerprint = fingerprint
         tab.previewChars = blob.length
         tab.previewAt = Date.now()
+        tab.img.onerror = ()=>{
+            if(tab.previewURL !== url) return
+            releaseSafariPreview(tab)
+            refreshSafariSlides()
+        }
         tab.img.src = url
         tab.img.hidden = false
     }
@@ -257,37 +366,30 @@
     function applySafariScreenshots(items){
         for(const item of items) addScreenshot(item.blob, item.tabInfo)
         trimSafariPreviews()
-        // Metadata normally creates every slide before previews arrive.
-        const wrapper = document.querySelector('#safariTabs .swiper-wrapper')
-        for(const slide of vars.safari.slides){
-            if(slide.parentNode !== wrapper) wrapper.append(slide)
-        }
-        if(!vars.safari.swiper) scheduleSwiperRefresh()
+        refreshSafariSlides()
     }
 
     function clickedOnSafariTab(id){
+        const tab = vars.safari.tabs[id]
+        if(!tab || !tab.previewURL) return
         const index = vars.safari.slides.findIndex(slide=>String(slide.getAttribute('tabId')) === String(id))
         vars.safari.position = {id: Number(id), index: Math.max(0, index)}
+        vars.safari.positionOffset = 0
         restoreSafariPosition()
-        // The compatibility URL bridge can coalesce adjacent navigations.
-        for(let i = 0; i < 3; i++){
-            setTimeout(()=>{
-                focusOnMe()
-                sendStatus(JSON.stringify({type: 'clickedOn', id}))
-            }, i * 100)
-        }
-        sendStatus(JSON.stringify({type: 'tabPosition', ...vars.safari.position}))
+        // One bridge message binds focus and selection to this extension.
+        // Native queues the selection only after closing and focusing its owner.
+        focusOnMe(JSON.stringify({type: 'clickedOn', id: Number(id), index: Math.max(0, index)}))
     }
 
     function removeSafariTab(id, refresh = true){
+        rememberSafariPosition(false)
         const tab = vars.safari.tabs[id]
         if(tab){
             releaseSafariPreview(tab)
             tab.slide.remove()
             delete vars.safari.tabs[id]
         }
-        vars.safari.slides = vars.safari.slides.filter(slide=>String(slide.getAttribute('tabId')) !== String(id))
-        if(refresh) scheduleSwiperRefresh()
+        if(refresh) refreshSafariSlides()
     }
 
     function animateRemoveSafariTab(id){
@@ -300,7 +402,14 @@
         for(const id of Object.keys(vars.safari.tabs)){
             if(!openIds.has(id)) removeSafariTab(id, false)
         }
-        scheduleSwiperRefresh()
+        refreshSafariSlides()
+    }
+
+    if(!vars.safari.interactionHandlersBound){
+        vars.safari.interactionHandlersBound = true
+        for(const name of ['wheel', 'pointerdown', 'pointermove', 'touchstart', 'touchmove', 'keydown']){
+            document.addEventListener(name, noteSafariInteraction, {passive: true})
+        }
     }
 
     if(!vars.safari.clickHandlerBound){
