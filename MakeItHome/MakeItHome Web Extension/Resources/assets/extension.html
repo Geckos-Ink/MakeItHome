@@ -16,7 +16,11 @@
 }
 #safariTabs img { width: 100%; height: 100%; min-height: 0; min-width: 0; object-fit: contain; border-radius: 6px; }
 #safariTabs img[hidden] { display: none; }
-#safariTabs .safari-tab-title {
+#safariTabs .safari-tab-caption {
+    display: grid;
+    grid-template-columns: 18px minmax(0, 1fr);
+    align-items: center;
+    gap: 6px;
     width: 100%;
     max-width: 640px;
     padding: 5px 9px;
@@ -27,12 +31,17 @@
     font-size: 14px;
     font-weight: bold;
     line-height: 20px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
     text-align: center;
     flex-shrink: 0;
 }
+#safariTabs .safari-tab-title {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#safariTabs .safari-tab-icon { width: 18px; height: 18px; line-height: 18px; }
+#safariTabs .safari-tab-icon img { width: 18px; height: 18px; border-radius: 3px; }
 </style>
 <div id="safariTabs" class="safariSwiperContainer swiper swiper-container" aria-label="Safari tabs">
     <div class="swiper-wrapper"></div>
@@ -48,7 +57,10 @@
         vars.safari[name] = null
     }
     if(vars[(settingContentBundleId || curBundleId)+'_forceReload']){
-        for(const tab of Object.values(vars.safari.tabs || {})) releaseSafariPreview(tab)
+        for(const tab of Object.values(vars.safari.tabs || {})){
+            releaseSafariPreview(tab)
+            releaseSafariTabIcon(tab)
+        }
         vars.safari.tabs = {}
         vars.safari.tabInfos = {}
         vars.safari.inventoryReady = false
@@ -61,6 +73,7 @@
     vars.safari.order = vars.safari.order || vars.safari.slides.map(slide=>Number(slide.getAttribute('tabId')))
     vars.safari.restoring = false
     vars.safari.interactionUntil = 0
+    for(const tab of Object.values(vars.safari.tabs)) upsertSafariTab(tab.info)
     refreshSafariSlides(true)
 
     function safariIsInteracting(){
@@ -245,13 +258,71 @@
             slide.append(img, title)
             tab = vars.safari.tabs[tabInfo.id] = {slide, img, title}
         }
+        // Also upgrade retained cards when new HTML arrives in a warm context.
+        if(!tab.caption){
+            tab.caption = document.createElement('div')
+            tab.caption.className = 'safari-tab-caption'
+            tab.icon = document.createElement('span')
+            tab.icon.className = 'safari-tab-icon'
+            tab.icon.setAttribute('aria-hidden', 'true')
+            tab.iconFallback = document.createElement('span')
+            tab.iconFallback.textContent = '🌐'
+            tab.icon.append(tab.iconFallback)
+            tab.caption.append(tab.icon, tab.title)
+            tab.slide.append(tab.caption)
+        }
         tab.info = tabInfo
         // Website-controlled titles must never be interpolated as HTML.
         const title = tabInfo.title || tabInfo.url || 'Safari tab'
         tab.title.textContent = title
         tab.slide.title = title
         tab.slide.setAttribute('aria-label', title)
+        updateSafariTabIcon(tab, tabInfo.favIconUrl)
         return tab
+    }
+
+    function updateSafariTabIcon(tab, source){
+        // Never interpret website metadata as markup or load browser-internal,
+        // file or script URLs in the native host. No favicon lookup service.
+        let url = ''
+        if(typeof source === 'string' && source.length <= 32768){
+            try {
+                const parsed = new URL(source)
+                if(['https:', 'http:'].includes(parsed.protocol) && !parsed.username && !parsed.password) url = parsed.href
+                else if(/^data:image\/(png|gif|jpeg|webp|x-icon|vnd\.microsoft\.icon);base64,[a-z0-9+/=]+$/i.test(source)) url = source
+            } catch(_) {}
+        }
+        if(tab.iconURL === url) return
+        releaseSafariTabIcon(tab)
+        tab.iconURL = url
+        if(!url) return
+        const img = document.createElement('img')
+        img.alt = ''
+        img.referrerPolicy = 'no-referrer'
+        img.hidden = true
+        tab.iconImage = img
+        img.onload = ()=>{
+            if(tab.iconImage !== img) return
+            img.hidden = false
+            tab.iconFallback.hidden = true
+        }
+        img.onerror = ()=>{
+            if(tab.iconImage !== img) return
+            releaseSafariTabIcon(tab)
+        }
+        tab.icon.append(img)
+        img.src = url
+    }
+
+    function releaseSafariTabIcon(tab){
+        if(tab.iconImage){
+            tab.iconImage.onload = null
+            tab.iconImage.onerror = null
+            tab.iconImage.removeAttribute('src')
+            tab.iconImage.remove()
+            tab.iconImage = null
+        }
+        if(tab.iconFallback) tab.iconFallback.hidden = false
     }
 
     function syncSafariTabs(tabInfos, position = null){
@@ -386,6 +457,7 @@
         const tab = vars.safari.tabs[id]
         if(tab){
             releaseSafariPreview(tab)
+            releaseSafariTabIcon(tab)
             tab.slide.remove()
             delete vars.safari.tabs[id]
         }

@@ -85,7 +85,10 @@ function viewHarness(){
         Date: class extends Date {static now(){return now}},
         setTimeout(fn, delay){const id = ++timerId; timers.set(id, {fn,delay}); return id}, clearTimeout:id=>timers.delete(id),
         setEvent:(name, fn)=>events[name] = fn, sendStatus:msg=>statuses.push(JSON.parse(msg)), focusOnMe:status=>focusRequests.push(JSON.parse(status)),
-        URL:{createObjectURL(){const url = 'blob:' + ++urlId; urls.add(url); return url}, revokeObjectURL:url=>urls.delete(url)},
+        URL:class extends URL {
+            static createObjectURL(){const url = 'blob:' + ++urlId; urls.add(url); return url}
+            static revokeObjectURL(url){urls.delete(url)}
+        },
         document: {getElementById:()=>container, querySelector:()=>wrapper, createElement:tag=>new Element(tag), addEventListener(){}},
         Swiper: class {
             constructor(selector, options){creates++; this.slides = [...wrapper.children]; this.activeIndex = options.initialSlide; this.options = options; this.keyboard = {enable(){}, disable(){}}}
@@ -105,6 +108,75 @@ function seedPreviews(h, infos, position = null){
     h.run(`syncSafariTabs(${JSON.stringify(infos)}, ${JSON.stringify(position)}); applySafariScreenshots(${JSON.stringify(infos.map(tabInfo=>({blob:'YQ==',tabInfo})))})`)
 }
 ;(async()=>{
+    await check('Safari manifest and both extension configurations match the containing app version/build', ()=>{
+        const manifest = JSON.parse(fs.readFileSync(path.join(resources, 'manifest.json'), 'utf8'))
+        const project = fs.readFileSync(path.join(__dirname, '../MakeItHome.xcodeproj/project.pbxproj'), 'utf8')
+        const configs = [...project.matchAll(/buildSettings = \{([\s\S]*?)\n\t\t\t\};/g)].map(match=>match[1])
+        const versions = bundle=>configs.filter(config=>config.includes(`PRODUCT_BUNDLE_IDENTIFIER = ${bundle};`))
+            .map(config=>({version:config.match(/MARKETING_VERSION = ([^;]+);/)[1], build:config.match(/CURRENT_PROJECT_VERSION = ([^;]+);/)[1]}))
+        const app = versions('ink.geckos.MakeItHome'), extension = versions('ink.geckos.MakeItHome.WebExtension')
+        assert.equal(app.length, 2)
+        assert.equal(extension.length, 2)
+        assert.deepEqual(extension, app)
+        for(const config of extension) assert.equal(manifest.version, config.version)
+    })
+    await check('tab favicons render beside safe titles and update without replacing previews or position', ()=>{
+        const h = viewHarness()
+        seedPreviews(h, [{id:1,title:'One',favIconUrl:'https://example.test/favicon.ico'},{id:2,title:'Two'}], {id:1,index:0}); h.flush()
+        const tab = h.run('vars.safari.tabs[1]'), image = tab.img, icon = tab.iconImage
+        assert.equal(icon.src, 'https://example.test/favicon.ico')
+        assert.equal(icon.referrerPolicy, 'no-referrer')
+        icon.onload()
+        assert.equal(icon.hidden, false)
+        assert.equal(tab.iconFallback.hidden, true)
+        h.run(`syncSafariTabs([{id:1,title:'<svg onload=alert(1)>',favIconUrl:'https://example.test/favicon.ico'},{id:2,title:'Two'}])`)
+        assert.equal(tab.iconImage, icon)
+        assert.equal(tab.title.textContent, '<svg onload=alert(1)>')
+        const staleError = icon.onerror
+        h.run(`syncSafariTabs([{id:1,title:'Updated',favIconUrl:'data:image/png;base64,YQ=='},{id:2,title:'Two'}])`)
+        const replacement = tab.iconImage
+        replacement.onload(); staleError()
+        assert.equal(tab.iconImage, replacement)
+        assert.equal(icon.onerror, null)
+        assert.equal(tab.img, image)
+        assert.equal(h.run('vars.safari.position.id'), 1)
+        h.inject(); h.flush()
+        assert.equal(tab.iconImage, replacement)
+        replacement.onerror()
+        assert.equal(tab.iconImage, null)
+        assert.equal(tab.iconFallback.hidden, false)
+        assert.equal(h.run('vars.safari.slides.length'), 2)
+    })
+    await check('missing, unsafe and failed favicons use a fallback without removing tab previews', ()=>{
+        const h = viewHarness()
+        seedPreviews(h, [{id:1,title:'One'}]); h.flush()
+        const tab = h.run('vars.safari.tabs[1]')
+        for(const url of ['', 'javascript:alert(1)', 'file:///tmp/icon.png', 'safari-web-extension://test/icon.png', 'https://user:pass@example.test/icon', 'data:text/html;base64,YQ==']){
+            h.run(`syncSafariTabs([{id:1,title:'One',favIconUrl:${JSON.stringify(url)}}])`)
+            assert.ok(!tab.iconImage)
+            assert.equal(tab.iconFallback.hidden, false)
+        }
+        h.run(`syncSafariTabs([{id:1,title:'One',favIconUrl:'https://example.test/a.png'}])`)
+        const icon = tab.iconImage
+        h.inject(true)
+        assert.equal(icon.onload, null)
+        assert.equal(icon.onerror, null)
+    })
+    await check('updated HTML upgrades retained title-only cards without a new metadata delivery', ()=>{
+        const h = viewHarness()
+        seedPreviews(h, [{id:1,title:'One',favIconUrl:'https://example.test/icon.png'}]); h.flush()
+        const tab = h.run('vars.safari.tabs[1]'), image = tab.img, slide = tab.slide
+        // Simulate a retained card created by the previous title-only controller.
+        h.run(`{
+            const tab=vars.safari.tabs[1];releaseSafariTabIcon(tab);tab.slide.append(tab.title);tab.caption.remove();
+            delete tab.caption;delete tab.icon;delete tab.iconURL;delete tab.iconFallback;
+        }`)
+        h.inject(); h.flush()
+        assert.equal(tab.slide, slide)
+        assert.equal(tab.img, image)
+        assert.equal(tab.title.parentNode, tab.caption)
+        assert.equal(tab.iconImage.src, 'https://example.test/icon.png')
+    })
     await check('content script creates no per-page timers or messages', ()=>{
         vm.runInNewContext(fs.readFileSync(path.join(resources, 'content.js'), 'utf8'), {})
     })
@@ -123,6 +195,9 @@ function seedPreviews(h, infos, position = null){
         h.setTabs([{id:1, windowId:10, index:0, title:'Renamed'}])
         await h.run('checkOpenTabs()')
         assert.match(messages.at(-1), /Renamed/)
+        h.setTabs([{id:1,windowId:10,index:0,title:'Renamed',favIconUrl:'https://example.test/icon.png'}])
+        await h.run('checkOpenTabs()')
+        assert.match(messages.at(-1), /"favIconUrl":"https:\/\/example.test\/icon.png"/)
     })
     await check('closing the final tab clears the inventory; failed queries preserve it', async()=>{
         const h = harness(), messages = []

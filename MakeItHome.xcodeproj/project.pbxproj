@@ -1157,7 +1157,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = "MakeItHome/MakeItHome Web Extension/MakeItHome_Web_Extension.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 165;
 				DEVELOPMENT_TEAM = UYSXKZ8U4Z;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -1170,7 +1170,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.3;
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 2.1.1;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,
@@ -1188,7 +1188,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = "MakeItHome/MakeItHome Web Extension/MakeItHome_Web_Extension.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
+				CURRENT_PROJECT_VERSION = 165;
 				DEVELOPMENT_TEAM = UYSXKZ8U4Z;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -1201,7 +1201,7 @@
 					"@executable_path/../../../../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 12.3;
-				MARKETING_VERSION = 1.1;
+				MARKETING_VERSION = 2.1.1;
 				OTHER_LDFLAGS = (
 					"-framework",
 					SafariServices,

@@ -56,7 +56,8 @@ class Fixture: NSObject, WKNavigationDelegate {
         window.frameLandscape=canvas.toDataURL('image/jpeg').split(',')[1];
         canvas.width=360;canvas.height=640;context.fillRect(0,0,360,640);
         window.framePortrait=canvas.toDataURL('image/jpeg').split(',')[1];
-        window.infos=Array.from({length:10},(_,i)=>({id:i+1,title:'Tab '+(i+1)+' — cached preview title'}));
+        window.favicon=canvas.toDataURL('image/png');
+        window.infos=Array.from({length:10},(_,i)=>({id:i+1,title:'Tab '+(i+1)+' — cached preview title',favIconUrl:i%2?undefined:favicon}));
         infos[2].title='<img src=x onerror="window.injected=true"> — title is literal text '+ 'LongTitle'.repeat(40);
         window.populate=()=>{syncSafariTabs(infos,recoveryPosition);applySafariScreenshots(infos.map(tabInfo=>({tabInfo,blob:tabInfo.id%2?frameLandscape:framePortrait})))};
         window.expect=(condition,message)=>{if(!condition)throw Error(message)};
@@ -69,9 +70,17 @@ class Fixture: NSObject, WKNavigationDelegate {
             for(const tab of Object.values(vars.safari.tabs)){
                 expect(tab.img.naturalWidth>0 && !tab.img.hidden,'Preview did not decode');
                 expect(tab.title.textContent===tab.info.title,'Visible title is missing');
+                if(tab.info.favIconUrl){
+                    expect(tab.iconImage?.naturalWidth>0 && !tab.iconImage.hidden,'Favicon did not decode');
+                    const icon=tab.iconImage.getBoundingClientRect(), caption=tab.caption.getBoundingClientRect();
+                    // Coverflow transforms scale client rectangles; layout size stays fixed.
+                    expect(tab.iconImage.offsetWidth===18 && tab.iconImage.offsetHeight===18,'Favicon size changed');
+                    expect(icon.top>=caption.top && icon.bottom<=caption.bottom,'Favicon outside title row');
+                    expect(icon.right<=tab.title.getBoundingClientRect().left,'Favicon overlaps title');
+                }else expect(!tab.iconFallback.hidden,'Missing favicon has no fallback');
             }
             const image=slide.querySelector('img').getBoundingClientRect();
-            const title=slide.querySelector('.safari-tab-title').getBoundingClientRect();
+            const title=slide.querySelector('.safari-tab-caption').getBoundingClientRect();
             const card=slide.getBoundingClientRect();
             expect(title.width>0 && title.height>=29,'Title row collapsed');
             expect(title.bottom<=card.bottom+0.5 && title.top>=card.top,'Title outside card');
