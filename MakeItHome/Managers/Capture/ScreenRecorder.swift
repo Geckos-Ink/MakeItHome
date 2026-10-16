@@ -91,23 +91,55 @@ class ScreenRecorder: ObservableObject {
     // Combine subscribers.
     private var subscriptions = Set<AnyCancellable>()
     private var permissionRequestGate = ScreenRecordingPermissionGate()
+    private static var cursorControlRequestScheduled = false
+    private static var permissionOnboarding: ScreenRecordingPermissionOnboarding {
+        get {
+            ScreenRecordingPermissionOnboarding(rawValue: Static.User.string(forKey: "ScreenRecordingPermissionOnboarding") ?? "") ?? .notRequested
+        }
+        set {
+            Static.User.set(newValue.rawValue, forKey: "ScreenRecordingPermissionOnboarding")
+        }
+    }
+
+    private static func scheduleCursorControlRequestIfNeeded(screenRecordingGranted: Bool) {
+        guard permissionOnboarding.shouldRequestCursorControl(screenRecordingGranted: screenRecordingGranted),
+              !cursorControlRequestScheduled else { return }
+        cursorControlRequestScheduled = true
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            cursorControlRequestScheduled = false
+            guard permissionOnboarding.shouldRequestCursorControl(screenRecordingGranted: CGPreflightScreenCaptureAccess()),
+                  let position = CGEvent(source: nil)?.location,
+                  let event = CGEvent(mouseEventSource: nil, mouseType: .mouseMoved,
+                                      mouseCursorPosition: position, mouseButton: .left) else { return }
+
+            // Use the current Quartz coordinates, including on secondary displays.
+            // Posting the same-position move triggers macOS's cursor-control permission flow.
+            permissionOnboarding = .completed
+            event.post(tap: .cghidEventTap)
+        }
+    }
 
     /// Both startup checks and display refreshes can trigger the macOS permission prompt.
     private func shareableContent(excludingDesktopWindows: Bool,
                                   onScreenWindowsOnly: Bool) async throws -> SCShareableContent? {
         let needsPermission = !CGPreflightScreenCaptureAccess()
+        Self.scheduleCursorControlRequestIfNeeded(screenRecordingGranted: !needsPermission)
         if needsPermission {
             guard permissionRequestGate.beginRequest(now: ProcessInfo.processInfo.systemUptime) else {
                 return nil
             }
+            Self.permissionOnboarding.noteScreenRecordingRequest()
         }
         defer {
             if needsPermission {
                 permissionRequestGate.finishRequest()
             }
         }
-        return try await SCShareableContent.excludingDesktopWindows(excludingDesktopWindows,
-                                                                   onScreenWindowsOnly: onScreenWindowsOnly)
+        let content = try await SCShareableContent.excludingDesktopWindows(excludingDesktopWindows,
+                                                                         onScreenWindowsOnly: onScreenWindowsOnly)
+        Self.scheduleCursorControlRequestIfNeeded(screenRecordingGranted: true)
+        return content
     }
     
     var canRecord: Bool {

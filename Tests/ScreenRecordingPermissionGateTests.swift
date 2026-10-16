@@ -30,6 +30,24 @@ struct ScreenRecordingPermissionGateTests {
         expect(gate.beginRequest(now: 190), "Further retries use the same 15-second interval.")
         gate.finishRequest()
 
+        var onboarding = ScreenRecordingPermissionOnboarding.notRequested
+        expect(!onboarding.shouldRequestCursorControl(screenRecordingGranted: true),
+               "Existing Screen Recording grants do not trigger new onboarding.")
+        onboarding.noteScreenRecordingRequest()
+        expect(!onboarding.shouldRequestCursorControl(screenRecordingGranted: false),
+               "Denial cannot trigger cursor control.")
+        onboarding.noteScreenRecordingRequest()
+        expect(onboarding == .awaitingApproval, "Retries preserve pending onboarding.")
+        var restored = ScreenRecordingPermissionOnboarding(rawValue: onboarding.rawValue)!
+        expect(restored.shouldRequestCursorControl(screenRecordingGranted: true),
+               "Approval after a relaunch resumes pending cursor control.")
+        restored = .completed
+        restored.noteScreenRecordingRequest()
+        expect(!restored.shouldRequestCursorControl(screenRecordingGranted: true),
+               "A later revocation and approval must not repeat cursor onboarding.")
+        expect(ScreenRecordingPermissionOnboarding(rawValue: restored.rawValue) == .completed,
+               "Completed onboarding survives relaunch.")
+
         if failures == 0 {
             print("ScreenRecordingPermissionGateTests: PASS")
         } else {

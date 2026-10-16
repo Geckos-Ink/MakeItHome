@@ -108,6 +108,7 @@ Development branches are named after the version in progress. The 2.1.0 source i
 - MakeItHome requires macOS 12.3 or later and Xcode with the macOS SDK.
 - Open `MakeItHome.xcodeproj` in Xcode and run the `MakeItHome` scheme.
 - The app requires the **Screen Recording** and **Accessibility** permissions to function.
+- In the 2.1.1 development tree, the first Screen Recording approval starts a one-time cursor-control request after a one-second delay, by posting a mouse move at the cursor's current position. Pending onboarding survives a required app relaunch; actual macOS permission dialogs still require manual validation.
 - Run `./Tests/run.sh` for the focused preview-flow, clipboard-bound, and preview-title regression tests.
 - Debug-only runtime and stress harnesses are documented in [`MakeItHome/StressTests/README.md`](MakeItHome/StressTests/README.md).
 - The top Widgets Zone web assets live in `MakeItHome/Resources/assets/`; its Swift controller is `MakeItHome/Views/Overscreen/WidgetZoneView.swift`.

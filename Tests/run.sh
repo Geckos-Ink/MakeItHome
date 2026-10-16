@@ -33,6 +33,7 @@ swiftc -O -parse-as-library "$PREVIEW_TITLE_TEXT" "$PREVIEW_TITLE_TESTS" -o "$TE
 swiftc -O -parse-as-library "$ROOT/MakeItHome/Helpers/ScreenRecordingPermissionGate.swift" \
     "$ROOT/Tests/ScreenRecordingPermissionGateTests.swift" -o "$TEST_DIR/screen-recording-permission-gate-tests"
 "$TEST_DIR/screen-recording-permission-gate-tests"
+python3 "$ROOT/Tests/ScreenRecordingPermissionOnboardingTests.py"
 
 swiftc -O -parse-as-library "$ROOT/MakeItHome/Helpers/CaptureLifecycle.swift" \
     "$ROOT/Tests/CaptureLifecycleTests.swift" -o "$TEST_DIR/capture-lifecycle-tests"

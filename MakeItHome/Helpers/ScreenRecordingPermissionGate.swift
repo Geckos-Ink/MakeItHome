@@ -22,3 +22,20 @@ struct ScreenRecordingPermissionGate {
         requestInFlight = false
     }
 }
+
+/// Persisted onboarding progress, so approval can resume after a macOS-required relaunch.
+enum ScreenRecordingPermissionOnboarding: String {
+    case notRequested
+    case awaitingApproval
+    case completed
+
+    mutating func noteScreenRecordingRequest() {
+        if self == .notRequested {
+            self = .awaitingApproval
+        }
+    }
+
+    func shouldRequestCursorControl(screenRecordingGranted: Bool) -> Bool {
+        self == .awaitingApproval && screenRecordingGranted
+    }
+}
