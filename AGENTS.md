@@ -352,6 +352,7 @@ Required, non-secret signing input for both Debug and Release of the Safari Web 
 Manifest V3 declaration for the bundled Safari extension, including tabs, active-tab, web-navigation, storage, and alarms permissions.
 
 - **Entrypoints:** [`background.js`](MakeItHome/MakeItHome%20Web%20Extension/Resources/background.js), [`content.js`](MakeItHome/MakeItHome%20Web%20Extension/Resources/content.js), and [`popup.html`](MakeItHome/MakeItHome%20Web%20Extension/Resources/popup.html).
+- **Icon source:** [`Assets/logo-classic.png`](Assets/logo-classic.png) supplies the bundled `Resources/Icon.png` and all settings/toolbar PNG sizes under `Resources/images/`; regenerate those sizes from this source when replacing the MakeItHome Web icon.
 - **Common mistakes:** Any permission or asset change must also be present in the extension target resource phase.
 
 ### [`MakeItHome/MakeItHome Web Extension/Resources/background.js`](MakeItHome/MakeItHome%20Web%20Extension/Resources/background.js)
