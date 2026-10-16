@@ -35,9 +35,16 @@ handler = view[a:b]
 a = view.index('    public func webView(_ webView: WKWebView, didFinish')
 b = view.index('    public func userContentController(', a)
 navigation_finished = view[a:b]
+a = manager.index('    func waitForStatusResponse(')
+b = manager.index('    private func normalizedClientId(', a)
+status_wait = manager[a:b]
 fixture = r'''
 import Foundation
 import CryptoKit
+func parseURLQueryItems(from url: String) -> [String: String]? {
+    guard let components = URLComponents(string: url) else { return nil }
+    return Dictionary((components.queryItems ?? []).map { ($0.name, $0.value ?? "") }, uniquingKeysWith: { _, last in last })
+}
 extension Data { var sha256Hexa: String { SHA256.hash(data: self).map { String(format: "%02x", $0) }.joined() } }
 func jsonStringToDictionary(jsonString: String) -> [String: Any]? {
     (try? JSONSerialization.jsonObject(with: Data(jsonString.utf8))) as? [String: Any]
@@ -49,6 +56,9 @@ class AppExtension {
     var app: Int? = 1
     var jsMessages: [String] = []
     private var statusMailbox = AppExtensionStatusMailbox()
+    private var statusWaiter: (id: UUID, excluded: Set<String>, completion: () -> Void)?
+    private var statusWaitTimeout: DispatchWorkItem?
+    private(set) var isTornDown = false
     private var contentSyncGeneration = 0
     private var syncInFlight = false
     private var healthCheckInFlight = false
@@ -65,6 +75,12 @@ class Manager {
     private let tokenClockSkewSeconds: Int64 = 3
     private let pollWhenMessagePendingMs = 160, pollWhenShowingMs = 700, pollWhenHiddenMs = 3200
     TOKENS
+    STATUS_WAIT
+    func httpRequest(url: String, dataReq: String?) -> AppExtensionMsg {
+        let query = parseURLQueryItems(from: url) ?? [:]
+        let route = (url.components(separatedBy: "?").first ?? url).replacingOccurrences(of: "/appExtension", with: "")
+        return request(route, secret: query["secret"], token: query["token"], query: query, dataReq: dataReq)
+    }
     func request(_ req: String, secret providedSecret: String?, token providedToken: String?,
                  query: [String: String] = [:], dataReq: String? = nil) -> AppExtensionMsg {
         var reply = AppExtensionMsg()
@@ -213,12 +229,13 @@ class AppExtensionWebViewCoordinator: NSObject {
 '''
 for key, value in [('MAILBOX_METHODS', mailbox_methods), ('TOKENS', tokens), ('AUTH', auth),
                    ('ROUTES', routes), ('REPLY', reply), ('WEAK_HANDLER', weak_handler), ('HANDLER', handler),
-                   ('NAVIGATION_FINISHED', navigation_finished)]:
+                   ('NAVIGATION_FINISHED', navigation_finished), ('STATUS_WAIT', status_wait)]:
     fixture = fixture.replace(key, value)
-with tempfile.TemporaryDirectory(prefix='mih-extension-delivery-') as temp:
-    source = Path(temp) / 'DeliveryTests.swift'
-    binary = Path(temp) / 'DeliveryTests'
-    source.write_text(fixture)
-    subprocess.run(['swiftc', '-parse-as-library', str(root / 'MakeItHome/Helpers/AppExtensionStatusMailbox.swift'),
-                    str(source), '-o', str(binary)], check=True)
-    subprocess.run([str(binary)], check=True, timeout=30)
+if __name__ == '__main__':
+    with tempfile.TemporaryDirectory(prefix='mih-extension-delivery-') as temp:
+        source = Path(temp) / 'DeliveryTests.swift'
+        binary = Path(temp) / 'DeliveryTests'
+        source.write_text(fixture)
+        subprocess.run(['swiftc', '-parse-as-library', str(root / 'MakeItHome/Helpers/AppExtensionStatusMailbox.swift'),
+                        str(source), '-o', str(binary)], check=True)
+        subprocess.run([str(binary)], check=True, timeout=30)

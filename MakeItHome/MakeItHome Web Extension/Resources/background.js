@@ -323,6 +323,7 @@ function markTabsDirty(){
 let lastConfirmedTabsSignature = ""
 
 let screenshotLoopTimeout = null
+let screenshotLoopDueAt = 0
 let screenshotInProgress = false
 let pendingViewPosition = null
 let connectionRetryMs = 1000
@@ -336,6 +337,7 @@ let waitForStatusInFlight = false
 let waitForStatusStartedAt = 0
 let waitForStatusRunId = 0
 let lastServerSuggestedStatusPollMs = null
+let statusWaitSupported = false
 let connectionBlockedUntil = 0
 
 function spliceOrderedTabs(index){
@@ -604,7 +606,7 @@ function nextWaitForStatus(delayMs = getStatusPollIntervalMs()){
     clearTimeout(nextWaitForStatusTimeout)
     nextWaitForStatusTimeout = setTimeout(() => {
         waitForStatus();
-    }, Math.max(160, delayMs));
+    }, Math.max(statusWaitSupported ? 20 : 160, delayMs));
 }
 
 // Include the response body in the deadline; fetch alone ends at the headers.
@@ -652,6 +654,10 @@ async function handleStatusMessage(msg){
         }
         if(focus){
             const outcome = await focus
+            if(outcome === 'selected'){
+                lastActiveAt = Date.now()
+                captureRequested = true
+            }
             scheduleScreenshotLoop(120)
             return outcome
         }
@@ -660,10 +666,10 @@ async function handleStatusMessage(msg){
 }
 
 async function handleStatusMessages(statusMessages){
-    for(const msg of statusMessages || []){
+    await Promise.all((statusMessages || []).map(async msg=>{
         try { await handleStatusMessage(msg) }
         catch(error){ console.warn('Invalid or failed extension status message') }
-    }
+    }))
 }
 
 // Runtime-only receipts: repeated delivery after an ACK loss cannot repeat a
@@ -671,7 +677,7 @@ async function handleStatusMessages(statusMessages){
 const statusReceipts = new Map()
 async function handleStatusEvents(events){
     if(!Array.isArray(events)) return
-    const ids = []
+    const completions = []
     const pendingIds = new Set(events.map(event=>event.id))
     for(const event of events.slice(0, 128)){
         if(typeof event.id !== 'string' || event.id.length > 128 || !event.id ||
@@ -691,10 +697,10 @@ async function handleStatusEvents(events){
                 return 'failed'
             }).then(outcome=>{receipt.done = true; return outcome})
         }
-        await receipt.promise
-        ids.push(event.id)
+        completions.push(receipt.promise.then(()=>event.id))
     }
-    if(!ids.length) return
+    if(!completions.length) return
+    const ids = await Promise.all(completions)
     try {
         const req = await makeRequestUrl('/ackStatusMessages')
         const result = await fetchJSONWithTimeout(req, {
@@ -704,6 +710,7 @@ async function handleStatusEvents(events){
     } catch(error){
         // Keep receipts: the next poll redelivers and retries the ACK only.
         console.warn('Extension acknowledgement pending; will retry on redelivery')
+        nextWaitForStatus(500)
     }
 }
 
@@ -716,7 +723,7 @@ async function waitForStatus() {
 
     let now = Date.now()
     if(waitForStatusInFlight){
-        if(now - waitForStatusStartedAt > screenshotPolicy.statusMaxInFlightMs){
+        if(now - waitForStatusStartedAt > (statusWaitSupported ? 25000 : screenshotPolicy.statusMaxInFlightMs)){
             console.warn("waitForStatus watchdog released a stalled poll")
             waitForStatusInFlight = false
             waitForStatusStartedAt = 0
@@ -735,10 +742,17 @@ async function waitForStatus() {
     waitForStatusInFlight = true
     waitForStatusStartedAt = now
     let runId = ++waitForStatusRunId
+    let received = false
 
     try {
-        let req = await makeRequestUrl('/checkStatus?reliableStatus=1')
-        let res = await fetchJSONWithTimeout(req, {}, screenshotPolicy.statusRequestTimeoutMs)
+        const useWait = statusWaitSupported
+        const waitMs = appIsShowing ? 1000 : 20000
+        let req = await makeRequestUrl('/checkStatus?reliableStatus=1'+(useWait ? '&waitMs='+waitMs : ''))
+        // Exclude only unfinished commands. Completed receipts remain eligible
+        // for redelivery so a lost ACK is retried without repeating selection.
+        const receivedIds = [...statusReceipts].filter(([,receipt])=>!receipt.done).map(([id])=>id)
+        const options = useWait ? {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({receivedIds})} : {}
+        let res = await fetchJSONWithTimeout(req, options, useWait ? waitMs + 3500 : screenshotPolicy.statusRequestTimeoutMs)
         if(runId !== waitForStatusRunId) return
         if(Number.isFinite(res.nextPollInMs)){
             lastServerSuggestedStatusPollMs = res.nextPollInMs
@@ -763,18 +777,19 @@ async function waitForStatus() {
         }
         
         if(res.status === 'ok'){
-            if(Array.isArray(res.statusEvents)) await handleStatusEvents(res.statusEvents)
-            else await handleStatusMessages(res.statusMessages) // older native versions
-        }
-        if(runId !== waitForStatusRunId) return
-        let nextAppIsShowing = !!res.appExtensionIsShowing
-        if(appIsShowing != nextAppIsShowing){
-            appIsShowing = nextAppIsShowing
-                
-            if(appIsShowing){
-                markTabsDirty()
-                scheduleScreenshotLoop(100)
+            statusWaitSupported = res.statusWaitSupported === true
+            let nextAppIsShowing = !!res.appExtensionIsShowing
+            if(appIsShowing !== nextAppIsShowing){
+                appIsShowing = nextAppIsShowing
+                if(appIsShowing){markTabsDirty(); scheduleScreenshotLoop(100)}
             }
+            // Receive the next click while an older selection/storage/ACK is
+            // still pending. A newer click must cancel old work immediately.
+            const processing = Array.isArray(res.statusEvents) ? handleStatusEvents(res.statusEvents) : handleStatusMessages(res.statusMessages)
+            received = true
+            waitForStatusInFlight = false
+            nextWaitForStatus(statusWaitSupported ? (res.statusEvents?.length ? 100 : 20) : getStatusPollIntervalMs())
+            await processing
         }
         
     } catch (err) {
@@ -783,7 +798,7 @@ async function waitForStatus() {
             lastServerSuggestedStatusPollMs = null
         }
     } finally {
-        if(runId == waitForStatusRunId){
+        if(!received && runId == waitForStatusRunId){
             waitForStatusInFlight = false
             waitForStatusStartedAt = 0
             nextWaitForStatus()
@@ -1064,10 +1079,17 @@ async function shouldSkipBackgroundCapture(){
 }
 
 function scheduleScreenshotLoop(delayMs = getCaptureIntervalMs()){
+    const delay = Math.max(100, delayMs)
+    const dueAt = Date.now() + delay
+    // Repeated title/inventory events may advance work, never postpone it.
+    if(screenshotLoopTimeout !== null && screenshotLoopDueAt <= dueAt) return
     clearTimeout(screenshotLoopTimeout)
+    screenshotLoopDueAt = dueAt
     screenshotLoopTimeout = setTimeout(()=>{
+        screenshotLoopTimeout = null
+        screenshotLoopDueAt = 0
         runScreenshotLoop()
-    }, Math.max(100, delayMs))
+    }, delay)
 }
 
 async function captureScreenshotAndSend() {
@@ -1355,7 +1377,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab)=>{
         }
     }
     
-    if(changeInfo.url || changeInfo.status === 'loading') captureRevision++
+    if((changeInfo.url || changeInfo.status === 'loading') && (tab?.active || tabId === activeTabId)) captureRevision++
     // Ignore intermediate "loading" events: pages can fire dozens of them,
     // and title tickers on background tabs must not tighten the capture loop
     let meaningfulChange = changeInfo.status === "complete" || changeInfo.url || changeInfo.title || changeInfo.favIconUrl

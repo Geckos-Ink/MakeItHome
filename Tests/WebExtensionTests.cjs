@@ -153,7 +153,7 @@ function seedPreviews(h, infos, position = null){
         h.advance(700)
         await h.run('runScreenshotLoop()')
         assert.equal(h.run('captureRequested'), true)
-        assert.equal([...h.timers.values()].at(-1).delay, 300)
+        assert.ok([...h.timers.values()].at(-1).delay <= 300)
     })
     await check('an unfocused Safari window clears prompt capture work instead of spinning', async()=>{
         const h = harness()
@@ -908,6 +908,91 @@ function seedPreviews(h, infos, position = null){
         completeQuery([])
         await new Promise(resolve=>setImmediate(resolve))
         assert.equal(h.run('tabs[1].lastStrBlob'),'YQ==')
+    })
+    await check('title tickers cannot postpone a scheduled screenshot refresh indefinitely', async()=>{
+        const h=harness()
+        h.run('globalThis.refreshRuns=0;runScreenshotLoop=async()=>{refreshRuns++};scheduleScreenshotLoop(120)')
+        const timer=h.run('screenshotLoopTimeout')
+        for(let i=0;i<20;i++){
+            h.advance(50)
+            h.events.update.listener(1,{title:'Ticker '+i},{id:1,windowId:10,active:true,title:'Ticker '+i})
+        }
+        assert.equal(h.run('screenshotLoopTimeout'),timer)
+        await h.fireTimer(120)
+        assert.equal(h.run('refreshRuns'),1)
+    })
+    await check('background-page navigation cannot discard a valid foreground capture', async()=>{
+        const h=harness()
+        h.run(`appIsShowing=true;resizeAndCompressImage=async()=>({});blobToBase64=async()=> 'YQ=='`)
+        h.ctx.fetch=async()=>({blob:async()=>({})})
+        h.ctx.chrome.tabs.captureVisibleTab=(id,options,callback)=>{
+            h.events.update.listener(2,{status:'loading',url:'https://background.test'},{id:2,windowId:10,active:false,url:'https://background.test'})
+            callback('data:image/jpeg;base64,YQ==')
+        }
+        assert.equal((await h.run('captureScreenshotAndSend()')).changed,true)
+    })
+    await check('a waiting receive delivers a newer click while the older selection is stalled', async()=>{
+        const h=harness(),requests=[],selected=[]
+        let releaseOld,focusCalls=0
+        h.setTabs([{id:1,windowId:10,active:true},{id:2,windowId:10,active:false}])
+        h.run('toConnect=false')
+        h.ctx.chrome.windows.update=()=>++focusCalls===1 ? new Promise(resolve=>releaseOld=resolve) : Promise.resolve()
+        h.ctx.chrome.tabs.update=async id=>{selected.push(id);h.setTabs([{id:1,windowId:10,active:id===1},{id:2,windowId:10,active:id===2}])}
+        h.ctx.fetch=async(url,options)=>{
+            if(url.includes('/ackStatusMessages'))return {ok:true,json:async()=>({status:'ok'})}
+            requests.push({url,options})
+            const id=requests.length
+            return {ok:true,json:async()=>({status:'ok',statusWaitSupported:true,statusEvents:[{id:'click:'+id,value:JSON.stringify({type:'clickedOn',id})}]})}
+        }
+        const first=h.run('waitForStatus()')
+        await new Promise(resolve=>setImmediate(resolve))
+        assert.equal(h.run('waitForStatusInFlight'),false,'Receive must not wait for command execution')
+        const second=h.run('waitForStatus()')
+        await new Promise(resolve=>setImmediate(resolve))
+        assert.match(requests[1].url,/waitMs=20000/)
+        assert.deepEqual(JSON.parse(requests[1].options.body),{receivedIds:['click:1']})
+        h.fireTimer(150)
+        await new Promise(resolve=>setImmediate(resolve));h.fireTimer(400);await second
+        releaseOld()
+        await first
+        assert.deepEqual(selected,[2,2],'Old work must never select after the newer click')
+        assert.equal(h.run('captureRequested'),true,'Selection requests a fresh frame without relying on a Safari activation event')
+    })
+    await check('a batch starts its newest click without waiting for an older stalled command', async()=>{
+        const h=harness(),selected=[]
+        h.setTabs([{id:1,windowId:10,active:false},{id:2,windowId:10,active:true}])
+        h.ctx.chrome.tabs.update=async id=>selected.push(id)
+        h.ctx.fetch=async()=>({ok:true,json:async()=>({status:'ok'})})
+        const batch=h.run(`handleStatusEvents([{id:'old',value:'{"type":"clickedOn","id":1}'},{id:'new',value:'{"type":"clickedOn","id":2}'}])`)
+        await new Promise(resolve=>setImmediate(resolve));h.fireTimer(150)
+        await new Promise(resolve=>setImmediate(resolve));h.fireTimer(400);await batch
+        assert.deepEqual(selected,[2,2])
+    })
+    await check('the waiting response deadline includes its body and a late body cannot run commands', async()=>{
+        const h=harness(),selected=[]
+        let finishBody,signal
+        h.run('toConnect=false;statusWaitSupported=true')
+        h.ctx.fetch=async(url,options)=>{
+            assert.match(url,/waitMs=20000/)
+            signal=options.signal
+            return {ok:true,json:()=>new Promise(resolve=>finishBody=resolve)}
+        }
+        h.ctx.chrome.tabs.update=async id=>selected.push(id)
+        const receive=h.run('waitForStatus()')
+        await new Promise(resolve=>setImmediate(resolve));h.fireTimer(23500);await receive
+        assert.equal(signal.aborted,true)
+        assert.equal(h.run('waitForStatusInFlight'),false)
+        finishBody({status:'ok',statusWaitSupported:true,statusEvents:[{id:'expired',value:'{"type":"clickedOn","id":1}'}]})
+        await new Promise(resolve=>setImmediate(resolve))
+        assert.deepEqual(selected,[])
+    })
+    await check('an older native server retains ordinary polling without a waiting body', async()=>{
+        const h=harness(),requests=[]
+        h.run('toConnect=false')
+        h.ctx.fetch=async(url,options)=>{requests.push({url,options});return {ok:true,json:async()=>({status:'ok',nextPollInMs:700,statusEvents:[]})}}
+        await h.run('waitForStatus()');await h.run('waitForStatus()')
+        assert.equal(h.run('statusWaitSupported'),false)
+        assert.ok(requests.every(req=>!req.url.includes('waitMs') && !req.options.body))
     })
     completed = true
     console.log(`${checks} Web Extension regression checks passed.`)

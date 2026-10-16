@@ -272,6 +272,9 @@ class AppExtensionManager {
                     return reply
                 }
 
+                // Release a parked response and invalidate callbacks belonging
+                // to the connection whose credentials are being replaced.
+                apps[bundleId]?.teardown()
                 let newApp = AppExtension(bundleId: bundleId, identity: identity)
                 apps[bundleId] = newApp
                 saveTrustedExtension(identity: identity, extensionName: extensionName, secret: newApp.secret)
@@ -507,6 +510,51 @@ class AppExtensionManager {
         
         reply.status = "nothing"
         return reply
+    }
+
+    // Authentication is evaluated once on arrival, before retaining a response.
+    // A rolling token naturally expires during the wait; connection identity
+    // and revocation are checked again when waking instead of reusing that token.
+    func waitForStatusResponse(url: String, dataReq: String?, completion: @escaping (AppExtensionMsg) -> Void) -> (() -> Void)? {
+        let initial = httpRequest(url: url, dataReq: dataReq)
+        guard initial.status == "ok",
+              let query = parseURLQueryItems(from: url), query["reliableStatus"] == "1",
+              let bundleId = query["bundleId"], let app = apps[bundleId],
+              let waitMs = Int(query["waitMs"] ?? ""), waitMs > 0 else {
+            completion(initial)
+            return nil
+        }
+        let receivedIDs: [String]
+        if let dataReq {
+            guard let data = dataReq.data(using: .utf8), data.count <= 20 * 1024,
+                  let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let ids = body["receivedIds"] as? [String], ids.count <= AppExtensionStatusMailbox.maxCount,
+                  ids.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 128 }) else {
+                var failure = AppExtensionMsg()
+                failure.status = "error"
+                failure.description = "invalidReceivedIds"
+                completion(failure)
+                return nil
+            }
+            receivedIDs = ids
+        } else { receivedIDs = [] }
+        let excluded = Set(receivedIDs)
+        return app.waitForStatus(excluding: excluded, timeout: Double(min(waitMs, 20_000)) / 1000) { [weak self, weak app] in
+            guard let self, let app, !app.isTornDown, self.apps[bundleId] === app else {
+                var failure = AppExtensionMsg()
+                failure.status = "error"
+                failure.description = "appNotConnected"
+                completion(failure)
+                return
+            }
+            var reply = initial
+            let events = app.pendingStatusEvents().filter { !excluded.contains($0.id) }
+            reply.statusEvents = events
+            reply.statusMessages = events.isEmpty ? nil : events.map(\.value)
+            reply.appExtensionIsShowing = app.imShowing()
+            reply.appLinked = app.app != nil
+            completion(reply)
+        }
     }
 
     private func normalizedClientId(_ clientId: String?) -> String? {
@@ -929,6 +977,7 @@ struct AppExtensionMsg : Codable {
     
     var appLinked : Bool?
     var nextPollInMs : Int?
+    var statusWaitSupported: Bool? = true
 }
 
 class AppExtension {
@@ -953,6 +1002,9 @@ class AppExtension {
     private let maxQueuedMessages = 200
     
     private var statusMailbox = AppExtensionStatusMailbox()
+    private var statusWaiter: (id: UUID, excluded: Set<String>, completion: () -> Void)?
+    private var statusWaitTimeout: DispatchWorkItem?
+    private(set) var isTornDown = false
     
     var jsMessages : [String] = []
     
@@ -1042,6 +1094,32 @@ class AppExtension {
         statusMailbox.append(msg, replacementKey: replace,
                              lifetime: isSafari && type == "clickedOn" ? 15 : nil,
                              now: AppExtensionStatusMailbox.now)
+        wakeStatusWaiter()
+    }
+
+    func waitForStatus(excluding ids: Set<String>, timeout: TimeInterval, completion: @escaping () -> Void) -> () -> Void {
+        wakeStatusWaiter(force: true) // One parked response per connection identity.
+        let id = UUID()
+        statusWaiter = (id, ids, completion)
+        let work = DispatchWorkItem { [weak self] in self?.wakeStatusWaiter(force: true) }
+        statusWaitTimeout = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + min(max(0, timeout), 20), execute: work)
+        wakeStatusWaiter()
+        return { [weak self] in
+            guard self?.statusWaiter?.id == id else { return }
+            self?.statusWaiter = nil
+            self?.statusWaitTimeout?.cancel()
+            self?.statusWaitTimeout = nil
+        }
+    }
+
+    private func wakeStatusWaiter(force: Bool = false) {
+        guard let waiter = statusWaiter,
+              force || pendingStatusEvents().contains(where: { !waiter.excluded.contains($0.id) }) else { return }
+        statusWaiter = nil
+        statusWaitTimeout?.cancel()
+        statusWaitTimeout = nil
+        waiter.completion()
     }
 
     func pendingStatusEvents() -> [AppExtensionStatusEvent] {
@@ -1057,11 +1135,13 @@ class AppExtension {
     }
 
     func teardown() {
+        isTornDown = true
         contentSyncGeneration += 1
         syncInFlight = false
         healthCheckInFlight = false
         jsMessages = []
         statusMailbox.clear()
+        wakeStatusWaiter(force: true)
     }
 
     func webViewDidFinishLoading() {
