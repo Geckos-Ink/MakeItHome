@@ -73,9 +73,11 @@
             delete vars[bundleId+'_event_exit']
         }
 
-        function createAppExtension(bundleId){
+        function createAppExtension(bundleId, forceReload = false){
             bundleId = bundleId.replaceAll(".", "-")
 
+            if(!forceReload && document.getElementById(bundleId)) return
+            if(forceReload) vars[bundleId+'_forceReload'] = true
             clearExtensionEvents(bundleId)
             $("#"+bundleId).remove() // ensure there are no duplicates
 
@@ -91,7 +93,7 @@
             return new TextDecoder('utf-8').decode(bytes)
         }
 
-        function setContent(bundleId, content){
+        function setContent(bundleId, content, forceReload = false){
             bundleId = bundleId.replaceAll(".", "-")
             let $ext = $('#'+bundleId)
 
@@ -100,6 +102,10 @@
                 $ext = $('#'+bundleId)
             }
 
+            if(forceReload) vars[bundleId+'_forceReload'] = true
+            // Reconnect/health retries often deliver identical HTML. Retain
+            // its DOM, object URLs and navigation instead of re-running scripts.
+            if(!forceReload && $ext.data('extensionContent') === content) return
             $ext.stop(true, true)
             $ext.empty()
 
@@ -119,6 +125,7 @@
             settingContentBundleId = bundleId
             try {
                 $ext.html(decoded)
+                $ext.data('extensionContent', content)
             }
             finally {
                 settingContentBundleId = null
@@ -154,12 +161,12 @@
             let $ext = $('#'+bundleId)
             $ext.show()
 
+            // Show callbacks must observe visible state on the first reopen.
+            isShowing = true
             // Check for event
             let appEvent = vars[bundleId+'_event_show']
             if(appEvent)
-                appEvent()    
-            
-            isShowing = true
+                appEvent()
         }
 
         function exitingAppExtension(){
@@ -175,16 +182,17 @@
             vars[target+'_event_'+name] = func
         }
 
-        function sendMessage(message) {            
-            if(typeof(message) == 'object')
-                message = JSON.stringify(message)
-
-            console.log("sending message", message)
-            message = encodeURIComponent(message)        
-
-            setTimeout(()=>{
-                window.location.href = "myapp://message?text=" + message;  
-            }, Math.ceil(Math.random()*25))            
+        function sendMessage(message) {
+            if(typeof message === 'string') message = JSON.parse(message)
+            // Capture the displayed owner now, before a hide/show can change it.
+            message = {...message, strId: curBundleId}
+            const handler = window.webkit?.messageHandlers?.appExtensionMessage
+            if(handler){
+                handler.postMessage(message)
+                return
+            }
+            // Compatibility with native releases preceding the script handler.
+            window.location.href = "myapp://message?text=" + encodeURIComponent(JSON.stringify(message))
         }
 
         function sendStatus(status){
@@ -195,8 +203,8 @@
             sendMessage({type:'closeOverscreen'})
         }
 
-        function focusOnMe(){
-            sendMessage({type:'focusOnMe'})
+        function focusOnMe(status = null){
+            sendMessage({type:'focusOnMe', value: status})
         }
 
         function setVersion(v){

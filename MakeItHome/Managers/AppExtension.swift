@@ -272,6 +272,9 @@ class AppExtensionManager {
                     return reply
                 }
 
+                // Release a parked response and invalidate callbacks belonging
+                // to the connection whose credentials are being replaced.
+                apps[bundleId]?.teardown()
                 let newApp = AppExtension(bundleId: bundleId, identity: identity)
                 apps[bundleId] = newApp
                 saveTrustedExtension(identity: identity, extensionName: extensionName, secret: newApp.secret)
@@ -456,9 +459,30 @@ class AppExtensionManager {
             return reply
         }
         
+        // This route shares the secret/token checks above with every other operation.
+        if req.hasPrefix("/ackStatusMessages") {
+            guard let body = dataReq.flatMap({ jsonStringToDictionary(jsonString: $0) }),
+                  let ids = body["ids"] as? [String], ids.count <= AppExtensionStatusMailbox.maxCount,
+                  ids.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 128 }) else {
+                reply.status = "error"
+                reply.description = "invalidAcknowledgement"
+                return reply
+            }
+            app!.acknowledgeStatusEvents(ids: ids)
+            reply.status = "ok"
+            return reply
+        }
+
         if req.hasPrefix("/checkStatus"){
             let isShowing = app!.imShowing()
-            let statusMessages = app!.consumeStatusMessages()
+            let statusMessages: [String]?
+            if query["reliableStatus"] == "1" {
+                let events = app!.pendingStatusEvents()
+                reply.statusEvents = events
+                statusMessages = events.isEmpty ? nil : events.map(\.value)
+            } else {
+                statusMessages = app!.consumeStatusMessages()
+            }
             
             reply.appExtensionIsShowing = isShowing
             reply.statusMessages = statusMessages
@@ -486,6 +510,51 @@ class AppExtensionManager {
         
         reply.status = "nothing"
         return reply
+    }
+
+    // Authentication is evaluated once on arrival, before retaining a response.
+    // A rolling token naturally expires during the wait; connection identity
+    // and revocation are checked again when waking instead of reusing that token.
+    func waitForStatusResponse(url: String, dataReq: String?, completion: @escaping (AppExtensionMsg) -> Void) -> (() -> Void)? {
+        let initial = httpRequest(url: url, dataReq: dataReq)
+        guard initial.status == "ok",
+              let query = parseURLQueryItems(from: url), query["reliableStatus"] == "1",
+              let bundleId = query["bundleId"], let app = apps[bundleId],
+              let waitMs = Int(query["waitMs"] ?? ""), waitMs > 0 else {
+            completion(initial)
+            return nil
+        }
+        let receivedIDs: [String]
+        if let dataReq {
+            guard let data = dataReq.data(using: .utf8), data.count <= 20 * 1024,
+                  let body = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let ids = body["receivedIds"] as? [String], ids.count <= AppExtensionStatusMailbox.maxCount,
+                  ids.allSatisfy({ !$0.isEmpty && $0.utf8.count <= 128 }) else {
+                var failure = AppExtensionMsg()
+                failure.status = "error"
+                failure.description = "invalidReceivedIds"
+                completion(failure)
+                return nil
+            }
+            receivedIDs = ids
+        } else { receivedIDs = [] }
+        let excluded = Set(receivedIDs)
+        return app.waitForStatus(excluding: excluded, timeout: Double(min(waitMs, 20_000)) / 1000) { [weak self, weak app] in
+            guard let self, let app, !app.isTornDown, self.apps[bundleId] === app else {
+                var failure = AppExtensionMsg()
+                failure.status = "error"
+                failure.description = "appNotConnected"
+                completion(failure)
+                return
+            }
+            var reply = initial
+            let events = app.pendingStatusEvents().filter { !excluded.contains($0.id) }
+            reply.statusEvents = events
+            reply.statusMessages = events.isEmpty ? nil : events.map(\.value)
+            reply.appExtensionIsShowing = app.imShowing()
+            reply.appLinked = app.app != nil
+            completion(reply)
+        }
     }
 
     private func normalizedClientId(_ clientId: String?) -> String? {
@@ -904,9 +973,11 @@ struct AppExtensionMsg : Codable {
     
     var appExtensionIsShowing : Bool?
     var statusMessages : [String]?
+    var statusEvents : [AppExtensionStatusEvent]?
     
     var appLinked : Bool?
     var nextPollInMs : Int?
+    var statusWaitSupported: Bool? = true
 }
 
 class AppExtension {
@@ -920,6 +991,8 @@ class AppExtension {
     private var lastAppliedContentRevision = 0
     private var needsContainer = true
     private var syncInFlight = false
+    private var contentSyncGeneration = 0
+    private var forceContentReloadPending = false
     private var healthCheckInFlight = false
     private var lastSyncAttemptAt: TimeInterval = 0
     private var lastHealthCheckAt: TimeInterval = 0
@@ -928,8 +1001,10 @@ class AppExtension {
     private let healthCheckInterval: TimeInterval = 2.0
     private let maxQueuedMessages = 200
     
-    var hasStatusUpdate : Bool = false
-    var statusMessages : [String] = []
+    private var statusMailbox = AppExtensionStatusMailbox()
+    private var statusWaiter: (id: UUID, excluded: Set<String>, completion: () -> Void)?
+    private var statusWaitTimeout: DispatchWorkItem?
+    private(set) var isTornDown = false
     
     var jsMessages : [String] = []
     
@@ -944,6 +1019,7 @@ class AppExtension {
     
     func setHTMLContent(content: String, forceReload: Bool = false){
         if forceReload {
+            forceContentReloadPending = true
             markNeedsContainer()
         }
 
@@ -1012,26 +1088,60 @@ class AppExtension {
     }
     
     func addMessage(msg: String){
-        statusMessages.append(msg)
-        hasStatusUpdate = true
+        let type = jsonStringToDictionary(jsonString: msg)?["type"] as? String
+        let isSafari = bundleId == "com.apple.Safari"
+        let replace = isSafari && (type == "clickedOn" || type == "tabPosition" || type == "safariViewReady") ? type : nil
+        statusMailbox.append(msg, replacementKey: replace,
+                             lifetime: isSafari && type == "clickedOn" ? 15 : nil,
+                             now: AppExtensionStatusMailbox.now)
+        wakeStatusWaiter()
     }
-    
-    func consumeStatusMessages() -> [String]? {
-        guard !statusMessages.isEmpty else {
-            hasStatusUpdate = false
-            return nil
+
+    func waitForStatus(excluding ids: Set<String>, timeout: TimeInterval, completion: @escaping () -> Void) -> () -> Void {
+        wakeStatusWaiter(force: true) // One parked response per connection identity.
+        let id = UUID()
+        statusWaiter = (id, ids, completion)
+        let work = DispatchWorkItem { [weak self] in self?.wakeStatusWaiter(force: true) }
+        statusWaitTimeout = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + min(max(0, timeout), 20), execute: work)
+        wakeStatusWaiter()
+        return { [weak self] in
+            guard self?.statusWaiter?.id == id else { return }
+            self?.statusWaiter = nil
+            self?.statusWaitTimeout?.cancel()
+            self?.statusWaitTimeout = nil
         }
-        
-        let messages = statusMessages
-        statusMessages = []
-        hasStatusUpdate = false
-        return messages
     }
-    
+
+    private func wakeStatusWaiter(force: Bool = false) {
+        guard let waiter = statusWaiter,
+              force || pendingStatusEvents().contains(where: { !waiter.excluded.contains($0.id) }) else { return }
+        statusWaiter = nil
+        statusWaitTimeout?.cancel()
+        statusWaitTimeout = nil
+        waiter.completion()
+    }
+
+    func pendingStatusEvents() -> [AppExtensionStatusEvent] {
+        statusMailbox.pending(now: AppExtensionStatusMailbox.now)
+    }
+
+    func acknowledgeStatusEvents(ids: [String]) {
+        statusMailbox.acknowledge(ids, now: AppExtensionStatusMailbox.now)
+    }
+
+    func consumeStatusMessages() -> [String]? {
+        statusMailbox.consumeLegacy(now: AppExtensionStatusMailbox.now)
+    }
+
     func teardown() {
+        isTornDown = true
+        contentSyncGeneration += 1
+        syncInFlight = false
+        healthCheckInFlight = false
         jsMessages = []
-        statusMessages = []
-        hasStatusUpdate = false
+        statusMailbox.clear()
+        wakeStatusWaiter(force: true)
     }
 
     func webViewDidFinishLoading() {
@@ -1057,6 +1167,9 @@ class AppExtension {
             return
         }
         
+        let generation = contentSyncGeneration
+        let webViewIdentity = ObjectIdentifier(webView)
+        let forceReload = forceContentReloadPending
         let shouldCreate = needsContainer
         let targetRevision = contentRevision
         let shouldSetContent = hasReceivedContent && lastAppliedContentRevision != targetRevision
@@ -1072,17 +1185,19 @@ class AppExtension {
         var scriptParts: [String] = []
         
         if shouldCreate {
-            scriptParts.append("createAppExtension(\(bundleIdLiteral));")
+            scriptParts.append("createAppExtension(\(bundleIdLiteral), \(forceReload ? "true" : "false"));")
         }
         
         if shouldSetContent {
             let contentLiteral = jsStringLiteral(htmlContent)
-            scriptParts.append("setContent(\(bundleIdLiteral), \(contentLiteral));")
+            scriptParts.append("setContent(\(bundleIdLiteral), \(contentLiteral), \(forceReload ? "true" : "false"));")
         }
         
         let script = scriptParts.joined()
         
         evaluateJavascript(script) { _, error in
+            guard self.contentSyncGeneration == generation,
+                  Static.AppExtensionWebView.map({ ObjectIdentifier($0) }) == webViewIdentity else { return }
             self.syncInFlight = false
             
             if error == nil {
@@ -1092,6 +1207,7 @@ class AppExtension {
                 
                 if shouldSetContent && self.contentRevision == targetRevision {
                     self.lastAppliedContentRevision = targetRevision
+                    self.forceContentReloadPending = false
                 }
             }
             
@@ -1107,8 +1223,12 @@ class AppExtension {
     func scheduleHealthCheckIfNeeded(force: Bool = false) {
         guard self.imShowing() else { return }
         guard !healthCheckInFlight else { return }
-        guard Static.AppExtensionWebView != nil else { return }
-        
+        guard !syncInFlight, !needsContainer,
+              let webView = Static.AppExtensionWebView, !webView.isLoading else { return }
+        let generation = contentSyncGeneration
+        let webViewIdentity = ObjectIdentifier(webView)
+        let revision = contentRevision
+
         let now = Date.now.timeIntervalSince1970
         if !force && (now - lastHealthCheckAt) < healthCheckInterval {
             return
@@ -1122,9 +1242,14 @@ class AppExtension {
         let script = "Boolean(document.getElementById(\(elementLiteral)))"
         
         evaluateJavascript(script) { result, error in
+            guard self.contentSyncGeneration == generation,
+                  Static.AppExtensionWebView.map({ ObjectIdentifier($0) }) == webViewIdentity else { return }
             self.healthCheckInFlight = false
-            
-            let isReady = (result as? Bool) == true && error == nil
+            // An execution error/late result is not evidence that the DOM is
+            // missing. Rebuilding on those errors interrupts carousel browsing.
+            guard error == nil, let isReady = result as? Bool,
+                  !webView.isLoading, !self.syncInFlight,
+                  self.contentRevision == revision else { return }
             if !isReady {
                 self.markNeedsContainer()
                 self.syncIfNeeded(force: true)
@@ -1151,6 +1276,9 @@ class AppExtension {
     }
     
     private func markNeedsContainer() {
+        contentSyncGeneration += 1
+        syncInFlight = false
+        healthCheckInFlight = false
         needsContainer = true
         lastAppliedContentRevision = -1
     }

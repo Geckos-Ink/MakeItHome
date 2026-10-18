@@ -90,13 +90,64 @@ class ScreenRecorder: ObservableObject {
     
     // Combine subscribers.
     private var subscriptions = Set<AnyCancellable>()
+    private var permissionRequestGate = ScreenRecordingPermissionGate()
+    private static var cursorControlRequestScheduled = false
+    private static var permissionOnboarding: ScreenRecordingPermissionOnboarding {
+        get {
+            ScreenRecordingPermissionOnboarding(rawValue: Static.User.string(forKey: "ScreenRecordingPermissionOnboarding") ?? "") ?? .notRequested
+        }
+        set {
+            Static.User.set(newValue.rawValue, forKey: "ScreenRecordingPermissionOnboarding")
+        }
+    }
+
+    private static func scheduleCursorControlRequestIfNeeded(screenRecordingGranted: Bool) {
+        guard permissionOnboarding.shouldRequestCursorControl(screenRecordingGranted: screenRecordingGranted),
+              !cursorControlRequestScheduled else { return }
+        cursorControlRequestScheduled = true
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+            cursorControlRequestScheduled = false
+            guard permissionOnboarding.shouldRequestCursorControl(screenRecordingGranted: CGPreflightScreenCaptureAccess()),
+                  let position = CGEvent(source: nil)?.location,
+                  let event = CGEvent(mouseEventSource: nil, mouseType: .mouseMoved,
+                                      mouseCursorPosition: position, mouseButton: .left) else { return }
+
+            // Use the current Quartz coordinates, including on secondary displays.
+            // Posting the same-position move triggers macOS's cursor-control permission flow.
+            permissionOnboarding = .completed
+            event.post(tap: .cghidEventTap)
+        }
+    }
+
+    /// Both startup checks and display refreshes can trigger the macOS permission prompt.
+    private func shareableContent(excludingDesktopWindows: Bool,
+                                  onScreenWindowsOnly: Bool) async throws -> SCShareableContent? {
+        let needsPermission = !CGPreflightScreenCaptureAccess()
+        Self.scheduleCursorControlRequestIfNeeded(screenRecordingGranted: !needsPermission)
+        if needsPermission {
+            guard permissionRequestGate.beginRequest(now: ProcessInfo.processInfo.systemUptime) else {
+                return nil
+            }
+            Self.permissionOnboarding.noteScreenRecordingRequest()
+        }
+        defer {
+            if needsPermission {
+                permissionRequestGate.finishRequest()
+            }
+        }
+        let content = try await SCShareableContent.excludingDesktopWindows(excludingDesktopWindows,
+                                                                         onScreenWindowsOnly: onScreenWindowsOnly)
+        Self.scheduleCursorControlRequestIfNeeded(screenRecordingGranted: true)
+        return content
+    }
     
     var canRecord: Bool {
         get async {
             do {
                 // If the app doesn't have Screen Recording permission, this call generates an exception.
-                try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-                return true
+                return try await shareableContent(excludingDesktopWindows: false,
+                                                  onScreenWindowsOnly: true) != nil
             } catch {
                 return false
             }
@@ -133,6 +184,14 @@ class ScreenRecorder: ObservableObject {
     private var captureStopTask: Task<Void, Never>?
     private var captureUpdateTask: Task<Void, Never>?
     private var isStarting = false
+
+    #if STRESS_TEST_APP
+    private(set) var capturedFrameCount = 0
+    private(set) var stressConsumerID: UUID?
+    func ownedCaptureStreamGeneration() async -> UInt? {
+        await captureEngine.ownedStreamGeneration()
+    }
+    #endif
     
     /// Starts capturing screen content.
     func start(lowProfile: Bool = false, display: SCDisplay? = nil) async {
@@ -211,6 +270,9 @@ class ScreenRecorder: ObservableObject {
             // Start the stream and await new video frames.
             captureRunID &+= 1
             let runID = captureRunID
+            #if STRESS_TEST_APP
+            stressConsumerID = CaptureStressContext.consumerID
+            #endif
             startingRunID = runID
             lastFrame = nil
             lastFrameTime = 0
@@ -237,6 +299,10 @@ class ScreenRecorder: ObservableObject {
                                 
                 lastFrame = frame
                 lastFrame!.displayID = targetDisplayID
+
+                #if STRESS_TEST_APP
+                capturedFrameCount += 1
+                #endif
                 
                 capturePreview.updateFrame(frame)
                 
@@ -250,21 +316,16 @@ class ScreenRecorder: ObservableObject {
             }
             
             if runID == captureRunID {
-                Static.isRecordingScreen = false
-                isRunning = false
-                recordingOnDisplay = 0
+                // Cancellation of the consuming task also ends frame iteration.
+                // Release the SCStream before making this recorder eligible to start again.
+                await stopCaptureEngine()
             }
         } catch {
             guard startingRunID == captureRunID else {
                 return
             }
-            print("ScreenRecorder start error ese \(error.localizedDescription)")
-            // Unable to start the stream. Set the running state to false.
-            isRunning = false
-            isStarting = false
-            Static.isRecordingScreen = false
-            recordingOnDisplay = 0
-            lastFrame = nil
+            logger.error("Capture stream ended with error: \(error.localizedDescription)")
+            await stopCaptureEngine()
         }
     }
     
@@ -278,6 +339,9 @@ class ScreenRecorder: ObservableObject {
     /// an older start that resumes afterwards is rejected by `captureIntentID`.
     private func stopCaptureEngine() async {
         let needsEngineStop = isRunning || recordingOnDisplay != 0
+        #if STRESS_TEST_APP
+        stressConsumerID = nil
+        #endif
         captureRunID &+= 1
         recordingOnDisplay = 0
         lastFrame = nil
@@ -286,8 +350,12 @@ class ScreenRecorder: ObservableObject {
         isRunning = false
         isStarting = false
 
-        captureUpdateTask?.cancel()
-        await captureUpdateTask?.value
+        stopAudioMetering()
+
+        // Reserve the stop before the first suspension. A concurrent start must
+        // see and await it even while an older configuration update is draining.
+        let updateTask = captureUpdateTask
+        updateTask?.cancel()
         captureUpdateTask = nil
 
         if let captureStopTask {
@@ -296,24 +364,23 @@ class ScreenRecorder: ObservableObject {
         }
 
         guard needsEngineStop else {
-            stopAudioMetering()
+            await updateTask?.value
             return
         }
 
         stopOperationID &+= 1
         let operationID = stopOperationID
         let stopTask = Task { [captureEngine] in
+            await updateTask?.value
             await captureEngine.stopCapture()
         }
         captureStopTask = stopTask
-
         await stopTask.value
 
         if operationID == stopOperationID {
             captureStopTask = nil
         }
-        isRunning = false
-        stopAudioMetering()
+        // A newer start may already have resumed; do not clear its running state here.
     }
     
     private func startAudioMetering() {
@@ -414,8 +481,8 @@ class ScreenRecorder: ObservableObject {
     public func refreshAvailableContent() async {
         do {
             // Retrieve the available screen content to capture.
-            let availableContent = try await SCShareableContent.excludingDesktopWindows(true,
-                                                                                        onScreenWindowsOnly: false) // INVERTED(?)
+            guard let availableContent = try await shareableContent(excludingDesktopWindows: true,
+                                                                   onScreenWindowsOnly: false) else { return }
             availableDisplays = availableContent.displays
             
             let windows = filterWindows(availableContent.windows)

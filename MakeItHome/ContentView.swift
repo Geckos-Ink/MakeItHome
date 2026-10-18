@@ -274,8 +274,6 @@ public struct ContentView: View {
         }*/
     }
     
-    var firstAuthorizeScreenRecordingDone : Bool = false
-    
     init(){
         setupExceptionHandlers()
         
@@ -300,52 +298,29 @@ public struct ContentView: View {
             }
         }
         
-        var checkAuthorizationTicks = 0
-        
         //MARK: Show NoRecordingPermissionView if neccessary
         Timer.scheduledTimer(withTimeInterval: Static.WaitBeforeStarting, repeats: false) { timer in
-            Timer.scheduledTimer(withTimeInterval: 4.0, repeats: true) { timer in
-                if #available(macOS 12.3, *){
-                                    
-                    DispatchQueue.main.async {                        
+            func checkAuthorization() {
+                Task { @MainActor in
+                    if #available(macOS 12.3, *) {
                         if me.Displays.contentView == nil {
                             me.Displays.contentView = me
                         }
-                    }
-                    
-                    var checkAfter = (myself.firstAuthorizeScreenRecordingDone || !Static.ScreenRecordingUnauthorized) ? 5 : 0
-                    myself.firstAuthorizeScreenRecordingDone = true
-                    
-                    if checkAuthorizationTicks >= checkAfter {
-                        DispatchQueue.main.async {
-                            Task {
-                                await me.checkCanRecord()
-                            }
+
+                        if await me.checkCanRecord() {
+                            Static.CheckForThankYou()
+                        } else if myself.activatePanel == nil {
+                            myself.store.window?.close()
+                            myself.activatePanel = SwifterPanel<HowToRecordingPermissionView>(view: HowToRecordingPermissionView())
+                            myself.activatePanel?.show(centered: true)
                         }
-                        
-                        Timer.scheduledTimer(withTimeInterval: 1, repeats: false) { timer in
-                            DispatchQueue.main.async {
-                                if Static.ScreenRecordingUnauthorized {
-                                    if myself.activatePanel == nil {
-                                        myself.store.window?.close()
-                                        
-                                        myself.activatePanel = SwifterPanel<HowToRecordingPermissionView>(view: HowToRecordingPermissionView())
-                                        myself.activatePanel!.show()
-                                    }
-                                }
-                                else {
-                                    //TODO: is called multiple time... it's okay but...
-                                    Static.CheckForThankYou();
-                                }
-                            }
-                        }
-                        
-                        checkAuthorizationTicks = 0
-                    }
-                    else {
-                        checkAuthorizationTicks += 1
                     }
                 }
+            }
+
+            checkAuthorization()
+            Timer.scheduledTimer(withTimeInterval: ScreenRecordingPermissionGate.retryInterval, repeats: true) { _ in
+                checkAuthorization()
             }
             
             ///
@@ -371,7 +346,7 @@ public struct ContentView: View {
     var activatePanel : SwifterPanel<HowToRecordingPermissionView>?
     
     @MainActor
-    @available (macOS 12.3, *)
+    @available(macOS 12.3, *)
     func checkCanRecord() async -> Bool {
         if await (store.screenRecorder as! ScreenRecorder).canRecord {
             

@@ -1,11 +1,2 @@
-setInterval(()=>{
-    browser.runtime.sendMessage({ greeting: "hello" }).then((response) => {
-        console.log("MakeItHome Web: Received response: ", response);
-    });
-}, 1000)
-
-browser.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    console.log("Received request: ", request);
-});
-
-//chrome.runtime.sendMessage({extensionStart: true});
+// Tab metadata and captures are handled by background.js.
+// Keep this entry point for Safari website-access permissions; no page timers or messaging.

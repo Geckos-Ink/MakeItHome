@@ -1,6 +1,6 @@
 # MakeItHome — AI Agent Reference
 
-This is the fast-access operational reference for agents working on MakeItHome, a shipped macOS SwiftUI application that exposes an “overscreen” beyond display edges for live app previews, app switching, widgets, and trusted third-party extension content. The current tree builds marketing version 2.1.0, which is tagged as `release-2.1.0` and documented in the public README as the current Mac App Store release. Do not confuse the embedded Safari Web Extension, the optional third-party App Extension protocol, or the Angular source templates under `Assets/templates/` with the native application itself.
+This is the fast-access operational reference for agents working on MakeItHome, a shipped macOS SwiftUI application that exposes an “overscreen” beyond display edges for live app previews, app switching, widgets, and trusted third-party extension content. The current development tree builds marketing version 2.1.1 on branch `2.1.1`; version 2.1.0 is tagged as `release-2.1.0` and documented in the public README as the current Mac App Store release. The isolated Test target still uses marketing version 2.1.0. Do not confuse the embedded Safari Web Extension, the optional third-party App Extension protocol, or the Angular source templates under `Assets/templates/` with the native application itself.
 
 ## Read This First
 
@@ -67,7 +67,10 @@ No nested `AGENTS.md` files exist at this revision. This root file applies to th
 
 ## Critical Implementation Contracts
 
-- **Capture lifecycle serialization:** [`CaptureEngineOperationGate`](MakeItHome/Managers/Capture/CaptureEngine.swift) serializes `SCStream` start, update, and stop. [`ScreenRecorder.start`](MakeItHome/Managers/Capture/ScreenRecorder.swift) uses intent/run IDs and awaits in-flight stop/update work. Never overlap raw `SCStream` mutations or bypass these owners.
+- **Capture lifecycle serialization:** [`CaptureEngineOperationGate`](MakeItHome/Helpers/CaptureLifecycle.swift) serializes `SCStream` start, update, and stop. [`ScreenRecorder`](MakeItHome/Managers/Capture/ScreenRecorder.swift) publishes its stop task before awaiting configuration work, uses intent/run IDs, and releases the engine when frame iteration ends or is canceled. Never overlap raw `SCStream` mutations or clear a newer run's state after an older stop resumes.
+- **Capture frame ownership:** [`LatestCaptureFrames`](MakeItHome/Helpers/CaptureLifecycle.swift) retains only one newest queued frame. Each `CaptureEngineStreamOutput` yields to its own immutable channel; late callbacks must never look up the engine's current continuation. `CaptureEngine.startCapture` stops any previously owned stream before replacement. Screen frames stay in memory.
+- **Startup Screen Recording requests:** [`ScreenRecorder.shareableContent`](MakeItHome/Managers/Capture/ScreenRecorder.swift) gates permission-triggering content queries through [`ScreenRecordingPermissionGate`](MakeItHome/Helpers/ScreenRecordingPermissionGate.swift) on main, using monotonic uptime. While access is absent, allow the first request immediately, then at most one every 15 seconds, with no overlapping requests. Both `canRecord` and content refreshes must use this boundary; preflight-granted access bypasses the retry delay. `ContentView` polls authorization every 15 seconds and shows the instruction video with `SwifterPanel.show(centered: true)` after sizing its hosting content.
+- **First-approval cursor control:** `ScreenRecorder.scheduleCursorControlRequestIfNeeded` schedules one main-thread mouse-move event one second after observing approval following a Screen Recording request. Read the current `CGEvent.location` only after that delay and post at the same Quartz position, including on secondary displays. The `ScreenRecordingPermissionOnboarding` UserDefaults key stores `notRequested`/`awaitingApproval`/`completed`; pending progress survives a required relaunch and completion prevents repeat onboarding after denial, restart or later Screen Recording revocation. Pre-existing Screen Recording grants alone do not start this flow. Recheck Screen Recording access before posting, and retain pending progress if access is revoked or event creation fails. macOS owns the actual cursor-control permission dialog; do not treat posting as a grant.
 - **Preview flow gate:** [`PreviewFlowGate`](MakeItHome/Helpers/PreviewFlowGate.swift) is the canonical state machine for fullscreen, Space-change, duplicate-placeholder, missing-placeholder, focus-restore, and recorder eligibility. [`Display.checkForScreenshot`](MakeItHome/Managers/Displays.swift) must call stale recovery on an every-tick path, including paths that return before the window list is evaluated. Covered by [`Tests/PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift).
 - **Fullscreen detection:** A normal maximized window that leaves the menu-bar area visible is not automatically native fullscreen. Use `isFullscreenCandidateFrame` plus Accessibility full-screen state, and accept a complete display frame directly. Do not regress Stage Manager or multi-display geometry.
 - **Space topology:** A fullscreen Space legitimately has no MakeItHome placeholder. A single placeholder must settle before it becomes authoritative; duplicate IDs are repairable only after their stable grace period. Never repair a missing placeholder while fullscreen.
@@ -77,13 +80,27 @@ No nested `AGENTS.md` files exist at this revision. This root file applies to th
 - **Full-screen search pointer exit:** Native child `WKWebView`s intercept pointer events. Search exit may be armed only after real downward movement in the parent page; entering search must not pre-arm an upward exit. Keep search-only pointer behavior scoped to `fullOverscreenMode`.
 - **Permission-prompt ordering:** [`AppExtensionManager`](MakeItHome/Managers/AppExtension.swift) defers connection alerts while any display is presenting overscreen content. A prompt must not force-close active search or compete with the overscreen window. `Static.isExtensionApprovalPromptShowing` keeps displays dismissed during the blocking modal.
 - **Extension authentication:** All non-`/connect` App Extension operations require the current secret and `SHA256(secret:unixSecond)` token within the configured clock skew. Safari connections also require a nonempty `clientId`. Keep the 10-second post-approval grace behavior that converges racing connects without rotating secrets repeatedly.
-- **HTTP isolation and bounds:** [`SimpleHTTPServer.start`](MakeItHome/Managers/SimpleHttpServer.swift) sets `acceptLocalOnly`; request bodies are capped at 15 MiB; App Extension handling is dispatched synchronously to main because it touches UI-owned state. Do not expose this server beyond loopback or remove body bounds.
+- **Safari tab surface:** [`background.js`](MakeItHome/MakeItHome%20Web%20Extension/Resources/background.js) sends `syncSafariTabs` metadata before `applySafariScreenshots` batches. Metadata updates only existing cards; create a visible card only with a cached preview, and remove its card if the preview is evicted or fails to decode. Late frames must not resurrect closed tabs. Metadata/capture exclude unaddressable negative, fractional or unsafe IDs, while tab/window ID zero remains valid. Titles are text nodes, never interpolated HTML. Normal hide/show retains the carousel and images. Identical HTML delivery is idempotent; a genuine content update reuses cached image/card nodes and tab order in the same JavaScript context. Only explicit Reset or actual WebKit context loss clears the preview cache. Titles and 18 px tab favicons occupy a reserved 30 px grid row beneath a constrained image cell in both orientations. `updateSafariTabIcon` uses the browser-provided HTTP(S) or bounded raster data URL with no referrer and a globe fallback for missing/failed/unsupported icons; never use a third-party favicon lookup service. Icon replacement/reset/removal detaches retired image handlers and loads; icon failure must not evict the preview. Each replacement uses a new image element and detaches the old handlers before revocation, so a late load error cannot remove the newer preview. Each show sends `safariViewReady` with `inventoryReady`, the runtime position and retained preview IDs. A warm report causes no metadata/image resend; missing content re-sends metadata and only missing cached frames, restoring the saved non-private position for a cold context. A per-tab delivery revision prevents an older in-flight send acknowledgement from clearing that recovery work. Browser `safariCarouselOrder` and view `vars.safari.order` maintain the same stable first-seen ID order independently of screenshot/MRU priority or later window/index changes, including cold native view replay. The browser prunes closed IDs on inventory sync; the order stays in runtime memory. Structural changes insert/remove only affected nodes and wait for a 300 ms input pause (momentum protection capped at 1.5 seconds); preserve selected ID and fractional scroll offset. Read selection from Swiper's current slide objects, not a newly changed backing array. Use one successful layout update, not repeated re-centering timers. Identical frame fingerprints retain their image nodes/URLs, and cache eviction protects the selected preview within the existing bounds. Save the selected tab ID and fallback index through `tabPosition` status in browser storage, excluding private tabs; never persist previews or tab titles/URLs. Both browser and view caches cap previews at 60 and 8 MiB of base64 characters, with 256 KiB per frame and 768 KiB per send batch. Release bitmaps and replaced/removed/reinjected object URLs, retry failed deliveries, and preserve inventory events received during asynchronous sync. Keep capture requests for real switches/navigation paced separately from slower periodic captures; page title tickers must not mark user activity. The content script retains Safari website-access matching but performs no timers or messaging.
+- **App Extension focus handoff:** `focusOnMe(status)` in [`appExtensionView.html`](MakeItHome/Resources/assets/appExtensionView.html) sends focus and optional follow-up status through the `appExtensionMessage` WebKit handler (legacy URL fallback). [`AppExtensionWebViewCoordinator`](MakeItHome/Managers/Capture/Views/AppExtensionView.swift) pins the current extension owner, never `LastAppPreviewMouseOver`. Main-actor [`Display.focusAppExtension`](MakeItHome/Managers/Displays.swift) resolves that owner's immutable PID and validates its bundle ID, closes the full extension surface over 120 ms with a smooth curve (immediately with Reduce Motion), then clears every overscreen offset/animation/pointer-pressure value and queues follow-up status after requesting activation. `finishAppExtensionFocus` performs the final zero-state reset; generation checks cancel superseded animation and old show/hide callbacks. macOS 14+ uses cooperative `yieldActivation`/`activate(from:)`; older systems use explicit activation. `PreviewFlowGate` invalidates pre-click show/activation callbacks with a presentation generation and suppresses pointer reopening until it re-enters the display interior or a 1.5-second monotonic deadline expires; an explicit shortcut re-arms immediately. Safari's `safariAPI` awaits actual completion from either callback or Promise APIs. `resolveSafariTab` uses the exact safe integer ID (zero is valid), with a fresh exact-ID inventory fallback if direct lookup is rejected. `focusOnTab` restores a minimized target window, requests window focus, allows 150 ms to settle, then re-resolves the tab/window before selecting it; moved tabs use their new window automatically. A window read/focus rejection must not suppress tab selection. Verify the actual active tab/focused window and emit only tab ID/failure stage diagnostics; never substitute another tab by URL or index. `requestTabFocus` performs exactly one window/tab retry 400 ms later, including after an initial API rejection, and verifies the active tab and focused window. Each attempt expires after 1.2 seconds; completion resolves after the retry, never at the initial API response. A newer extension click or a closed target cancels old work, including checks after awaits; delayed Safari activation events must not cancel the required retry. Do not depend on the normal hide timer or a pointer tick to finish the handoff, leave `aboveByPixels`/`prevAboveByPixels` nonzero, or reintroduce independently delayed focus/tab-selection messages.
+- **App Extension status delivery:** [`AppExtensionStatusMailbox`](MakeItHome/Helpers/AppExtensionStatusMailbox.swift) retains runtime-only `{id,value}` events for `/checkStatus?reliableStatus=1` until authenticated `/ackStatusMessages` with JSON `{ids:[String]}`. Legacy polls still consume string messages. Queue bounds are 128 entries, 256 KiB total UTF-8, and 64 KiB per message. Safari coalesces each of `clickedOn`/`tabPosition`/`safariViewReady` separately; clicks expire after 15 seconds of continuous Mach time (including sleep) to avoid replay after sleep. Safari keeps at most 128 in-flight/completed receipts, preserves IDs still pending on the server, and resends lost ACKs without repeating selection. ACK means processing completed (including terminal failure/closed/superseded requests), not proof that macOS granted focus; failed verification produces a payload-free warning. All protocol fetch deadlines include JSON body parsing; stale poll responses cannot run commands. The WebKit handler accepts only the shared view's main frame and checks the source bundle when supplied (older content may omit it), uses a weak coordinator proxy, and resolves the current approved identity after the close animation. Revocation or a different identity blocks deferred delivery.
+- **App Extension content lifetime:** `createAppExtension` and identical `setContent` calls in the host page retain existing DOM by default; explicit `forceReload` is propagated by native sync. Transient/unknown health-check errors do not establish missing content. Only a confirmed missing container triggers automatic recovery. Native content/health callbacks carry document generation, content revision and view identity so stale callbacks cannot publish readiness or reinject content into a newer view; teardown invalidates outstanding callbacks from a retired connection. Covered by [`Tests/AppExtensionContentLifecycleTests.py`](Tests/AppExtensionContentLifecycleTests.py) and isolated WebKit rendering tests.
+- **HTTP isolation and bounds:** [`SimpleHTTPServer.start`](MakeItHome/Managers/SimpleHttpServer.swift) sets `acceptLocalOnly`; request bodies are capped at 15 MiB; App Extension handling runs on main because it touches UI-owned state. Ordinary requests use a synchronous handoff; `/checkStatus` uses an asynchronous response so a parked status request blocks neither main nor the HTTP queue. Do not expose this server beyond loopback or remove body bounds.
 - **Widget bridge reliability:** Page-to-native operational messages use the `widgetMessage` WebKit handler. The legacy `myapp://` URL bridge remains compatibility-only because repeated identical navigations can coalesce. Localization and native child-web-view sync use their dedicated handlers.
 - **Widget localization:** Every user-facing fallback in [`widgets.html`](MakeItHome/Resources/assets/widgets.html) needs a semantic `widgets.…` key and an English value in [`Localizable.xcstrings`](Localizable.xcstrings). Dynamic strings in [`script.js`](MakeItHome/Resources/assets/script.js) must be registered through `registerLocalizations` and rendered through `localizedString`. Send the collected dictionary through `widgetLocalization`, never the custom URL bridge.
 - **Calendar grid:** [`calendar.html`](MakeItHome/Resources/assets/components/calendar.html) is Monday-first, so its `Date#getDay()` offset must map Sunday to the final column with `(getDay() + 6) % 7`. Render only the required five or six weeks; do not reserve a sixth row made entirely of next-month days. Keep the 42-cell maximum capacity, `days`, event lookup, and the visible grid derived from the same start date. Events begin at the top of their cell beneath the date chip with a 3px top/left inset; a one-second pointer dwell expands that week row and leaving clears it. A day-surface click opens its 48-slot, 30-minute agenda; all-day events belong in its separate rail, never on the timed grid. Appointment controls must stop propagation to preserve their own popover/edit actions, and their bounded detail card must remain above both the month view and day agenda.
 - **Clipboard round-trip fidelity:** [`Clipboard.Element.rawTypes`](MakeItHome/Managers/New%20Group/Clipboard.swift) preserves every pasteboard representation. Re-copying must replay raw types before falling back to display-oriented string/image/file data.
 - **Clipboard resource bounds and ordering:** Native clipboard history is newest-first and capped by `Static.ClipboardForgetElementsOlderThan`; page updates are batched oldest-first so CSS Grid appends the newest item at the visual bottom. [`BoundedFIFOQueue`](MakeItHome/Helpers/ClipboardResourceBounds.swift) caps native-to-page messages while WebKit is unavailable. [`ClipboardPreviewImage`](MakeItHome/Views/Overscreen/WidgetZoneView.swift) limits only the base64 preview sent to the Widgets Zone (160 px, 128 KiB); never use that derivative for pasteboard re-copy, whose raw representations remain in `Clipboard.Element`. The grid's persistent, centered `clipboard-notch-spacer` reserves its first row so cards stay below a MacBook display notch; clear/replace operations must remove `.item` cards only. Do not reintroduce unbounded history/queues, one timer per item, Masonry transform ownership, collection mutation during iteration, or whole-grid `.empty()` calls.
 - **Clipboard rich text:** RTF is decoded and converted to Cocoa-generated HTML in [`Clipboard.Element.setRtf`](MakeItHome/Managers/New%20Group/Clipboard.swift). [`script.js`](MakeItHome/Resources/assets/script.js) renders only an allowlisted subset inside a Shadow DOM, with sanitized Cocoa CSS. Never inject raw clipboard strings or unscoped rich-text CSS into the Widgets Zone document.
+
+- **Safari command transport:** A new `/checkStatus` response advertises `statusWaitSupported`. Updated Safari uses authenticated `POST /checkStatus?reliableStatus=1&waitMs=…` with `{receivedIds:[String]}` to park a response until a new mailbox event arrives (1 second visible, 20 seconds hidden, clamped to 20 seconds). Authentication is checked on arrival; wake validates the same live connection object and rejects teardown/replacement. Do not revalidate the expired arrival token after a valid wait. Replacing connection credentials tears down the retired connection first. One main-owned waiter per connection is cancelled/replaced with an identity guard; disconnect, timeout and teardown release it. Excluded IDs are temporary receipt hints, never ACKs or queue deletion. Safari excludes only unfinished receipts, receives newer commands while selection/storage/ACK work continues, and registers a whole batch before awaiting completion so the newest click can supersede older work. Completed receipts redeliver after ACK loss without repeated selection. Legacy clients/servers keep ordinary polling. The isolated [transport suite](Tests/AppExtensionTransportTests.py) checks real loopback wake, concurrent ACK, loss/disconnect, auth/token aging, cancellation and revocation with synthetic commands.
+
+**Safari recovery invariants:**
+
+- `AppExtensionWebViewCoordinator.webView(_:didFinish:)` restores the current owner's show state and orientation after document replacement only while the native extension zone is active and the approved identity still matches. Hidden/retired owners must not reopen. Rebuilding HTML alone leaves the new host unable to initialize its carousel or report missing cached previews.
+- Safari `checkOpenTabs` returns metadata-delivery readiness. Refresh and install paths must wait for successful metadata delivery before sending images; otherwise unknown-tab frames can be ignored by the view yet acknowledged by the browser.
+- Inventory queries and the entire capture/query/encoding pipeline expire after 3.5 seconds. Late callbacks cannot mutate inventory or publish expired frames. `captureRevision` invalidates captures across switch/navigation/topology events, including a switch away and back to the same ID/URL.
+- Metadata refreshes mutate each tab's stable runtime state so title-only updates cannot discard valid pending captures. `makeFrameFingerprint` inspects the entire frame; unchanged pixels bypass encoding/resending even when titles change. Images remain runtime-only.
+- `scheduleScreenshotLoop` keeps the earliest requested deadline; frequent title events must never reset a pending refresh later. Background-tab loading/URL events do not invalidate foreground captures. A completed user selection requests a prompt fresh capture even if Safari emits no new activation event.
 
 ## Architecture and Data/Control Flow
 
@@ -103,7 +120,7 @@ App Extension:
 
 external client or bundled Safari background worker → loopback `/appExtension/*` → `SimpleHTTPServer` → main-thread `AppExtensionManager.httpRequest` → approval/trust/token checks → `AppExtension` state → `AppExtensionWKWV` → `Display.AppWindows`
 
-Canonical persisted state is split between native `UserDefaults` (settings, trust metadata/secrets, native child-web-view navigation), Safari `chrome.storage.local` (extension connection state), and Application Support JSON used by the embedded board APIs. Screen frames and the native clipboard history are runtime memory, not durable application data.
+Canonical persisted state is split between native `UserDefaults` (settings, trust metadata/secrets, native child-web-view navigation), Safari `chrome.storage.local` (extension connection state and tab-carousel position), and Application Support JSON used by the embedded board APIs. Screen frames and the native clipboard history are runtime memory, not durable application data.
 
 ## Linked Source Tree and File Reference
 
@@ -111,9 +128,9 @@ Canonical persisted state is split between native `UserDefaults` (settings, trus
 
 Authoritative target, source/resource membership, Swift package dependency, deployment target, bundle IDs, versions, schemes, and signing configuration.
 
-- **Key subparts:** `MakeItHome` app target; embedded `MakeItHome Web Extension`; separate Debug-only `MakeItHome Test` app target; Swift Collections 1.0.3; macOS 12.3 target; app marketing version 2.1.0 with normal-app build 164 and Test build 161. The Test target produces `MakeItHome Test.app` (`ink.geckos.MakeItHome.Test`) so TCC permissions and `UserDefaults` remain separate from normal app builds; it deliberately does not embed the Safari extension and overrides `LSUIElement` to `NO` so its explicit stress host window starts reliably.
+- **Key subparts:** `MakeItHome` app target; embedded `MakeItHome Web Extension`; separate Debug-only `MakeItHome Test` app target; Swift Collections 1.0.3; macOS 12.3 target; normal app and embedded Safari extension marketing version 2.1.1/build 165, manifest version 2.1.1, and Test marketing version 2.1.0/build 161. The Test target produces `MakeItHome Test.app` (`ink.geckos.MakeItHome.Test`) so TCC permissions and `UserDefaults` remain separate from normal app builds; it deliberately does not embed the Safari extension and overrides `LSUIElement` to `NO` so its explicit stress host window starts reliably.
 - **Depends on:** [`MakeItHome.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`](MakeItHome.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved).
-- **Common mistakes:** Add new manually grouped files to the correct target/resource phase. Keep parent and extension `CFBundleVersion` aligned before distribution; the current normal app build is 164 while the extension build is 1.
+- **Common mistakes:** Add new manually grouped files to the correct target/resource phase. Keep Debug/Release parent and extension `CFBundleVersion`/`MARKETING_VERSION` and the Safari manifest version aligned; the browser reads manifest metadata independently of the containing app. The version regression in `Tests/WebExtensionTests.cjs` checks all three sources.
 
 ### [`MakeItHome/MakeItHomeApp.swift`](MakeItHome/MakeItHomeApp.swift)
 
@@ -130,7 +147,7 @@ Composes the SceneKit capture preview and widget/App Extension overlays, owns `S
 
 - **Key symbols:** `StoreView` owns the recorder and AppKit window; `StoreVars` owns overlay geometry; `ContentView` wires native surfaces; `checkCanRecord` updates authorization state.
 - **Depends on:** [`MakeItHome/Managers/Displays.swift`](MakeItHome/Managers/Displays.swift), [`MakeItHome/Managers/Capture/ScreenRecorder.swift`](MakeItHome/Managers/Capture/ScreenRecorder.swift), [`MakeItHome/Views/Overscreen/WidgetZoneView.swift`](MakeItHome/Views/Overscreen/WidgetZoneView.swift), and [`MakeItHome/Managers/Capture/Views/AppExtensionView.swift`](MakeItHome/Managers/Capture/Views/AppExtensionView.swift).
-- **Tests:** No automated UI/startup coverage.
+- **Tests:** Request cadence is covered by [`Tests/ScreenRecordingPermissionGateTests.swift`](Tests/ScreenRecordingPermissionGateTests.swift); actual permission dialogs and video-window placement remain manual.
 - **Common mistakes:** Published/AppKit changes belong on main. Do not recreate overlay web views while changing their frames.
 
 ### [`MakeItHome/Static.swift`](MakeItHome/Static.swift)
@@ -155,10 +172,26 @@ Owns Accessibility polling/prompting, global Carbon hotkeys, shortcut dispatch, 
 
 Pure, AppKit-free state machine for preview/recorder gating and Space topology. Behavioral fixes belong here when they can be expressed without WindowServer/UI dependencies.
 
-- **Key functions:** `updateFullscreen` and `recoverStaleFullscreen`; `beginSpaceTransition`, `observePlaceholderTopology`, and `acceptFullscreenTopology`; `noteDuplicatePlaceholderIDs`; `shouldRepairMissingPlaceholder`; `allowsScreenshot`, `allowsRecorder`, and focus/activation helpers.
+- **Key functions:** `updateFullscreen` and `recoverStaleFullscreen`; `beginSpaceTransition`, `observePlaceholderTopology`, and `acceptFullscreenTopology`; `noteDuplicatePlaceholderIDs`; `shouldRepairMissingPlaceholder`; `allowsScreenshot`, `allowsRecorder`, focus/activation helpers; `beginInteractionDismissal`, `allowsScheduledPresentation`, and `allowsPointerPresentation` for extension-click presentation cancellation/re-arm.
 - **Called by:** [`Display`](MakeItHome/Managers/Displays.swift).
 - **Tests:** [`Tests/PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift).
 - **Common mistakes:** Timestamp transitions only on a state edge; changing signatures restart grace periods. Do not convert wall-clock safety nets to tick counts.
+
+### [`MakeItHome/Helpers/AppExtensionStatusMailbox.swift`](MakeItHome/Helpers/AppExtensionStatusMailbox.swift)
+
+AppKit-free bounded status-event mailbox and Codable `{id,value}` envelope. `pending` is non-destructive; exact-ID `acknowledge` never deletes a replacement command. Runtime session UUID/sequence prevents ID reuse across queues, `consumeLegacy` preserves older clients, and continuous Mach time expiry prevents stale Safari click replay after sleep. Owned on main by `AppExtension`. Covered by [`Tests/AppExtensionStatusMailboxTests.swift`](Tests/AppExtensionStatusMailboxTests.swift) through [`Tests/run.sh`](Tests/run.sh).
+
+### [`MakeItHome/Helpers/CaptureLifecycle.swift`](MakeItHome/Helpers/CaptureLifecycle.swift)
+
+AppKit-free capture primitives: `CaptureEngineOperationGate` serializes suspending operations, and `LatestCaptureFrames` creates a separate newest-one channel for each capture run. Both are used by `CaptureEngine` and covered by [`Tests/CaptureLifecycleTests.swift`](Tests/CaptureLifecycleTests.swift).
+
+### [`MakeItHome/Helpers/ScreenRecordingPermissionGate.swift`](MakeItHome/Helpers/ScreenRecordingPermissionGate.swift)
+
+Pure request pacing and onboarding progress for first-launch Screen Recording authorization. `beginRequest(now:)` reserves an immediate first request, a 15-second minimum between starts, and at most one in-flight request; `finishRequest` releases the reservation after success or failure. `ScreenRecordingPermissionOnboarding` models persisted progress toward the one-time cursor-control request after approval. Owned by main-actor `ScreenRecorder` and covered by [`Tests/ScreenRecordingPermissionGateTests.swift`](Tests/ScreenRecordingPermissionGateTests.swift) through [`Tests/run.sh`](Tests/run.sh).
+
+### [`MakeItHome/Helpers/StressProcessSample.swift`](MakeItHome/Helpers/StressProcessSample.swift)
+
+Test-target-only memory/thread sampling. `StressProcessSample.capture` releases every send right returned by `task_threads` before freeing its returned array. [`Tests/StressProcessSampleTests.swift`](Tests/StressProcessSampleTests.swift) performs 10,000 samples and checks that the caller's thread send-right count remains unchanged.
 
 ### [`MakeItHome/Helpers/PreviewTitleText.swift`](MakeItHome/Helpers/PreviewTitleText.swift)
 
@@ -173,28 +206,28 @@ Pure preview-title wrapping used before SceneKit text creation. It clamps comput
 
 The primary overscreen domain owner: display discovery, high-frequency pointer motion, edge activation, WindowServer tracking, Space placeholders, screenshot cropping, recorder policy, window/focus activation, shortcut animation, and overscreen geometry.
 
-- **Key classes and methods:** `DisplaysManager` discovers displays and routes mouse/Space events; `Display.checkForScreenshot` derives windows/fullscreen/placeholder topology; `Display.active` drives edge behavior; `showWindow`/`hideWindow` own presentation; `onFullOverscreenMode`/`outFullOverscreenMode` own search geometry; `shouldKeepScreenRecorderActive` delegates to the flow gate.
+- **Key classes and methods:** `DisplaysManager` discovers displays and routes mouse/Space events; `Display.checkForScreenshot` derives windows/fullscreen/placeholder topology; `Display.active` drives edge behavior; `showWindow`/`hideWindow` own presentation; `focusAppExtension`/`finishAppExtensionFocus` own its fast close and extension-to-app handoff; `onFullOverscreenMode`/`outFullOverscreenMode` own search geometry; `shouldKeepScreenRecorderActive` delegates to the flow gate.
 - **Depends on:** [`MakeItHome/Helpers/PreviewFlowGate.swift`](MakeItHome/Helpers/PreviewFlowGate.swift), capture/preview owners, `CGWindowListCopyWindowInfo`, Accessibility, and placeholder windows.
-- **Tests:** Flow logic in [`Tests/PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift); full pointer/window integration is manual.
-- **Common mistakes:** This file mixes coordinate systems and lifecycle states. Preserve per-display isolation, main-thread graphics/UI mutation, `imageProcessingQueue` ownership, every-tick stale recovery, and both dimensions of search restoration.
+- **Tests:** Flow logic and dismissal re-arm in [`Tests/PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift); the production extension-close method is compiled with UI/process doubles by [`Tests/ExtensionFocusHandoffTests.py`](Tests/ExtensionFocusHandoffTests.py). Cooperative AppKit activation was checked with isolated native fixture apps; installed Safari/multi-display integration remains manual.
+- **Common mistakes:** This file mixes coordinate systems and lifecycle states. Preserve per-display isolation, main-thread graphics/UI mutation, `imageProcessingQueue` ownership, every-tick stale recovery, and both dimensions of search restoration. Window scans may refresh `AppWindows.runningApp` only when the frontmost process ID matches the immutable owner ID; extension activation independently resolves that stable identity.
 
 ### [`MakeItHome/Managers/Capture/CaptureEngine.swift`](MakeItHome/Managers/Capture/CaptureEngine.swift)
 
 Lowest ScreenCaptureKit boundary. It creates `SCStream`, serializes stream mutations, converts complete sample buffers into `CapturedFrame`, and exposes frames through `AsyncThrowingStream`.
 
-- **Key symbols:** `CaptureEngineOperationGate`, `CapturedFrame`, `CaptureEngine.startCapture`, `stopCapture`, `update`, and `CaptureEngineStreamOutput`.
+- **Key symbols:** `CapturedFrame`, `CaptureEngine.startCapture`, `stopCapture`, `update`, and `CaptureEngineStreamOutput`.
 - **Called by:** [`ScreenRecorder`](MakeItHome/Managers/Capture/ScreenRecorder.swift).
-- **Tests:** No focused ScreenCaptureKit tests.
-- **Common mistakes:** Never update configuration/filter while stop is in progress; never render incomplete sample buffers.
+- **Tests:** [`Tests/CaptureLifecycleTests.swift`](Tests/CaptureLifecycleTests.swift) tests the production channel and operation gate; actual ScreenCaptureKit cleanup/cancellation requires the runtime lifecycle harness.
+- **Common mistakes:** Never update configuration/filter while stop is in progress; never render incomplete sample buffers. Keep frame buffering bounded and callbacks attached to their originating continuation, without a closure retaining the engine.
 
 ### [`MakeItHome/Managers/Capture/ScreenRecorder.swift`](MakeItHome/Managers/Capture/ScreenRecorder.swift)
 
 Main-actor capture coordinator. Selects the display/window filter, switches low/high capture profiles, serializes intent changes, consumes frames, and hands them to the preview.
 
-- **Key methods:** `start`, `stop`, `stopCaptureEngine`, `updateEngine`, `refreshAvailableContent`, `contentFilter`, and `streamConfiguration`.
+- **Key methods:** `start`, `stop`, `stopCaptureEngine`, `updateEngine`, `canRecord`, `shareableContent`, `scheduleCursorControlRequestIfNeeded`, `refreshAvailableContent`, `contentFilter`, and `streamConfiguration`.
 - **Depends on:** [`CaptureEngine`](MakeItHome/Managers/Capture/CaptureEngine.swift), [`CapturePreview`](MakeItHome/Managers/Capture/Views/CapturePreview.swift), and `Static` performance constants.
-- **Tests:** Recorder eligibility is modeled in flow-gate tests; real capture requires Screen Recording permission.
-- **Common mistakes:** Prefer an in-place configuration update when the target stream is current. Await stop/update tasks and validate intent IDs after suspension.
+- **Tests:** Recorder eligibility is modeled in flow-gate tests; permission pacing/onboarding state is covered by [`Tests/ScreenRecordingPermissionGateTests.swift`](Tests/ScreenRecordingPermissionGateTests.swift). [`Tests/ScreenRecordingPermissionOnboardingTests.py`](Tests/ScreenRecordingPermissionOnboardingTests.py) compiles production permission methods with inert timer/capture/pointer doubles for one-second scheduling, cross-recorder deduplication, approval during queries or after relaunch, current Quartz coordinates, revocation, event failure and completion. Actual permission dialogs and real capture remain manual.
+- **Common mistakes:** Prefer an in-place configuration update when the target stream is current. Publish pending stops before suspending, validate intent IDs after suspension, stop the engine on consumer cancellation/error, and avoid post-await state writes from an older stop.
 
 ### [`MakeItHome/Managers/Capture/Views/CapturePreview.swift`](MakeItHome/Managers/Capture/Views/CapturePreview.swift)
 
@@ -209,18 +242,18 @@ SceneKit renderer and interaction surface for the desktop plane, app/window prev
 
 Owns external extension identity, permission inventory, trust persistence, approval/defer/timeout behavior, secret and rolling-token authentication, request dispatch, and live extension content/message synchronization.
 
-- **Key symbols:** `AppExtensionManager.httpRequest`, `requestConnectionApproval`, `presentNextDeferredApprovalIfPossible`, `extensionPermissionsStatus`, `revokeExtensionPermission`, `hasValidToken`; `AppExtension.syncIfNeeded`, `sendJSMessage`, and `scheduleHealthCheckIfNeeded`.
+- **Key symbols:** `AppExtensionManager.httpRequest`, `waitForStatusResponse`, `requestConnectionApproval`, `presentNextDeferredApprovalIfPossible`, `extensionPermissionsStatus`, `revokeExtensionPermission`, `hasValidToken`; `AppExtension.syncIfNeeded`, `sendJSMessage`, `pendingStatusEvents`, `waitForStatus`, `acknowledgeStatusEvents`, `contentSyncGeneration`, and `scheduleHealthCheckIfNeeded`.
 - **Called by:** [`SimpleHTTPServer`](MakeItHome/Managers/SimpleHttpServer.swift), widget settings, and `Display.AppWindows`.
-- **Tests:** Debug App Extension flood harness; no focused auth unit tests.
+- **Tests:** Debug App Extension flood harness; mailbox bounds/loss tests and production non-connect auth/ACK-route dispatch checks in [`Tests/AppExtensionDeliveryTests.py`](Tests/AppExtensionDeliveryTests.py). Full production `AppExtension` sync/health lifecycle is covered by [`Tests/AppExtensionContentLifecycleTests.py`](Tests/AppExtensionContentLifecycleTests.py). Approval/trust persistence and full HTTP parser coverage remain gaps.
 - **Common mistakes:** Identity is `bundleId` plus normalized `clientId`, not bundle ID alone. Preserve ignored cooldown, approval timeout, racing-connect grace, bounded message queue, and UI deferral.
 
 ### [`MakeItHome/Managers/SimpleHttpServer.swift`](MakeItHome/Managers/SimpleHttpServer.swift)
 
 Loopback HTTP server for packaged widget resources, board JSON APIs, and the App Extension protocol.
 
-- **Key methods:** `start`, `parseRequest`, `handleRequest`, `loadOrSaveJson`, and MIME mapping.
+- **Key methods:** `start`, `handleNewConnection` (including asynchronous status-response dispatch), `parseRequest`, `handleRequest`, `loadOrSaveJson`, and MIME mapping.
 - **Called by:** `TopWKWV.initHttpServer`; Safari/background clients connect to port 19494.
-- **Tests:** App Extension flood harness exercises the real listener; no parser/path unit tests.
+- **Tests:** App Extension flood harness exercises the real listener; [`Tests/AppExtensionTransportTests.py`](Tests/AppExtensionTransportTests.py) exercises real loopback status/ACK transport with production auth and waiter methods. Broader parser/path coverage remains a gap.
 - **Common mistakes:** Keep `acceptLocalOnly`, the request-size ceiling, single-response connection close, and main-thread handoff for extension state.
 
 ### [`MakeItHome/Views/Overscreen/WidgetZoneView.swift`](MakeItHome/Views/Overscreen/WidgetZoneView.swift)
@@ -294,36 +327,56 @@ EventKit adapter for listing calendars and fetching, creating, updating, and del
 
 ### [`MakeItHome/Managers/Capture/Views/AppExtensionView.swift`](MakeItHome/Managers/Capture/Views/AppExtensionView.swift)
 
-Shared native App Extension `WKWebView`, its navigation bridge, container loading, and current-app presentation.
+Shared native App Extension `WKWebView`, its script-message bridge and legacy navigation fallback, container loading, and current-app presentation.
 
-- **Key symbols:** `AppExtensionWebView.sharedWKWV`, `AppExtensionWebViewCoordinator`, `AppExtensionWKWV.setCurrentApp`, `exiting`, and `forceReload`.
+- **Key symbols:** `AppExtensionWebView.sharedWKWV`, `AppExtensionWebViewCoordinator` and `WeakAppExtensionMessageHandler` (including combined `focusOnMe`/status routing), `AppExtensionWKWV.setCurrentApp`, `exiting`, and `forceReload`.
 - **Depends on:** [`MakeItHome/Resources/assets/appExtensionView.html`](MakeItHome/Resources/assets/appExtensionView.html) and `AppExtension`.
-- **Tests:** App Extension stress harness covers server traffic, not WebKit rendering.
-- **Common mistakes:** Navigation replaces the JavaScript context; notify the manager so every extension container is recreated and queued messages are flushed.
+- **Tests:** [`Tests/AppExtensionDeliveryTests.py`](Tests/AppExtensionDeliveryTests.py) compiles production dispatch with WebKit/process doubles for frame/source checks, reconnect/revocation and weak-handler lifetime. The actual host/carousel rendering and recovery are exercised by [`Tests/SafariCarouselWebKitTests.py`](Tests/SafariCarouselWebKitTests.py); installed Safari integration remains manual.
+- **Common mistakes:** Navigation replaces the JavaScript context; notify the manager so every extension container is recreated and queued messages are flushed, then restore the approved visible owner's presentation so the new document requests missing cached previews. Focus the displayed extension owner and deliver any combined follow-up status only after the native close/focus handoff.
 
 ### [`MakeItHome/Resources/assets/appExtensionView.html`](MakeItHome/Resources/assets/appExtensionView.html)
 
 JavaScript container surface injected into the native App Extension web view.
 
 - **Called by:** `AppExtensionWKWV`; native `AppExtension.syncIfNeeded` invokes its container/content/message functions.
-- **Tests:** Manual and stress-harness validation.
-- **Common mistakes:** Keep invoked JavaScript function names synchronized with `AppExtension.swift`.
+- **Tests:** Browser doubles and isolated real WebKit host/carousel rendering in [`Tests/SafariCarouselWebKitTests.py`](Tests/SafariCarouselWebKitTests.py).
+- **Common mistakes:** Set `isShowing` before invoking show callbacks so visibility checks and view-readiness reporting work on the first reopen. Keep invoked JavaScript function names synchronized with `AppExtension.swift`. `focusOnMe` accepts an optional status string as the bridge `value`; legacy calls without it remain valid. Keep container creation and identical content delivery idempotent; use the optional `forceReload` argument only for an explicit Reset. Keep focus and follow-up status in one `appExtensionMessage` post with the displayed bundle in `strId`; only older native releases use the custom URL fallback.
+
+### [`MakeItHome/MakeItHome Web Extension/MakeItHome_Web_Extension.entitlements`](MakeItHome/MakeItHome%20Web%20Extension/MakeItHome_Web_Extension.entitlements)
+
+Required, non-secret signing input for both Debug and Release of the Safari Web Extension target. It enables App Sandbox for the native extension handler; browser permissions remain in `manifest.json`.
+
+- **Common mistakes:** Keep this file in source control via its explicit `.gitignore` exception. Do not copy the parent app's Calendar or server entitlements into the extension; the native handler only echoes messages and browser networking lives in `background.js`.
 
 ### [`MakeItHome/MakeItHome Web Extension/Resources/manifest.json`](MakeItHome/MakeItHome%20Web%20Extension/Resources/manifest.json)
 
 Manifest V3 declaration for the bundled Safari extension, including tabs, active-tab, web-navigation, storage, and alarms permissions.
 
 - **Entrypoints:** [`background.js`](MakeItHome/MakeItHome%20Web%20Extension/Resources/background.js), [`content.js`](MakeItHome/MakeItHome%20Web%20Extension/Resources/content.js), and [`popup.html`](MakeItHome/MakeItHome%20Web%20Extension/Resources/popup.html).
-- **Common mistakes:** Any permission or asset change must also be present in the extension target resource phase.
+- **Icon source:** [`Assets/logo-classic.png`](Assets/logo-classic.png) supplies the bundled `Resources/Icon.png` and all settings/toolbar PNG sizes under `Resources/images/`; regenerate those sizes from this source when replacing the MakeItHome Web icon.
+- **Common mistakes:** Any permission or asset change must also be present in the extension target resource phase. Update manifest `version` with the app/extension marketing version; changing only the native app version leaves browser metadata stale. Safari receives the extension packaged in the installed normal app; the isolated Test app does not embed it.
 
 ### [`MakeItHome/MakeItHome Web Extension/Resources/background.js`](MakeItHome/MakeItHome%20Web%20Extension/Resources/background.js)
 
 Safari-side App Extension client: stable client identity, secret/token generation, connection/reconnect policy, adaptive status polling, tab tracking, screenshot pacing, and HTML/JavaScript payload delivery.
 
-- **Key functions:** `makeRequestUrl`, `getRollingToken`, `connect`, `checkOpenTabs`, screenshot/status loops, `setHtmlContent`, and `sendJsMessage`.
+- **Key functions:** `makeRequestUrl`, `getRollingToken`, `connect`, `checkOpenTabs`, `markTabsDirty`, `trimPreviewCache`, `sendAllTabsScreenshot`, `captureScreenshotAndSend`/`captureScreenshot`, `makeFrameFingerprint`, `safariAPI`, `resolveSafariTab`, `focusOnTab`, `requestTabFocus`, `handleStatusEvents`, `fetchJSONWithTimeout`, screenshot/status loops, `setHtmlContent`, and `sendJsMessage`.
 - **Depends on:** loopback `/appExtension/*`, Chrome/Safari extension APIs, and packaged extension HTML.
-- **Tests:** App flood harness validates the native protocol but not browser behavior.
-- **Common mistakes:** Do not reset a valid secret on `connectionIgnored`/`connectionDeferred`; honor server-suggested poll intervals and bounded in-flight work.
+- **Tests:** [`Tests/WebExtensionTests.cjs`](Tests/WebExtensionTests.cjs) executes the production browser/view scripts with deterministic API/DOM doubles. App flood harness validates the native protocol; signed Safari capture/permission behavior remains manual.
+- **Common mistakes:** Do not reset a valid secret on `connectionIgnored`/`connectionDeferred`; honor server-suggested poll intervals, abort timed-out fetches, back off unavailable connections, and bound preview sends even during recovery. Send metadata without waiting for capture, acknowledge only successfully delivered frame versions and the matching preview-delivery revision, recover missing frames on `safariViewReady`, and supply unchanged HTML without `forceReload` on reconnect so the native view retains its DOM.
+
+### [`MakeItHome/MakeItHome Web Extension/Resources/assets/extension.html`](MakeItHome/MakeItHome%20Web%20Extension/Resources/assets/extension.html)
+
+Authoritative Safari tab-carousel markup, styles, and controller injected into the native App Extension web view with bundled Swiper 11.1.4.
+
+- **Key functions:** `syncSafariTabs`, `applySafariScreenshots`, `rememberSafariPosition`, `restoreSafariPosition`, `refreshSafariSlides`, `noteSafariInteraction`, `safariIsInteracting`, `trimSafariPreviews`, `releaseSafariPreview`, `updateSafariTabIcon`, and `releaseSafariTabIcon`.
+- **Behavior:** Shows only tabs with cached previews, with their titles and favicons alongside the image. Missing/failed/unsupported icons use a globe, and icon updates retain preview nodes and position. Metadata updates titles without creating uncaptured cards; a fixed title row stays visible for landscape and portrait images. Reports retained preview IDs at each show to recover missing cached frames after content loss. Keeps a separate metadata-derived ID order and selected tab identity/fractional position across metadata updates, reopen, orientation changes, and reinjection; defers new card membership during input and preserves identical images; uses a clamped index if the selected tab closes. Keyboard handling is disabled while hidden; layout/library retries are bounded.
+- **Tests:** [`Tests/WebExtensionTests.cjs`](Tests/WebExtensionTests.cjs); real Swiper tested in isolated headless Chrome and the production host in isolated, nonpersistent macOS WebKit via [`Tests/SafariCarouselWebKitTests.py`](Tests/SafariCarouselWebKitTests.py). Installed Safari integration remains manual.
+- **Common mistakes:** Preserve position before destroying an instance, batch initial DOM insertion, avoid layout updates per screenshot, scope CSS to `#safariTabs`, and revoke every retired object URL.
+
+### [`MakeItHome/MakeItHome Web Extension/Resources/content.js`](MakeItHome/MakeItHome%20Web%20Extension/Resources/content.js)
+
+No-op entry point retained by manifest website matches for Safari website-access permissions. Tab metadata and capture work live in the background script; never restore the old one-second heartbeat per webpage.
 
 ### [`MakeItHome/MakeItHome Web Extension/SafariWebExtensionHandler.swift`](MakeItHome/MakeItHome%20Web%20Extension/SafariWebExtensionHandler.swift)
 
@@ -365,7 +418,7 @@ AppKit/SwiftUI window wrappers and graphics helpers. [`SwifterWindow.swift`](Mak
 
 - **Called by:** Startup panels, menu UI, display/Space tracking, and preview processing.
 - **Tests:** No focused tests.
-- **Common mistakes:** A placeholder’s title/window identity is part of Space detection. AppKit window/layer operations remain main-thread-only.
+- **Common mistakes:** A placeholder’s title/window identity is part of Space detection. AppKit window/layer operations remain main-thread-only. Use `SwifterPanel.show(centered: true)` for the Screen Recording instruction video so centering uses its final hosting size and the screen's visible frame.
 
 ### [`MakeItHome/Views/`](MakeItHome/Views/)
 
@@ -377,19 +430,43 @@ Small SwiftUI panels for activation, permissions, onboarding, updates, menu UI, 
 
 ### [`MakeItHome/StressTests/`](MakeItHome/StressTests/)
 
-Debug-only manual performance and lifecycle harnesses, compiled only by the `MakeItHome Test` target. [`StressTestSupport.swift`](MakeItHome/StressTests/StressTestSupport.swift) parses launch options, owns the explicit test host window, suppresses blocking onboarding/start-at-login modals only for explicit stress runs, selects a root, and writes atomic result handshakes; state-changing stress cycles use a randomized 0.25–0.75 second delay by default. [`VirtualOverscreenStressTest.swift`](MakeItHome/StressTests/VirtualOverscreenStressTest.swift) exercises SceneKit/app-count churn; [`AppExtensionStressTest.swift`](MakeItHome/StressTests/AppExtensionStressTest.swift) floods the real authenticated local server with bounded workers and intentionally does not throttle requests as lifecycle cycles; [`RuntimeLifecycleStressTest.swift`](MakeItHome/StressTests/RuntimeLifecycleStressTest.swift) embeds the full production `ContentView`/`DisplaysManager`/`ScreenRecorder`/`CapturePreview` graph, captures existing visible application windows into the real SceneKit model, and cycles recorder profiles, `CaptureView` sleep/restart, and native Clipboard-to-Widgets-Zone traffic together; [`RealUsageStressTest.swift`](MakeItHome/StressTests/RealUsageStressTest.swift) runs the normal app runtime while seeded UI automation rapidly invokes the production top/bottom shortcut endpoint, clicks random preview or visible-window title-bar points, and copies image-heavy unique file URLs. Despite its legacy name, [`run-real-usage.sh`](MakeItHome/StressTests/run-real-usage.sh) builds once with a dSYM and runs all four modes sequentially for 20 active minutes by default, staging `/Users/riccardo/Pictures/instagramToReload` (or `MIH_STRESS_COPY_SOURCE`) inside the Test sandbox.
+Debug-only manual performance and lifecycle harnesses, compiled only by the `MakeItHome Test` target. [`StressTestSupport.swift`](MakeItHome/StressTests/StressTestSupport.swift) parses launch options, owns the explicit test host window, suppresses blocking onboarding/start-at-login modals only for explicit stress runs, selects a root, and writes atomic file or explicitly marked stdout result handshakes; state-changing stress cycles use a randomized 0.25–0.75 second delay by default. [`VirtualOverscreenStressTest.swift`](MakeItHome/StressTests/VirtualOverscreenStressTest.swift) exercises SceneKit/app-count churn; [`AppExtensionStressTest.swift`](MakeItHome/StressTests/AppExtensionStressTest.swift) floods the real authenticated local server with bounded workers and intentionally does not throttle requests as lifecycle cycles; [`RuntimeLifecycleStressTest.swift`](MakeItHome/StressTests/RuntimeLifecycleStressTest.swift) embeds the full production `ContentView`/`DisplaysManager`/`ScreenRecorder`/`CapturePreview` graph, captures existing visible application windows into the real SceneKit model, and cycles recorder profiles, consumer cancellation, `CaptureView` sleep/restart, and native Clipboard-to-Widgets-Zone traffic together; it logs metrics every five seconds and fails on 15 seconds without recorder progress; [`RealUsageStressTest.swift`](MakeItHome/StressTests/RealUsageStressTest.swift) runs the normal app runtime while seeded UI automation rapidly invokes the production top/bottom shortcut endpoint, clicks random preview or visible-window title-bar points, and copies image-heavy unique file URLs. Despite its legacy name, [`run-real-usage.sh`](MakeItHome/StressTests/run-real-usage.sh) builds once with a dSYM and runs all four modes sequentially for 20 active minutes by default, staging `/Users/riccardo/Pictures/instagramToReload` (or `MIH_STRESS_COPY_SOURCE`) inside the Test sandbox. `MIH_STRESS_COPY_SOURCE=bundled` reads packaged image fixtures, and `MIH_STRESS_RESULT_CHANNEL=stdout` retains atomic controller-side result files without requiring access to the protected app container.
 
 - **Commands:** See [`MakeItHome/StressTests/README.md`](MakeItHome/StressTests/README.md).
-- **Diagnostics:** The orchestrator retains a permission-restricted bundle under `~/Library/Logs/MakeItHomeStress/` containing the full build log/settings, dSYM and UUIDs, per-mode stdout/stderr and debug-level unified logs, LLDB crash-time all-thread backtraces/registers, periodic symbolized `sample` stacks, watchdog stacks, results/status, and new Test-bundle Diagnostic Reports. It never deletes these artifacts; sandbox staging is temporary.
+- **Diagnostics:** The orchestrator retains a permission-restricted bundle under `~/Library/Logs/MakeItHomeStress/` containing the full build log/settings, dSYM and UUIDs, per-mode stdout/stderr and debug-level unified logs, LLDB crash-time all-thread backtraces/registers, periodic symbolized `sample` stacks, watchdog stacks, results/status, and new Test-bundle Diagnostic Reports. It never deletes these artifacts; sandbox staging is temporary. [`StressDiagnosticChecks.zsh`](MakeItHome/StressTests/StressDiagnosticChecks.zsh) distinguishes primary Test-app crashes from related CPU/resource diagnostics and rejects crashes after a completion record. Its [fixture tests](Tests/StressDiagnosticChecksTests.zsh) run through `Tests/run.sh`. Never edit the running wrapper or its sourced helper; launch an immutable snapshot when concurrent wrapper work is necessary.
 - **Common mistakes:** Never make stress mode reachable in Release and never turn bounded worker counts, sampling cadence, or the real-usage selection task into unbounded work. Preserve all result handshakes and diagnostic streams. The runtime lifecycle and real-usage modes must restore the pasteboard only when the user has not changed it since the final synthetic write, remove temporary linked fixtures, and keep synthetic clipboard payloads out of logs. Real-usage automation requires the Test app's Screen Recording and Accessibility permissions, reports each missing grant by name, takes control of the pointer/clipboard/window focus, and must remain isolated from the normal app identity.
 
 ### [`Tests/PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift)
 
 Dependency-free executable regression suite that compiles the production `PreviewFlowGate` with a small test harness.
 
-- **Coverage:** fullscreen staleness/settling, Space-change timeout, placeholder topology/repair, multi-display isolation, cross-Space activation/focus, and recorder eligibility.
+- **Coverage:** fullscreen staleness/settling, Space-change timeout, placeholder topology/repair, multi-display isolation, cross-Space activation/focus, recorder eligibility, and extension-click cancellation of queued presentation work with time-bounded pointer re-arm.
 - **Runner:** [`Tests/run.sh`](Tests/run.sh).
 - **Common mistakes:** Test the real production file, not a copied model. Keep scenarios deterministic and free of AppKit permissions.
+
+### [`Tests/ExtensionFocusHandoffTests.py`](Tests/ExtensionFocusHandoffTests.py)
+
+Extracts and compiles the production `Display.focusAppExtension` method with deterministic UI/process doubles and the real `PreviewFlowGate`. It asserts complete close geometry, animation/pressure reset, immutable PID selection despite a drifted app cache, cooperative activation ordering, follow-up delivery at the end of a 120 ms close, Reduce Motion, cancellation of a superseded animation, stale-show cancellation, and invalid-owner/fullscreen guards. Runs through [`Tests/run.sh`](Tests/run.sh), requiring Python 3 and Swift. This does not simulate Safari permissions or WindowServer; isolated native fixture apps separately verified real AppKit cooperative activation.
+
+### [`Tests/AppExtensionDeliveryTests.py`](Tests/AppExtensionDeliveryTests.py)
+
+Extracts and compiles production non-connect secret/token checks, token validation, reliable polling/ACK routes, `AppExtension` mailbox methods, and coordinator script-message dispatch with dependency doubles. Tests invalid/missing credentials, malformed/oversized ACKs, lost-poll redelivery, legacy consumption, repeated messages, wrong frames/views/bundles, reconnect/revocation during animation, and weak-handler lifetime. It does not exercise the full connection approval path or real HTTP/WebKit transport. Runs through [`Tests/run.sh`](Tests/run.sh).
+
+The native delivery suite also compiles production navigation completion and asserts visible-document recovery without reopening hidden or retired identities.
+
+### [`Tests/AppExtensionTransportTests.py`](Tests/AppExtensionTransportTests.py)
+
+Compiles the production HTTP server, manager waiting-response method, auth/ACK routes and mailbox/waiter methods using the [delivery fixture](Tests/AppExtensionDeliveryTests.py) for UI/trust doubles. Uses a random loopback port and synthetic commands to verify immediate wake, ACKs while a poll is parked, lost responses, repeated ACKs, receiver disconnect, invalid credentials/receipt IDs, tokens aging out during a valid wait, timeout/cancellation/replacement, revocation, and 30 wake/ACK cycles. Run separately with `python3 Tests/AppExtensionTransportTests.py`; local listener permission is required. Does not open Safari or verify installed extension permissions, capture or UI activation.
+
+### [`Tests/AppExtensionContentLifecycleTests.py`](Tests/AppExtensionContentLifecycleTests.py)
+
+Compiles the entire production `AppExtension` class with controlled WebKit/owner doubles. Covers identical-content no-ops, transient/unknown health errors, confirmed missing DOM, explicit forced Reset, and cancellation of old sync/health results across document generations and shared-view replacement and connection teardown. Runs through [`Tests/run.sh`](Tests/run.sh).
+
+### [`Tests/SafariCarouselWebKitTests.py`](Tests/SafariCarouselWebKitTests.py)
+
+Loads the actual App Extension host, bundled Swiper and Safari carousel in a nonpersistent `WKWebView` using generated JPEGs and literal synthetic titles. Checks click/reopen, identical HTML/image no-ops, cache/order retention across content changes, explicit Reset, saved selection and fractional position during real wheel input/background card arrival, portrait/landscape title geometry, orientation changes and repeated hidden-frame replacement. Run separately with Python 3 and Swift on macOS; it does not open Safari, activate a window, capture the screen or verify installed extension permissions.
+
+The WebKit carousel suite additionally checks long-title containment and actual document navigation followed by show/cache replay, with saved selection, orientation and unique cards.
 
 ### [`Tests/ClipboardResourceStressTests.swift`](Tests/ClipboardResourceStressTests.swift)
 
@@ -442,13 +519,13 @@ Angular/Fuse source templates and built distributions used for the Notes/Tasks e
 - **Behavior:** Approved local clients can attach interactive HTML/JavaScript content to an app preview and poll visibility/status.
 - **Flow and owners:** loopback server → `AppExtensionManager` auth/approval → `AppExtension` → shared App Extension web view → `Display.AppWindows`.
 - **Constraints:** user approval, stable identity, secret plus rolling token, loopback-only listener, bounded body/message queues.
-- **Tests and gaps:** Manual/demo use and debug server flood exist; focused auth/parser tests and the public tutorial/API reference do not.
+- **Tests and gaps:** Manual/demo use and debug server flood exist; non-connect auth/ACK-route regression checks exist; approval/trust/parser coverage and the public tutorial/API reference remain incomplete.
 
 ### Bundled Safari Web Extension — Shipped groundwork
 
-- **Behavior:** Tracks Safari tabs, produces bounded/adaptive previews, and supplies a tab-switching extension surface after approval.
+- **Behavior:** Tracks Safari tabs and supplies a tab-switching surface after approval. The 2.1.1 development tree adds titles and favicons on preview-bearing tabs, bounded preview caches/batches, slower idle capture, retained carousel position across reopen/recovery, and a combined native-focus/browser-selection handoff with acknowledged delivery and actual active-tab verification.
 - **Constraints:** Safari extension permissions, local server availability, persisted browser secret, and reconnect cooldown/backoff.
-- **Tests and gaps:** Embedded target builds; broader-browser variants are planned.
+- **Tests and gaps:** Embedded target builds; browser/view regression doubles and real Swiper synthetic checks cover the 2.1.1 changes. Installed Safari permissions, active-tab capture races, CPU/memory profiling, private browsing, and multiple-window integration remain manual; broader-browser variants are planned.
 
 ### Fullscreen or idle leaves previews frozen
 
@@ -463,7 +540,7 @@ Angular/Fuse source templates and built distributions used for the Notes/Tasks e
 - **Symptom / wrong assumption:** ScreenCaptureKit crashes in configuration equality or a stale start resurrects a stopped stream.
 - **Cause and invariant:** Suspended start/update/stop operations race on one `SCStream`.
 - **Risk area:** `ScreenRecorder` and `CaptureEngine`.
-- **Safe pattern / regression check:** Operation gate plus intent/run IDs; perform a code-signing-disabled build and manually exercise repeated edge entry/exit.
+- **Safe pattern / regression check:** Operation gate plus intent/run IDs, stop reservation before suspension, per-run newest-one frame channels, and engine cleanup on consumer termination. Run `./Tests/run.sh`, build, and run `runtime-lifecycle` including cancellation and frame/progress assertions.
 - **Status:** Previously fixed failure mode and active regression risk.
 
 ### Full-screen search exits to an invisible Widgets Zone
@@ -482,6 +559,13 @@ Angular/Fuse source templates and built distributions used for the Notes/Tasks e
 - **Safe pattern / regression check:** Reuse the approved identity/connection within the grace window; run the App Extension stress mode and manually validate ignored/deferred retry.
 - **Status:** Previously fixed failure mode and active regression risk.
 
+### Safari previews disappear or repeat after switching/refresh
+
+- **Cause and invariant:** A replaced WebKit document loses its show state; a stalled Safari API blocks refresh; failed metadata delivery can leave images acknowledged but absent; a switch away/back can cache the intervening tab's image. Title/inventory updates must not replace a pending capture's state object or force unchanged-image encoding.
+- **Owners:** `AppExtensionWebViewCoordinator.webView(_:didFinish:)`, Safari `checkOpenTabs`, `captureScreenshotAndSend`/`captureScreenshot`, and the screenshot loop.
+- **Regression checks:** Browser doubles cover capture/metadata deadlines, late callbacks, away/back switches, stable title/inventory state, metadata failure, full-frame fingerprints, callback-only APIs and unchanged-image encoding. Native delivery and isolated WebKit tests cover document recovery, long titles and unique cards. Waiting status responses and independent command receipt remove the idle poll and processing delays; screenshot deadlines resist title-ticker starvation and background-navigation invalidation. Signed Safari multi-window switching, website permissions, actual capture and CPU/memory remain manual checks.
+- **Status:** Covered in the 2.1.1 development tree; signed Safari integration remains unverified.
+
 ## Interface Ownership Map
 
 - macOS app entry and Debug stress selection → [`MakeItHomeApp`](MakeItHome/MakeItHomeApp.swift).
@@ -490,7 +574,8 @@ Angular/Fuse source templates and built distributions used for the Notes/Tasks e
 - SceneKit preview interaction → [`CapturePreview.CaptureView`](MakeItHome/Managers/Capture/Views/CapturePreview.swift).
 - Widgets Zone screen/DOM → [`widgets.html`](MakeItHome/Resources/assets/widgets.html) + [`script.js`](MakeItHome/Resources/assets/script.js) + [`TopWebViewCoordinator`](MakeItHome/Views/Overscreen/WidgetZoneView.swift).
 - Widget page messages → `widgetMessage`; localization dictionaries → `widgetLocalization`; child-web-view geometry → `nativeWebView`, all registered in [`TopWebView.makeNSView`](MakeItHome/Views/Overscreen/WidgetZoneView.swift).
-- App Extension HTTP routes `/connect`, `/setHtmlContent`, `/sendJSMessage`, `/checkStatus`, and compatibility `/waitForStatus` → [`AppExtensionManager.httpRequest`](MakeItHome/Managers/AppExtension.swift).
+- App Extension HTTP routes `/connect`, `/setHtmlContent`, `/sendJSMessage`, `/checkStatus`, `/ackStatusMessages`, and compatibility `/waitForStatus` → [`AppExtensionManager.httpRequest`](MakeItHome/Managers/AppExtension.swift); real `/checkStatus` transport enters `waitForStatusResponse` for authenticated asynchronous waiting.
+- App Extension page messages → `appExtensionMessage`, registered in [`AppExtensionWebView.makeNSView`](MakeItHome/Managers/Capture/Views/AppExtensionView.swift); legacy `myapp://message` is compatibility-only.
 - Static widget resources and `/fuse/api/*` JSON → [`SimpleHTTPServer.handleRequest`](MakeItHome/Managers/SimpleHttpServer.swift).
 - External extension permission list/request/revoke UI → widget settings → `TopWebViewCoordinator` → [`AppExtensionManager`](MakeItHome/Managers/AppExtension.swift).
 - Safari extension public surface and permissions → [`manifest.json`](MakeItHome/MakeItHome%20Web%20Extension/Resources/manifest.json); long-lived browser behavior → [`background.js`](MakeItHome/MakeItHome%20Web%20Extension/Resources/background.js).
@@ -526,7 +611,27 @@ Fast focused and resource-bound stress tests:
 ./Tests/run.sh
 ```
 
-Normal development run: open [`MakeItHome.xcodeproj`](MakeItHome.xcodeproj) in Xcode, select the `MakeItHome` scheme, configure signing/entitlements locally, and Run. The main app entitlement file is tracked; the Safari extension entitlement file referenced by the project is locally required but ignored by `.gitignore`, so verify it exists before a signed build.
+Safari extension browser/view regressions (requires Node.js, no packages):
+
+```sh
+node Tests/WebExtensionTests.cjs
+```
+
+Authenticated waiting responses over the real loopback HTTP server (synthetic commands; requires a local listener):
+
+```sh
+python3 Tests/AppExtensionTransportTests.py
+```
+
+Isolated production host/carousel rendering in real macOS WebKit (Python 3 and Swift required; synthetic tabs/images, no Safari or visible window):
+
+```sh
+python3 Tests/SafariCarouselWebKitTests.py
+```
+
+Manual Safari validation: include clicks immediately after a long idle, rapid newer clicks during a stalled selection/ACK, website title tickers and background-tab navigations during live preview updates, and Safari background suspension/resume. Run a signed Debug app, enable MakeItHome Web in Safari and grant website access plus the native App Extension approval. With many tabs and two windows, verify uncaptured tabs remain absent, titles and favicons on cached previews (including missing/failed icons and updates in both orientations), extension version 2.1.1 in Safari after installing/running the signed normal app, exact-ID selection including ID zero and minimized/moved-window targets, callbacks/Promise compatibility, stable first-seen order and fractional wheel/drag position during incoming frames/metadata, warm reopen/reconnect without reinjection, cached preview loading, preview/title retention after a selection and reopen (both edges/orientations), cached frame recovery after WebKit content loss, the 120 ms close with Reduce Motion on/off, click-to-focus from another app while hovering a different preview, Safari window focus before delayed tab selection and its single 400 ms retry (also with two windows on different Spaces), rapid successive selections/target closure during retry, lost status/ACK responses (no repeated selection), reconnect or revoke during close, unconfirmed-selection warnings, title changes, final-tab closure, saved position on reopen and orientation change, private-tab position exclusion, explicit Reset, app restart/reconnect, and permission denial/revocation. Safari can capture only the visible tab; uncaptured tabs stay absent until a preview is available; evicted or undecodable previews remove their cards. Compare Safari CPU/memory while the surface is open, hidden, and Safari is unfocused; the policy changes have not been measured in installed Safari.
+
+Normal development run: open [`MakeItHome.xcodeproj`](MakeItHome.xcodeproj) in Xcode, select the `MakeItHome` scheme, configure signing locally, and Run. The main app and Safari extension entitlement files are source-controlled project inputs; do not remove the extension's explicit `.gitignore` exception.
 
 Debug stress modes are launch arguments on the Debug `MakeItHome Test` scheme:
 
@@ -553,27 +658,39 @@ There is no root lint/format task, CI workflow, automated UI suite, checked-in a
 
 - Fullscreen classification and recovery → [`PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift).
 - Space transition, placeholder stability/repair, and multi-display isolation → [`PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift).
-- Cross-Space activation and focus restoration → [`PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift).
+- Cross-Space activation, focus restoration, and extension-click presentation cancellation/re-arm → [`PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift).
+- Production extension-dismissal geometry/animation, Reduce Motion, immutable owner resolution, activation order, and selection delivery at the animation boundary → [`ExtensionFocusHandoffTests.py`](Tests/ExtensionFocusHandoffTests.py), using UI/process doubles.
+- App Extension runtime delivery bounds, ACK identity, replacement and expiry → [`AppExtensionStatusMailboxTests.swift`](Tests/AppExtensionStatusMailboxTests.swift); production auth/ACK/polling/bridge dispatch with doubles → [`AppExtensionDeliveryTests.py`](Tests/AppExtensionDeliveryTests.py); real loopback waiting-response/ACK transport → [`AppExtensionTransportTests.py`](Tests/AppExtensionTransportTests.py).
+- Capture queue retention, cancellation/channel isolation, and suspending operation serialization → [`CaptureLifecycleTests.swift`](Tests/CaptureLifecycleTests.swift).
+- Stress sampler Mach thread-right lifetime → [`StressProcessSampleTests.swift`](Tests/StressProcessSampleTests.swift).
+- Startup Screen Recording request interval, in-flight exclusion and persisted cursor-control onboarding state → [`ScreenRecordingPermissionGateTests.swift`](Tests/ScreenRecordingPermissionGateTests.swift); production delayed cursor-control handling with inert doubles → [`ScreenRecordingPermissionOnboardingTests.py`](Tests/ScreenRecordingPermissionOnboardingTests.py), both through [`Tests/run.sh`](Tests/run.sh). Manually verify first-launch Screen Recording approval followed by the cursor-control dialog, denial, required relaunch, already-granted access, unchanged cursor position on multiple displays, and centered video placement on small/multiple displays.
 - Recorder eligibility state → [`PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift); real ScreenCaptureKit lifecycle is manual.
 - Preview-title wrapping and transient zero-width geometry → [`PreviewTitleTextTests.swift`](Tests/PreviewTitleTextTests.swift).
 - SceneKit churn, virtual app counts, and frame updates → [`VirtualOverscreenStressTest.swift`](MakeItHome/StressTests/VirtualOverscreenStressTest.swift).
 - Authenticated server concurrency, payload bounds, memory, and thread growth → [`AppExtensionStressTest.swift`](MakeItHome/StressTests/AppExtensionStressTest.swift).
 - Full production-runtime ScreenCaptureKit profile transitions, populated `CapturePreview` SceneKit sleep/restart, and Clipboard-to-Widgets-Zone delivery → [`RuntimeLifecycleStressTest.swift`](MakeItHome/StressTests/RuntimeLifecycleStressTest.swift); requests the Debug app's separate Screen Recording permission, reports peak SceneKit app/window nodes, and requires manual WebKit inspection.
 - Clipboard history and native-to-WebKit queue resource bounds/order → [`ClipboardResourceStressTests.swift`](Tests/ClipboardResourceStressTests.swift).
+- Safari metadata, independent logical order, active gesture deferral, duplicate-frame retention, selected-cache protection, exact IDs/callback completion/window movement, preview-only cards, click/reopen/content-loss recovery and stale-image error isolation, combined click requests, browser window-focus/tab-selection ordering, 150 ms settling, one 400 ms retry and cancellation, capture pacing, polling/ACK loss and redelivery deduplication, stalled response bodies and APIs, actual selection verification, bounded cache/delivery, saved position, title safety, favicon updates/failure/stale-handler isolation, manifest/native version alignment, and object-URL lifecycle → [`WebExtensionTests.cjs`](Tests/WebExtensionTests.cjs), using API/DOM doubles.
+- App Extension content sync/health generation, transient errors versus confirmed missing DOM, and explicit Reset → [`AppExtensionContentLifecycleTests.py`](Tests/AppExtensionContentLifecycleTests.py).
+- Actual App Extension host/Swiper rendering, landscape/portrait image decode, click/reopen, idempotent/changed content, cached-node/order retention, live wheel input with background updates, fractional position, explicit Reset, both orientations, visible title/favicon rows, decoded favicon size/fallback, and rapid hidden-frame replacement → [`SafariCarouselWebKitTests.py`](Tests/SafariCarouselWebKitTests.py), using isolated nonpersistent WebKit and synthetic data.
 - Build/resource/localization integration → the code-signing-disabled Xcode build.
-- Known test gaps: App Extension auth decisions, HTTP parsing/path safety, WebKit bridges/state retention, JavaScript DOM behavior, clipboard pasteboard/RTF fidelity, EventKit behavior, accessibility hotkeys, UI permission flows, and end-to-end signed Safari installation.
+- Known test gaps: App Extension approval/trust decisions, HTTP parsing/path safety, WebKit bridges/state retention, JavaScript broader DOM behavior, clipboard pasteboard/RTF fidelity, EventKit behavior, accessibility hotkeys, UI permission flows, and end-to-end signed Safari installation.
 
 ## Data, Security, Privacy, and Compatibility Boundaries
 
+- Waiting status responses retain at most one cancellable callback/timer and 128 excluded receipt IDs per approved connection for at most 20 seconds; arrival authentication never grants access to another/revoked connection. The server queue remains available for previews and ACKs.
+- App Extension status commands and receipt IDs remain in bounded runtime memory; do not persist them or log command payloads/secrets. Selection diagnostics may include only session tab IDs and API/verification stages, never titles, URLs, images or credentials.
 - ScreenCaptureKit frames and derived window previews are runtime-only. Do not add disk or network persistence for them.
 - Clipboard history is runtime memory. It may contain sensitive text, images, files, and app-specific raw pasteboard types; do not log payloads or transmit them.
 - User settings, known extension metadata, trust flags/secrets, and child-web-view navigation state are in `UserDefaults`. Treat stored extension secrets as credentials even though the current implementation does not use Keychain.
-- Safari extension connection state is in `chrome.storage.local`. Never print the secret/token or include real credentials in fixtures.
+- The `ScreenRecordingPermissionOnboarding` UserDefaults value stores onboarding progress only, never a cached OS grant or cursor coordinates. The delayed cursor-control request posts one same-position mouse move; it does not click, type, or bypass macOS permission checks.
+- Browser-provided favicon HTTP(S) URLs may be loaded directly by the native carousel with `no-referrer`; unsupported schemes fall back to a globe. No external favicon lookup service is used.
+- Safari extension connection state and the selected non-private tab ID/fallback index (`tabPosition`) are in `chrome.storage.local`. Preview images and tab titles/URLs stay in runtime memory and the approved loopback connection. Never print the secret/token or include real credentials in fixtures.
 - Board/Notes task data is read/written as JSON in Application Support through `/fuse/api/*`; writes are atomic with complete file protection. Preserve format compatibility or provide migration logic.
 - Calendar data remains owned by EventKit. Access only after user permission and do not mirror it to unrelated persistence.
 - The local HTTP server must remain loopback-only, with bounded bodies. App Extension content and JavaScript are trusted only after explicit identity approval and request authentication.
 - Persistent native widget web views use the default WebKit data store and can contact remote websites configured by the user. Do not merge their cookies/session state into the parent Widgets Zone or into extension trust state.
-- The app sandbox enables incoming/outgoing networking and Calendar access in the tracked app entitlement. Signing files, keys, profiles, environment files, and local extension entitlements must remain uncommitted unless the repository policy deliberately changes.
+- The app sandbox enables incoming/outgoing networking and Calendar access in the tracked app entitlement. The Safari extension's source-controlled entitlement enables only App Sandbox. Signing credentials, keys, profiles, environment files, and other local entitlements must remain uncommitted.
 - Minimum supported macOS is 12.3 according to target settings. Keep availability guards synchronized with that boundary.
 - The App Extension protocol has compatibility behavior for older trust records and the misspelled response `appAlreadyConnected`; do not “clean up” wire values without a coordinated client migration.
 
@@ -596,12 +713,11 @@ There is no root lint/format task, CI workflow, automated UI suite, checked-in a
 ### Known Gaps
 
 - [`WhatsNew.md`](WhatsNew.md) remains the standalone 2.0.9 release-note file; the 2.1.0 summary currently lives in [`README.md`](README.md) and the Mac App Store listing.
-- The parent app build number is 164 and embedded Web Extension build number is 1, producing an Xcode validation warning.
 - The app target also copies its processed [`Info.plist`](MakeItHome/Info.plist) in the Resources phase, producing an Xcode build warning.
-- `ContentView.swift` has an `@available (` whitespace warning that becomes an error in Swift 6 mode.
 - App Extension tutorial/API documentation remains incomplete.
-- Automated coverage is concentrated in `PreviewFlowGate`; security, WebKit, clipboard, calendar, capture, and end-to-end UI paths remain gaps.
+- Focused suites cover preview gating, capture lifecycle, extension auth/status transport and isolated WebKit rendering. Connection approval/trust persistence, installed Safari capture/activation, clipboard fidelity, calendar and end-to-end UI paths remain gaps.
 - Release/signing/notarization procedure and continuous integration are not checked in.
+- A retired 2.1.0/build 163 report records a main-thread `objc_release`/autorelease-pool `EXC_BAD_ACCESS` after roughly 5 hours 47 minutes. Capture lifecycle resource fixes do not establish that this historical crash is resolved; see the [13 October investigation](MakeItHome/StressTests/Reports/2026-10-13-lifecycle-soak.md) for measured coverage and remaining checks.
 
 ### Planned
 

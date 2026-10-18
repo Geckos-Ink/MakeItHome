@@ -4,11 +4,12 @@ set -euo pipefail
 umask 077
 
 script_directory="${0:A:h}"
+source "$script_directory/StressDiagnosticChecks.zsh"
 repository_root="${script_directory:h:h}"
 mode_list="${MIH_STRESS_MODES:-virtual-apps app-extension runtime-lifecycle real-usage}"
 modes=(${=mode_list})
 
-virtual_stage_seconds="${MIH_STRESS_VIRTUAL_STAGE_SECONDS:-30}"
+virtual_stage_seconds="${MIH_STRESS_VIRTUAL_STAGE_SECONDS:-5}"
 app_extension_seconds="${MIH_STRESS_APP_EXTENSION_SECONDS:-90}"
 runtime_seconds="${MIH_STRESS_RUNTIME_SECONDS:-300}"
 real_usage_seconds="${MIH_STRESS_REAL_USAGE_SECONDS:-${MIH_STRESS_DURATION_SECONDS:-780}}"
@@ -18,6 +19,7 @@ sample_interval="${MIH_STRESS_SAMPLE_INTERVAL_SECONDS:-60}"
 attach_lldb="${MIH_STRESS_ATTACH_LLDB:-1}"
 stop_on_failure="${MIH_STRESS_STOP_ON_FAILURE:-0}"
 copy_source_directory="${MIH_STRESS_COPY_SOURCE:-/Users/riccardo/Pictures/instagramToReload}"
+result_channel="${MIH_STRESS_RESULT_CHANNEL:-file}"
 
 user_name="$(id -un)"
 user_directory="$(
@@ -31,6 +33,9 @@ container_temporary_directory="$user_directory/Library/Containers/ink.geckos.Mak
 runtime_directory="$container_temporary_directory/MakeItHomeStressRun-$$"
 results_directory="$runtime_directory/results"
 staging_directory="$runtime_directory/corpus"
+if [[ "$result_channel" == "stdout" ]]; then
+    results_directory="$artifact_directory/results"
+fi
 
 active_app_pid=""
 active_launcher_pid=""
@@ -122,6 +127,10 @@ require_positive_number MIH_STRESS_CYCLE_MAX_SECONDS "$cycle_max_seconds"
 require_positive_integer MIH_STRESS_SAMPLE_INTERVAL_SECONDS "$sample_interval"
 require_boolean MIH_STRESS_ATTACH_LLDB "$attach_lldb"
 require_boolean MIH_STRESS_STOP_ON_FAILURE "$stop_on_failure"
+if [[ "$result_channel" != "file" && "$result_channel" != "stdout" ]]; then
+    print -u2 "MIH_STRESS_RESULT_CHANNEL must be file or stdout."
+    exit 2
+fi
 
 if ! awk -v minimum="$cycle_min_seconds" -v maximum="$cycle_max_seconds" \
     'BEGIN { exit !(maximum >= minimum) }'; then
@@ -148,7 +157,7 @@ for mode in "${modes[@]}"; do
     esac
 done
 
-if (( needs_real_usage )) && [[ ! -d "$copy_source_directory" ]]; then
+if (( needs_real_usage )) && [[ "$copy_source_directory" != "bundled" && ! -d "$copy_source_directory" ]]; then
     print -u2 "Clipboard source directory not found: $copy_source_directory"
     exit 1
 fi
@@ -172,6 +181,7 @@ cd "$repository_root"
     print "sampleIntervalSeconds=$sample_interval"
     print "attachLLDB=$attach_lldb"
     print "copySource=$copy_source_directory"
+    print "resultChannel=$result_channel"
     print
     sw_vers
     print
@@ -194,6 +204,9 @@ build_arguments=(
     -configuration Debug
     -destination "platform=macOS"
 )
+if [[ -n "${MIH_STRESS_DERIVED_DATA_PATH:-}" ]]; then
+    build_arguments+=(-derivedDataPath "$MIH_STRESS_DERIVED_DATA_PATH")
+fi
 debug_overrides=(
     DEBUG_INFORMATION_FORMAT=dwarf-with-dsym
 )
@@ -245,8 +258,13 @@ fi
 } > "$artifact_directory/binary-identities.txt" 2>&1
 
 if (( needs_real_usage )); then
-    print "Staging clipboard corpus: $copy_source_directory"
-    ditto "$copy_source_directory" "$staging_directory"
+    if [[ "$copy_source_directory" == "bundled" ]]; then
+        staging_directory="$stress_app/Contents/Resources/assets/fuse/assets/images"
+        print "Using bundled clipboard corpus: $staging_directory"
+    else
+        print "Staging clipboard corpus: $copy_source_directory"
+        ditto "$copy_source_directory" "$staging_directory"
+    fi
 fi
 
 sample_periodically() {
@@ -303,16 +321,18 @@ collect_crash_reports() {
     local copied=0
     local report_root
 
-    mkdir -p "$destination_directory/crash-reports"
+    mkdir -p "$destination_directory/crash-reports" "$destination_directory/related-diagnostics"
     for report_root in \
         "$user_directory/Library/Logs/DiagnosticReports" \
         "/Library/Logs/DiagnosticReports"; do
         [[ -d "$report_root" ]] || continue
         while IFS= read -r -d $'\0' report; do
-            if grep -aq "ink.geckos.MakeItHome.Test" "$report"; then
+            if stress_report_is_test_crash "$report"; then
                 local destination="$destination_directory/crash-reports/${report:t}"
                 ditto "$report" "$destination" >> "$collector_log" 2>&1
                 copied=$((copied + 1))
+            elif grep -aq "ink.geckos.MakeItHome.Test" "$report"; then
+                ditto "$report" "$destination_directory/related-diagnostics/${report:t}" >> "$collector_log" 2>&1
             fi
         done < <(
             find "$report_root" -maxdepth 2 -type f -newer "$marker_file" -print0 \
@@ -358,10 +378,14 @@ run_mode() {
     app_arguments=(
         --stress "$mode"
         --stress-auto-exit
-        --stress-result-file "$result_file"
         --stress-cycle-min "$cycle_min_seconds"
         --stress-cycle-max "$cycle_max_seconds"
     )
+    if [[ "$result_channel" == "stdout" ]]; then
+        app_arguments+=(--stress-result-stdout)
+    else
+        app_arguments+=(--stress-result-file "$result_file")
+    fi
 
     case "$mode" in
         virtual-apps)
@@ -517,6 +541,13 @@ run_mode() {
     collect_crash_reports "$mode_directory" "$marker_file"
 
     local result_summary=""
+    if [[ "$result_channel" == "stdout" ]]; then
+        local handshake="$(awk '/^\[StressResult\] / { sub(/^\[StressResult\] /, ""); result=$0 } END { print result }' "$mode_directory/stdout.log")"
+        if [[ -n "$handshake" ]]; then
+            print -r -- "$handshake" > "$result_file.tmp"
+            mv "$result_file.tmp" "$result_file"
+        fi
+    fi
     if [[ -s "$result_file" ]]; then
         result_summary="$(<"$result_file")"
         ditto "$result_file" "$mode_directory/result.txt"
@@ -532,12 +563,18 @@ run_mode() {
     if [[ "$result_summary" != "$expected_prefix"* ]]; then
         mode_failed=1
     fi
+    local crash_detected=0
+    if stress_phase_has_crash "$mode_directory"; then
+        crash_detected=1
+        mode_failed=1
+    fi
 
     if (( mode_failed )); then
         {
             print "FAILED"
             print "launchStatus=$launch_status"
             print "timedOut=$timed_out"
+            print "crashDetected=$crash_detected"
             print "result=$result_summary"
         } > "$mode_directory/status.txt"
         print -u2 "[$mode] FAILED: ${result_summary:-no completion result}"
@@ -571,6 +608,9 @@ done
 
 sleep 3
 collect_crash_reports "$artifact_directory" "$run_marker"
+if stress_phase_has_crash "$artifact_directory"; then
+    overall_failed=1
+fi
 
 {
     if (( overall_failed )); then

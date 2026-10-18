@@ -231,6 +231,7 @@ public class SimpleHTTPServer {
     private func handleNewConnection(connection: NWConnection) {
         var receivedData = Data()
         var completed = false
+        var cancelStatusWait: (() -> Void)?
         
         func sendAndClose(_ data: Data) {
             guard !completed else { return }
@@ -253,6 +254,22 @@ public class SimpleHTTPServer {
                 
                 switch self.parseRequest(from: receivedData) {
                 case .complete(let request):
+                    receivedData = Data()
+                    if (request.method == "GET" || request.method == "POST"),
+                       request.path.split(separator: "?").first == "/appExtension/checkStatus" {
+                        // Park only this response. The server queue and main
+                        // thread remain free for previews, ACKs and UI input.
+                        DispatchQueue.main.async {
+                            cancelStatusWait = self.appExtensionManager.waitForStatusResponse(url: request.path,
+                                dataReq: request.body.isEmpty ? nil : String(data: request.body, encoding: .utf8)) { reply in
+                                let data = (try? JSONEncoder().encode(reply)) ?? Data()
+                                let response = self.buildResponse(statusCode: 200, reason: "OK", body: data,
+                                    contentType: "application/json; charset=utf-8", extraHeaders: ["Cache-Control": "no-store"])
+                                self.requestQueue.async { sendAndClose(response) }
+                            }
+                        }
+                        return
+                    }
                     if let response = self.handleRequest(request: request) {
                         sendAndClose(response)
                     } else {
@@ -270,6 +287,14 @@ public class SimpleHTTPServer {
             }
         }
         
+        connection.stateUpdateHandler = { state in
+            switch state {
+            case .failed, .cancelled:
+                completed = true
+                DispatchQueue.main.async { cancelStatusWait?(); cancelStatusWait = nil }
+            default: break
+            }
+        }
         connection.start(queue: requestQueue)
         receiveNextChunk()
     }

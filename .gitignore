@@ -39,6 +39,8 @@ APIKeys.plist
 apikeys.plist
 GoogleService-Info.plist
 *.entitlements
+# Required, non-secret Safari extension sandbox configuration.
+!MakeItHome/MakeItHome Web Extension/MakeItHome_Web_Extension.entitlements
 iCloudContainerEnvironment
 CloudKit-*.plist
 *.xcworkspace/xcshareddata/WorkspaceSettings.xcsettings
