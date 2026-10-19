@@ -38,7 +38,7 @@ function checkConnectionStatus(){
 
 setInterval(()=>{
     checkConnectionStatus()
-}, 2200)
+}, 500)
 
 checkConnectionStatus()
 
