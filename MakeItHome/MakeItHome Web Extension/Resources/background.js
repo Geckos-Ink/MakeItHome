@@ -1240,8 +1240,9 @@ async function runScreenshotLoop(){
     }
 }
 
-// Add a listener for the browser action
-chrome.action.onClicked.addListener(()=>{
+// macOS Safari uses a persistent Manifest V2 background page. Keep its toolbar
+// listener on the matching API so startup cannot fail before the polling loops.
+chrome.browserAction.onClicked.addListener(()=>{
     checkConnect()
     scheduleScreenshotLoop(120)
 });

@@ -31,7 +31,7 @@ function harness(){
         chrome: {
             runtime: {getManifest: ()=>({name:'Test', version:'1'}), id:'fixture', getURL:x=>x, onMessage:event('message')},
             storage: {local: {get: async()=>({}), set: async value=>writes.push(value)}},
-            action: {onClicked:event('action')},
+            browserAction: {onClicked:event('action')},
             tabs: {
                 query(query, callback){
                     const windowId = query.lastFocusedWindow || query.currentWindow ? lastFocusedWindow.id : query.windowId
@@ -110,6 +110,20 @@ function seedPreviews(h, infos, position = null){
     h.run(`syncSafariTabs(${JSON.stringify(infos)}, ${JSON.stringify(position)}); applySafariScreenshots(${JSON.stringify(infos.map(tabInfo=>({blob:'YQ==',tabInfo})))})`)
 }
 ;(async()=>{
+    await check('macOS Safari declares a persistent background page and the matching toolbar entry point', ()=>{
+        const manifest = JSON.parse(fs.readFileSync(path.join(resources, 'manifest.json'), 'utf8'))
+        assert.equal(manifest.manifest_version,2,'Safari makes all Manifest V3 backgrounds nonpersistent')
+        assert.equal(manifest.background.persistent,true)
+        assert.deepEqual(manifest.background.scripts,['background.js'])
+        assert.equal(manifest.browser_action.default_popup,'popup.html')
+        assert.equal(manifest.action,undefined)
+        const h=harness(),calls=[]
+        assert.equal(h.ctx.chrome.action,undefined,'Safari MV2 need not expose the MV3 toolbar API')
+        h.ctx.calls=calls
+        h.run('checkConnect=()=>calls.push("connect");scheduleScreenshotLoop=delay=>calls.push(delay)')
+        h.events.action.listener()
+        assert.deepEqual(calls,['connect',120])
+    })
     await check('Safari manifest and both extension configurations match the containing app version/build', ()=>{
         const manifest = JSON.parse(fs.readFileSync(path.join(resources, 'manifest.json'), 'utf8'))
         const project = fs.readFileSync(path.join(__dirname, '../MakeItHome.xcodeproj/project.pbxproj'), 'utf8')

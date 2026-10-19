@@ -1,10 +1,10 @@
 {
-    "manifest_version": 3,
+    "manifest_version": 2,
     "default_locale": "en",
 
     "name": "MakeItHome Web",
     "description": "Safari extension for MakeItHome app: allows you to have the previews of Safari's tabs.",
-    "version": "2.1.1",
+    "version": "2.1.2",
 
     "icons": {
         "48": "images/icon-48.png",
@@ -15,7 +15,8 @@
     },
 
     "background": {
-        "scripts": ["background.js"]
+        "scripts": ["background.js"],
+        "persistent": true
     },
 
     "content_scripts": [{
@@ -23,7 +24,7 @@
         "matches": [ "*://*/*" ]
     }],
 
-    "action": {
+    "browser_action": {
         "default_popup": "popup.html",
         "default_icon": {
             "16": "images/toolbar-icon-16.png",
