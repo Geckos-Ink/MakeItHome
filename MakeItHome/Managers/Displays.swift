@@ -1779,7 +1779,7 @@ public class Display : Equatable {
                             // found placeholder panel
                             if !scannedHolderIds.contains(winId) {
                                 scannedHolderIds.append(winId)
-                                print("space holder observed", winId)
+                                //print("space holder observed", winId) /// Enable for debug purposes
                             }
                         }
                         else if (winner == nil || thisTimeHasTitle) && (winOnScreen == 1 && rectOnCurrentDisplay && !excludedApps.contains(winOwnerName ?? "") && winOwnerChecked && (rect.width+rect.height)/2 > 150)/* window must be enough big */{
@@ -1944,7 +1944,7 @@ public class Display : Equatable {
                         }
                     }
 
-                    print("stable unique space holder found", settledID)
+                    //print("stable unique space holder found", settledID) /// ENABLE FOR DEBUG PURPOSES
                 }
             }
             
