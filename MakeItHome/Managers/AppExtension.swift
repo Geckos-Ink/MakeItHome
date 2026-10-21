@@ -67,6 +67,9 @@ class AppExtensionManager {
     private var recentlyApprovedUntil: [String: TimeInterval] = [:]
     private var deferredApprovals: [String: DeferredConnectionApproval] = [:]
     private var deferredApprovalTimer: Timer?
+    private var activeApproval: (request: DeferredConnectionApproval, alert: NSAlert,
+                                 session: NSApplication.ModalSession, deadline: TimeInterval)?
+    private var activeApprovalTimer: Timer?
 
     func webViewDidFinishLoading() {
         for app in apps.values {
@@ -129,6 +132,11 @@ class AppExtensionManager {
     }
 
     func revokeExtensionPermission(identity: String) {
+        removeDeferredApproval(identity: identity)
+        if activeApproval?.request.identity == identity {
+            finishConnectionApproval(decision: nil)
+        }
+        recentlyApprovedUntil.removeValue(forKey: identity)
         setTrustedExtension(identity: identity, trusted: false)
         clearIgnoredUntil(identity: identity)
 
@@ -203,7 +211,7 @@ class AppExtensionManager {
             )
 
             if let app = app {
-                if hasValidToken(secret: app.secret, token: providedToken) {
+                if app.identity == identity && hasValidToken(secret: app.secret, token: providedToken) {
                     reply.secret = app.secret
                     reply.description = "appAlreadyConnected" // fantastic. A typo in release.
                     reply.status = "ok"
@@ -221,7 +229,7 @@ class AppExtensionManager {
                 // A connection was just approved for this identity: converge the extension's
                 // racing reconnects onto the existing secret instead of prompting again and
                 // rotating it (which is what caused the endless "Allow" loop).
-                if isTrustedExtension(identity: identity) && isRecentlyApproved(identity: identity) {
+                if app.identity == identity && isTrustedExtension(identity: identity) && isRecentlyApproved(identity: identity) {
                     reply.secret = app.secret
                     reply.description = "appConnected"
                     reply.status = "ok"
@@ -828,13 +836,13 @@ class AppExtensionManager {
                 reason: reason
             )
 
-            guard !self.shouldWaitForOverscreenToClose else {
+            // Never keep an HTTP request (and its serial server queue) inside
+            // runModal. A nested main-dispatch callback also starves the old
+            // async timeout, leaving reconnect sockets open until EMFILE.
+            if self.activeApproval?.request.identity != request.identity {
                 self.enqueueDeferredApproval(request)
-                return .deferred
             }
-
-            self.removeDeferredApproval(identity: request.identity)
-            return self.presentConnectionApproval(request)
+            return .deferred
         }
 
         if Thread.isMainThread {
@@ -873,15 +881,35 @@ class AppExtensionManager {
     private func presentNextDeferredApprovalIfPossible() {
         guard !shouldWaitForOverscreenToClose,
               !Static.isExtensionApprovalPromptShowing,
+              activeApproval == nil,
+              NSApp.modalWindow == nil,
               let request = deferredApprovals.values.first else {
             return
         }
 
         removeDeferredApproval(identity: request.identity)
-        let decision = presentConnectionApproval(request)
+        presentConnectionApproval(request)
+    }
+
+    private func finishConnectionApproval(decision: ConnectionApprovalDecision?) {
+        guard let active = activeApproval else { return }
+        activeApproval = nil
+        activeApprovalTimer?.invalidate()
+        activeApprovalTimer = nil
+        NSApp.endModalSession(active.session)
+        active.alert.window.orderOut(nil)
+        Static.isExtensionApprovalPromptShowing = false
+
+        // Revoking a queued/visible request must not grant trust later.
+        guard let decision else { return }
+        let request = active.request
 
         switch decision {
         case .allow:
+            if let previous = apps[request.bundleId] {
+                previous.teardown()
+                apps[request.bundleId] = AppExtension(bundleId: request.bundleId, identity: request.identity)
+            }
             let currentSecret = (apps[request.bundleId]?.identity == request.identity)
                 ? apps[request.bundleId]?.secret
                 : nil
@@ -906,11 +934,12 @@ class AppExtensionManager {
         }
     }
 
-    private func presentConnectionApproval(_ request: DeferredConnectionApproval) -> ConnectionApprovalDecision {
+    private func presentConnectionApproval(_ request: DeferredConnectionApproval) {
+        var request = request
+        // A different queued approval may have established a connection since
+        // this request arrived. Describe the current replacement accurately.
+        request.isReplacingConnection = request.isReplacingConnection || apps[request.bundleId] != nil
         Static.isExtensionApprovalPromptShowing = true
-        defer {
-            Static.isExtensionApprovalPromptShowing = false
-        }
 
         let extensionDisplayName = extensionDisplayName(
             bundleId: request.bundleId,
@@ -938,23 +967,37 @@ class AppExtensionManager {
         alert.addButton(withTitle: "Allow")
         alert.addButton(withTitle: "Deny")
 
-        let timeoutWork = DispatchWorkItem {
-            NSApp.abortModal()
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + approvalTimeoutSeconds, execute: timeoutWork)
-
+        alert.layout()
         NSApp.activate(ignoringOtherApps: true)
-        let response = alert.runModal()
-        timeoutWork.cancel()
-        alert.window.orderOut(nil)
+        let session = NSApp.beginModalSession(for: alert.window)
+        activeApproval = (request, alert, session, ProcessInfo.processInfo.systemUptime + approvalTimeoutSeconds)
 
+        // A modal session processes only pending events, then returns. Yield
+        // between passes so HTTP, capture, power notifications and the timeout
+        // continue to run while the user considers the approval.
+        let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
+            self?.pollConnectionApproval()
+        }
+        activeApprovalTimer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    private func pollConnectionApproval() {
+        guard let active = activeApproval else { return }
+        guard ProcessInfo.processInfo.systemUptime < active.deadline else {
+            finishConnectionApproval(decision: .ignored)
+            return
+        }
+        let response = NSApp.runModalSession(active.session)
+        guard activeApproval?.session == active.session else { return }
+        if response == .continue { return }
         switch response {
         case .alertFirstButtonReturn:
-            return .allow
+            finishConnectionApproval(decision: .allow)
         case .alertSecondButtonReturn:
-            return .deny
+            finishConnectionApproval(decision: .deny)
         default:
-            return .ignored
+            finishConnectionApproval(decision: .ignored)
         }
     }
 
