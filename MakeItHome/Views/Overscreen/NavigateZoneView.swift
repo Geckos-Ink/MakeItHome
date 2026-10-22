@@ -94,6 +94,6 @@ public class NavigateCoordinator: NSObject, WKUIDelegate, WKNavigationDelegate {
     
 }
 
-public class NavigateWKWV : WKWebView {
+public class NavigateWKWV : SleepAwareWebView {
     
 }
