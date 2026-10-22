@@ -29,10 +29,11 @@ a synthetic extension identity and in-memory trust.
 
 - Connection requests immediately receive `connectionDeferred`. Requests are
   deduplicated by identity, with one active approval and overscreen deferral.
-- A main-owned AppKit modal session advances at 50 ms intervals, returning
-  control between passes. Its 30-second monotonic deadline and explicit
-  Allow/Deny/revocation clean up that exact session. Pending/ignored requests
-  do not grant trust; approved replacements retire the old connection once.
+- A main-owned alert panel uses the normal AppKit event loop. Retained explicit
+  button actions close it after event dispatch; a 50 ms safety timer enforces
+  the 30-second monotonic deadline. Selection and revocation clean up that exact
+  request. Pending/ignored requests do not grant trust; approved replacements
+  retire the old connection once.
 - Existing-token and approval-grace reuse require the same connection identity.
 - The server caps accepted connections at 64 and cancels each after 30 seconds,
   including incomplete requests and parked polls. Server stop cancels clients.
@@ -41,8 +42,9 @@ a synthetic extension identity and in-memory trust.
 ## Validation
 
 - `Tests/run.sh`: passed, including full-manager approval/connect regressions.
-- `Tests/AppExtensionApprovalTests.py --native`: passed with real AppKit Allow
-  and Deny buttons, automatic timeout, session cleanup and main-queue heartbeat.
+- The initial `Tests/AppExtensionApprovalTests.py --native` check passed using
+  `performClick`. This missed normal event dispatch and has been replaced by
+  the queued-input check described below.
 - `Tests/AppExtensionApprovalTransportTests.py`: passed. 200 reconnects while
   approval remained visible completed in 0.15 seconds; open descriptors stayed
   at 18 before/after reconnects and after abandoned-client cleanup. 80 synthetic
@@ -51,6 +53,27 @@ a synthetic extension identity and in-memory trust.
   waits, concurrent ACK, disconnect/loss, token aging and 30 delivery cycles.
 - Normal Debug app and embedded Safari extension: code-signing-disabled build
   passed with Xcode 27.1, using cached Swift Collections and temporary output.
+
+## Follow-up: button press waits for the timeout
+
+The user reported that an alert could remain open until its 30-second timeout
+following a button press. The initial timer-driven modal-session implementation
+still depended on AppKit's modal return code and the native test used
+`performClick`, bypassing the normal application input loop.
+
+Approval now uses an ordinary alert panel with explicit retained button targets.
+The first choice is timestamped independently of modal state. Its callback
+queues cleanup after event dispatch; the timer handles only timeout/fallback.
+Cleanup detaches both targets, so a retired panel cannot approve a newer request.
+No approval path runs an application modal loop or modal session.
+
+The updated native fixture runs `NSApplication.run` and posts six mouse clicks
+through the real AppKit event queue. It checks dismissal within 400 ms against
+a separate one-second timeout, as well as Allow/Deny decisions, expiry and a
+main-queue heartbeat. The measured peak dismissal was 27 ms. Unit coverage also
+checks prompt closure before the fallback timer, first-choice retention and
+retired-target isolation. Full tests, loopback descriptor checks and the normal
+Debug app/extension build were repeated after this change.
 
 These fixtures do not capture screens, access Safari, or alter persisted trust.
 No deliberate process-wide descriptor exhaustion was attempted. The installed,

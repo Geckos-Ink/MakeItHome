@@ -16,6 +16,29 @@ enum ConnectionApprovalDecision: String {
     case deferred
 }
 
+// Approval uses an ordinary panel with explicit actions. Its response must
+// never depend on a nested application modal loop or a polled return code.
+private final class AppExtensionApprovalActions: NSObject {
+    private var selection: (decision: ConnectionApprovalDecision, uptime: TimeInterval)?
+    private let didSelect: () -> Void
+
+    init(didSelect: @escaping () -> Void) { self.didSelect = didSelect }
+
+    @objc func allow(_ sender: NSButton) { select(.allow) }
+    @objc func deny(_ sender: NSButton) { select(.deny) }
+
+    private func select(_ decision: ConnectionApprovalDecision) {
+        guard selection == nil else { return }
+        selection = (decision, ProcessInfo.processInfo.systemUptime)
+        didSelect()
+    }
+
+    func decision(before deadline: TimeInterval) -> ConnectionApprovalDecision? {
+        guard let selection else { return nil }
+        return selection.uptime < deadline ? selection.decision : .ignored
+    }
+}
+
 struct AppExtensionPermissionStatus: Codable {
     var identity: String
     var bundleId: String
@@ -68,7 +91,8 @@ class AppExtensionManager {
     private var deferredApprovals: [String: DeferredConnectionApproval] = [:]
     private var deferredApprovalTimer: Timer?
     private var activeApproval: (request: DeferredConnectionApproval, alert: NSAlert,
-                                 session: NSApplication.ModalSession, deadline: TimeInterval)?
+                                 actions: AppExtensionApprovalActions,
+                                 deadline: TimeInterval)?
     private var activeApprovalTimer: Timer?
 
     func webViewDidFinishLoading() {
@@ -896,7 +920,10 @@ class AppExtensionManager {
         activeApproval = nil
         activeApprovalTimer?.invalidate()
         activeApprovalTimer = nil
-        NSApp.endModalSession(active.session)
+        for button in active.alert.buttons {
+            button.target = nil
+            button.action = nil
+        }
         active.alert.window.orderOut(nil)
         Static.isExtensionApprovalPromptShowing = false
 
@@ -968,13 +995,23 @@ class AppExtensionManager {
         alert.addButton(withTitle: "Deny")
 
         alert.layout()
+        let actions = AppExtensionApprovalActions { [weak self] in
+            // Let AppKit finish dispatching the button event before retiring
+            // its window and targets. The timer is only a timeout/fallback.
+            DispatchQueue.main.async { self?.pollConnectionApproval() }
+        }
+        alert.buttons[0].target = actions
+        alert.buttons[0].action = #selector(AppExtensionApprovalActions.allow(_:))
+        alert.buttons[1].target = actions
+        alert.buttons[1].action = #selector(AppExtensionApprovalActions.deny(_:))
+        activeApproval = (request, alert, actions, ProcessInfo.processInfo.systemUptime + approvalTimeoutSeconds)
+        alert.window.level = .modalPanel
+        alert.window.center()
         NSApp.activate(ignoringOtherApps: true)
-        let session = NSApp.beginModalSession(for: alert.window)
-        activeApproval = (request, alert, session, ProcessInfo.processInfo.systemUptime + approvalTimeoutSeconds)
+        alert.window.makeKeyAndOrderFront(nil)
 
-        // A modal session processes only pending events, then returns. Yield
-        // between passes so HTTP, capture, power notifications and the timeout
-        // continue to run while the user considers the approval.
+        // Use the normal application event loop for input. Running a modal
+        // session in this timer can strand a response after button tracking.
         let timer = Timer(timeInterval: 0.05, repeats: true) { [weak self] _ in
             self?.pollConnectionApproval()
         }
@@ -984,20 +1021,13 @@ class AppExtensionManager {
 
     private func pollConnectionApproval() {
         guard let active = activeApproval else { return }
+        if let decision = active.actions.decision(before: active.deadline) {
+            finishConnectionApproval(decision: decision)
+            return
+        }
         guard ProcessInfo.processInfo.systemUptime < active.deadline else {
             finishConnectionApproval(decision: .ignored)
             return
-        }
-        let response = NSApp.runModalSession(active.session)
-        guard activeApproval?.session == active.session else { return }
-        if response == .continue { return }
-        switch response {
-        case .alertFirstButtonReturn:
-            finishConnectionApproval(decision: .allow)
-        case .alertSecondButtonReturn:
-            finishConnectionApproval(decision: .deny)
-        default:
-            finishConnectionApproval(decision: .ignored)
         }
     }
 

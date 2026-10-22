@@ -17,13 +17,41 @@ manager = manager.replace('private let approvalTimeoutSeconds: TimeInterval = 30
                           'private let approvalTimeoutSeconds: TimeInterval = 0.25')
 
 ui = r'''
-class NSWindow { func orderOut(_ sender: Any?) {} }
+class NSButton: NSObject {
+    weak var target: AnyObject?
+    var action: Selector?
+    func performClick(_ sender: Any?) {
+        if let target = target as? NSObject, let action { _ = target.perform(action, with: self) }
+    }
+}
+class NSWindow {
+    enum Level { case modalPanel }
+    var level = Level.modalPanel
+    var buttons: [NSButton] = []
+    var isVisible = false
+    func center() {}
+    func makeKeyAndOrderFront(_ sender: Any?) {
+        precondition(NSApp.sessions.isEmpty, "Approval panels must be serialized")
+        NSApp.started += 1
+        NSApp.sessions[NSApp.started] = self
+        NSApp.keyWindow = self
+        isVisible = true
+    }
+    func orderOut(_ sender: Any?) {
+        precondition(isVisible, "Panel must close exactly once")
+        isVisible = false
+        NSApp.sessions.removeAll()
+        NSApp.keyWindow = nil
+        NSApp.ended += 1
+    }
+}
 class NSAlert {
     enum Style { case warning }
     var alertStyle = Style.warning
     var messageText = "", informativeText = ""
     let window = NSWindow()
-    func addButton(withTitle: String) {}
+    var buttons: [NSButton] { window.buttons }
+    func addButton(withTitle: String) { window.buttons.append(NSButton()) }
     func layout() {}
     func runModal() -> NSApplication.ModalResponse {
         fatalError("Approval must never block an HTTP/main-dispatch callback")
@@ -33,23 +61,24 @@ class NSApplication {
     typealias ModalSession = Int
     enum ModalResponse { case `continue`, alertFirstButtonReturn, alertSecondButtonReturn, abort }
     var sessions: [Int: NSWindow] = [:]
-    var responses: [Int: ModalResponse] = [:]
     var started = 0, ended = 0
-    var modalWindow: NSWindow? { sessions.values.first }
+    var modalWindow: NSWindow?
+    var keyWindow: NSWindow?
     func activate(ignoringOtherApps: Bool) {}
     func beginModalSession(for window: NSWindow) -> Int {
-        precondition(sessions.isEmpty, "Approval prompts must be serialized")
-        started += 1
-        sessions[started] = window
-        return started
+        fatalError("Approval must use the normal application event loop")
     }
-    func runModalSession(_ session: Int) -> ModalResponse { responses[session] ?? .continue }
-    func endModalSession(_ session: Int) {
-        precondition(sessions.removeValue(forKey: session) != nil, "Session must end exactly once")
-        responses.removeValue(forKey: session)
-        ended += 1
+    func runModalSession(_ session: Int) -> ModalResponse {
+        fatalError("Approval must not poll a modal session for button input")
     }
-    func respond(_ response: ModalResponse) { responses[started] = response }
+    func respond(_ response: ModalResponse) {
+        // Only the actual button action delivers the decision.
+        switch response {
+        case .alertFirstButtonReturn: sessions[started]!.buttons[0].performClick(nil)
+        case .alertSecondButtonReturn: sessions[started]!.buttons[1].performClick(nil)
+        default: fatalError("Unexpected synthetic response")
+        }
+    }
 }
 let NSApp = NSApplication()
 '''
@@ -138,7 +167,9 @@ test = r'''
         DispatchQueue.main.async { heartbeat = true }
         pump(0.06)
         precondition(heartbeat && NSApp.started == 1, "Approval must yield to the main queue")
+        let retiredButton = NSApp.sessions[NSApp.started]!.buttons[0]
         NSApp.respond(.alertFirstButtonReturn)
+        NSApp.respond(.alertSecondButtonReturn) // The first response wins.
         pump(0.06)
         precondition(!Static.isExtensionApprovalPromptShowing && NSApp.ended == 1)
         let approved = connect()
@@ -153,6 +184,9 @@ test = r'''
         let token = Data("\(old.secret):\(Int64(Date().timeIntervalSince1970))".utf8).sha256Hexa
         precondition(connect("second", token: token).description == "connectionDeferred")
         pump(0.12)
+        retiredButton.performClick(nil)
+        precondition(retiredButton.target == nil && retiredButton.action == nil)
+        precondition(permission("second")?.trusted == false, "Retired buttons must not approve another request")
         NSApp.respond(.alertFirstButtonReturn)
         pump(0.06)
         let replaced = connect("second")
@@ -168,7 +202,8 @@ test = r'''
         precondition(connect("denied").description == "connectionDeferred")
         pump(0.12)
         NSApp.respond(.alertSecondButtonReturn)
-        pump(0.06)
+        pump(0.02)
+        precondition(!Static.isExtensionApprovalPromptShowing, "Button action must close without waiting for the timeout timer")
         precondition(permission("denied")?.trusted == false)
 
         precondition(connect("revoked").description == "connectionDeferred")
@@ -218,10 +253,18 @@ test = r'''
 native_test = r'''
 import AppKit
 @main struct NativeApprovalTests {
-    static func main() {
-        _ = NSApplication.shared
-        NSApp.setActivationPolicy(.accessory)
-        NSApp.finishLaunching()
+    @MainActor static func waitFor(_ message: String, timeout: Double = 0.5,
+                                   condition: () -> Bool) async {
+        let deadline = ProcessInfo.processInfo.systemUptime + timeout
+        while !condition() {
+            if ProcessInfo.processInfo.systemUptime >= deadline {
+                fputs("NativeApprovalTests: FAIL (\(message))\n", stderr)
+                exit(1)
+            }
+            try! await Task.sleep(nanoseconds: 5_000_000)
+        }
+    }
+    @MainActor static func run() async {
         let manager = AppExtensionManager()
         func connect(_ name: String) -> AppExtensionMsg {
             manager.httpRequest(url: "/appExtension/connect?bundleId=ink.makeithome.approval-fixture&clientId=\(name)&extensionName=Native%20approval%20fixture", dataReq: nil)
@@ -229,29 +272,55 @@ import AppKit
         func buttons(_ view: NSView) -> [NSButton] {
             (view as? NSButton).map { [$0] } ?? view.subviews.flatMap { buttons($0) }
         }
-        func press(_ title: String) {
-            buttons(NSApp.modalWindow!.contentView!).first { $0.title == title }!.performClick(nil)
-            pump(0.08)
-            precondition(!Static.isExtensionApprovalPromptShowing && NSApp.modalWindow == nil)
+        func postClick(_ title: String) {
+            let window = NSApp.keyWindow!
+            let button = buttons(window.contentView!).first { $0.title == title }!
+            let point = button.convert(NSPoint(x: button.bounds.midX, y: button.bounds.midY), to: nil)
+            let windowNumber = window.windowNumber
+            // Queue actual AppKit mouse events through NSApplication.run().
+            // performClick alone bypasses the event-dispatch path that lost
+            // the original NSAlert response between modal-session passes.
+            func post(_ type: NSEvent.EventType) {
+                NSApp.postEvent(NSEvent.mouseEvent(with: type, location: point, modifierFlags: [],
+                    timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: windowNumber,
+                    context: nil, eventNumber: 0, clickCount: 1, pressure: 1)!, atStart: false)
+            }
+            post(.leftMouseDown)
+            post(.leftMouseUp)
         }
-        precondition(connect("allow").description == "connectionDeferred")
-        pump(0.13)
-        precondition(NSApp.modalWindow != nil && Static.isExtensionApprovalPromptShowing)
-        var heartbeat = false
-        DispatchQueue.main.async { heartbeat = true }
-        pump(0.03)
-        precondition(heartbeat)
-        press("Allow")
-        precondition(connect("allow").status == "ok")
-        precondition(connect("deny").description == "connectionDeferred")
-        pump(0.13)
-        press("Deny")
-        precondition(manager.extensionPermissionsStatus().first { $0.clientId == "deny" }?.trusted == false)
+        var peakLatency: Double = 0
+        for index in 0..<3 {
+            for title in ["Allow", "Deny"] {
+                let client = "\(title)-\(index)"
+                precondition(connect(client).description == "connectionDeferred")
+                await waitFor("Approval did not become visible") {
+                    NSApp.keyWindow != nil && Static.isExtensionApprovalPromptShowing
+                }
+                var heartbeat = false
+                DispatchQueue.main.async { heartbeat = true }
+                await waitFor("Main queue blocked during approval") { heartbeat }
+                let started = ProcessInfo.processInfo.systemUptime
+                postClick(title)
+                await waitFor("\(client) click failed to dismiss promptly", timeout: 0.4) {
+                    !Static.isExtensionApprovalPromptShowing && NSApp.keyWindow == nil
+                }
+                peakLatency = max(peakLatency, ProcessInfo.processInfo.systemUptime - started)
+                let trusted = manager.extensionPermissionsStatus().first { $0.clientId == client }?.trusted
+                precondition(trusted == (title == "Allow"), "Button decision must survive normal event dispatch")
+                if title == "Allow" { precondition(connect(client).status == "ok") }
+            }
+        }
         precondition(connect("timeout").description == "connectionDeferred")
-        pump(0.45)
-        precondition(NSApp.modalWindow == nil && !Static.isExtensionApprovalPromptShowing)
+        await waitFor("Timeout approval did not become visible") { Static.isExtensionApprovalPromptShowing }
+        await waitFor("Approval did not expire", timeout: 2) { !Static.isExtensionApprovalPromptShowing }
         precondition(connect("timeout").description == "connectionIgnored")
-        print("NativeApprovalTests: PASS (real NSAlert Allow/Deny, timeout, modal cleanup, main-queue heartbeat)")
+        print("NativeApprovalTests: PASS (6 queued mouse clicks through NSApplication.run; peak dismissal \(Int(peakLatency * 1000)) ms; Allow/Deny, timeout, cleanup, main-queue heartbeat)")
+    }
+    static func main() {
+        _ = NSApplication.shared
+        NSApp.setActivationPolicy(.accessory)
+        Task { @MainActor in await run(); exit(0) }
+        NSApp.run()
     }
 }
 '''
@@ -259,7 +328,9 @@ import AppKit
 if __name__ == '__main__':
     with tempfile.TemporaryDirectory(prefix='mih-extension-approval-') as temp:
         path = Path(temp)
-        program = support + '\nimport AppKit\n' + manager + native_test if '--native' in sys.argv else fixture + test
+        native_manager = manager.replace('private let approvalTimeoutSeconds: TimeInterval = 0.25',
+                                         'private let approvalTimeoutSeconds: TimeInterval = 1')
+        program = support + '\nimport AppKit\n' + native_manager + native_test if '--native' in sys.argv else fixture + test
         (path / 'ApprovalTests.swift').write_text(program)
         subprocess.run(['swiftc', '-parse-as-library', str(root / 'MakeItHome/Helpers/AppExtensionStatusMailbox.swift'),
                         str(path / 'ApprovalTests.swift'), '-o', str(path / 'tests')], check=True)
