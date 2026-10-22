@@ -204,6 +204,8 @@ public class Static {
     public static let LatencyCriticalActivityOptions: ProcessInfo.ActivityOptions = [.userInitiated, .latencyCritical]
     public static let CaptureVideoQueueQoS: DispatchQoS = .userInteractive
         
+    public static let IsCaptureHigherPriority = false
+    
     public static let ClickMaximumDifference : Double = 0.5
     
     public static var MaxApps = 5

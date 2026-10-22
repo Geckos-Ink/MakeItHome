@@ -472,7 +472,8 @@ class ScreenRecorder: ObservableObject {
         
         // Increase the depth of the frame queue to ensure high fps at the expense of increasing
         // the memory footprint of WindowServer.
-        streamConfig.queueDepth = self.isLowPriority ? lowProfileDepth : 7 // was 8
+        streamConfig.queueDepth = (self.isLowPriority ? lowProfileDepth : 7) + (IsCaptureHigherPriority ? 1 : 0) // was 8
+        // todo: make lowProfileDepth and "7" a Static variable
         
         return streamConfig
     }
