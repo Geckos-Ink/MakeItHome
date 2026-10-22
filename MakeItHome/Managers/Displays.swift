@@ -725,6 +725,12 @@ public class DisplaysManager {
             }
         }
     }
+
+    func focusPreviewTarget(_ window: Display.AppWindows.Window) {
+        guard let app = window.app else { return }
+        focusedWindowPointerMonitor.focusWindow(pid: app.id, bundleID: app.bundleId,
+                                               windowID: window.isFakeWin ? nil : window.id)
+    }
 }
 
 // Make display equatable
@@ -786,16 +792,20 @@ public class Display : Equatable {
     //MARK: AppWindows
     
     // https://www.advancedswift.com/ordereddictionary/
-    public func getOrderedApps() -> OrderedDictionary<Double, AppWindows>{
-        var dict = OrderedDictionary<Double, AppWindows>()
-        
-        for (id, app) in apps{            
-            dict[app.avgTime] = app
+    public func getOrderedApps() -> OrderedDictionary<pid_t, AppWindows>{
+        var dict = OrderedDictionary<pid_t, AppWindows>()
+        // One entry per live process across all displays. Timestamp keys used
+        // to silently overwrite apps that shared the same recency value.
+        for display in manager.displays {
+            for app in display.apps.values where !app.runningApp.isTerminated {
+                if let existing = dict[app.id], existing.avgTime >= app.avgTime { continue }
+                dict[app.id] = app
+            }
         }
-                
-        //MARK: TODO: invert order (also for getOrderedWindow)
-        dict.sort(by: { $0.key > $1.key })
-        
+        dict.sort {
+            if $0.value.avgTime == $1.value.avgTime { return $0.key < $1.key }
+            return $0.value.avgTime > $1.value.avgTime
+        }
         return dict
     }
     
@@ -1062,7 +1072,7 @@ public class Display : Equatable {
             }
         }
         
-        var lastOrderedDict : OrderedDictionary<Double, Window>? = nil
+        var lastOrderedDict : OrderedDictionary<Int, Window>? = nil
         
         public func clearUnusedWindows(){
             if lastOrderedDict != nil {
@@ -1104,18 +1114,58 @@ public class Display : Equatable {
             return win
         }
         
-        public func getOrderedWindows() -> OrderedDictionary<Double, Window>{
-            var dict = OrderedDictionary<Double, Window>()
+        public func getOrderedWindows() -> OrderedDictionary<Int, Window>{
+            var dict = OrderedDictionary<Int, Window>()
             
             for (id, win) in self.windows{
-                dict[win.avgTime] = win
+                dict[win.id] = win
             }
             
-            dict.sort(by: { $0.key < $1.key })
+            dict.sort {
+                if $0.value.avgTime == $1.value.avgTime { return $0.key < $1.key }
+                return $0.value.avgTime < $1.value.avgTime
+            }
             
             self.lastOrderedDict = dict
             
             return dict
+        }
+
+        func previewWindows() -> [Window] {
+            guard !runningApp.isTerminated else { return [] }
+            let owners = [self] + display.manager.displays
+                .filter { $0 !== display }
+                .compactMap { $0.apps[id] }
+            return owners.filter {
+                $0.id == id && $0.bundleId == bundleId && !$0.runningApp.isTerminated
+            }.flatMap { owner in
+                owner.windows.values.filter {
+                    $0.app === owner && !$0.isFakeWin
+                }
+            }
+        }
+
+        func mostRecentCapturedWindow() -> Window? {
+            previewWindows().filter { $0.lastPreview != nil }.max {
+                if $0.lastPreviewCapturedAt == $1.lastPreviewCapturedAt { return $0.id < $1.id }
+                return $0.lastPreviewCapturedAt < $1.lastPreviewCapturedAt
+            }
+        }
+
+        /// Select an actual window, including one owned by another display,
+        /// so its preview, title and activation all refer to the same target.
+        func preferredPreviewWindow(side: Int, excludingCurrentWindow current: Window? = nil) -> Window? {
+            let eligible = previewWindows().filter { $0.lockedBy == -1 || $0.lockedBy == side }
+            let pinned = eligible.filter { $0.lockedBy == side }
+            let allCaptured = eligible.filter { $0.lastPreview != nil }
+            // A window that moved between displays may have multiple retained
+            // owners. Its WindowServer ID still identifies the same window.
+            let alternatives = allCaptured.filter { $0.id != current?.id }
+            let captured = alternatives.isEmpty ? allCaptured : alternatives
+            return (pinned.isEmpty ? captured : pinned).max {
+                if $0.lastPreviewCapturedAt == $1.lastPreviewCapturedAt { return $0.id < $1.id }
+                return $0.lastPreviewCapturedAt < $1.lastPreviewCapturedAt
+            } ?? eligible.max { $0.avgTime < $1.avgTime }
         }
         
         public class Window : Equatable {
@@ -1141,6 +1191,30 @@ public class Display : Equatable {
             
             public var lastShotTime : Date = Date(timeIntervalSince1970: 0)
             public var lastPreview : CGImage? = nil
+            private(set) var lastPreviewCapturedAt: TimeInterval = 0
+
+            /// A missing window image may borrow the app's latest capture;
+            /// selection, title, Space and activation still belong to this window.
+            var displayPreview: CGImage? {
+                if let lastPreview { return lastPreview }
+                guard !isFakeWin else { return nil }
+                return app?.mostRecentCapturedWindow()?.lastPreview
+            }
+
+            var displayPreviewAspectRatio: CGFloat {
+                if lastPreview == nil, let image = displayPreview, image.height > 0 {
+                    return CGFloat(image.width) / CGFloat(image.height)
+                }
+                return widthHeightRatio
+            }
+
+            var displayPreviewSize: CGSize? {
+                if let size = lastRect?.size, size.width > 0, size.height > 0 { return size }
+                if lastPreview == nil, !isFakeWin,
+                   let size = app?.mostRecentCapturedWindow()?.lastRect?.size,
+                   size.width > 0, size.height > 0 { return size }
+                return displayPreview.map { CGSize(width: $0.width, height: $0.height) }
+            }
             public var lastRect : NSRect? = nil
             public var previewsList : [Int : CGImage] = [:]
             
@@ -1313,6 +1387,7 @@ public class Display : Equatable {
                             }
                             
                             self.lastPreview = finalImg
+                            self.lastPreviewCapturedAt = ProcessInfo.processInfo.systemUptime
                             self.lastShotTime = shotTime
                             
                             if self.previewsList.index(forKey: sec) == nil {
@@ -2875,6 +2950,17 @@ public class Display : Equatable {
     }
     
     //MARK: Window show/hide
+    @MainActor func selectPreviewWindow(_ window: AppWindows.Window) {
+        guard let owner = window.app, !owner.runningApp.isTerminated else { return }
+        owner.lastWindow = window
+        // The presenting display owns dismissal; the chosen window retains its
+        // source display/app identity. Reuse the bounded close/activation handoff.
+        focusAppExtension(app: owner) { [weak self, window] in
+            guard let self, window.app === owner else { return }
+            self.manager.focusPreviewTarget(window)
+        }
+    }
+
     var frontWinBefore : AppWindows.Window?
     private var frontAppBefore : NSRunningApplication?
     private var frontSpaceBefore = -1
