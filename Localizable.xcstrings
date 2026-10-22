@@ -3587,7 +3587,11 @@
         }
       }
     },
+    "High priority screen capture" : {
+
+    },
     "High priority screen recording" : {
+      "extractionState" : "stale",
       "localizations" : {
         "en" : {
           "stringUnit" : {
