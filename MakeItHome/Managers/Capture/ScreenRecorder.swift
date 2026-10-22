@@ -90,6 +90,19 @@ class ScreenRecorder: ObservableObject {
     
     // Combine subscribers.
     private var subscriptions = Set<AnyCancellable>()
+    private var captureHigherPriority = Static.IsCaptureHigherPriority {
+        didSet { updateEngine() }
+    }
+
+    init() {
+        NotificationCenter.default.publisher(for: Static.capturePriorityDidChange)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.captureHigherPriority = Static.IsCaptureHigherPriority
+            }
+            .store(in: &subscriptions)
+    }
+
     private var permissionRequestGate = ScreenRecordingPermissionGate()
     private static var cursorControlRequestScheduled = false
     private static var permissionOnboarding: ScreenRecordingPermissionOnboarding {
@@ -397,9 +410,9 @@ class ScreenRecorder: ObservableObject {
     
     /// - Tag: UpdateCaptureConfig
     private func updateEngine() {
+        let configuration = streamConfiguration
         guard isRunning, let filter = contentFilter else { return }
 
-        let configuration = streamConfiguration
         let runID = captureRunID
         captureUpdateTask?.cancel()
         captureUpdateTask = Task { [weak self, captureEngine] in
@@ -468,11 +481,11 @@ class ScreenRecorder: ObservableObject {
         }
                 
         // Set the capture interval at 25 fps.
-        streamConfig.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(self.priorityFrameRate))
+        streamConfig.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(Double(self.priorityFrameRate) * (captureHigherPriority ? 2.0 : 1.0)))
         
         // Increase the depth of the frame queue to ensure high fps at the expense of increasing
         // the memory footprint of WindowServer.
-        streamConfig.queueDepth = (self.isLowPriority ? lowProfileDepth : 7) + (Static.IsCaptureHigherPriority ? 1 : 0) // was 8
+        streamConfig.queueDepth = (self.isLowPriority ? lowProfileDepth : 7) + (captureHigherPriority ? 2 : 0) // was 8
         // todo: make lowProfileDepth and "7" a Static variable
         
         return streamConfig

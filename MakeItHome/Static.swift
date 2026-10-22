@@ -204,12 +204,15 @@ public class Static {
     public static let LatencyCriticalActivityOptions: ProcessInfo.ActivityOptions = [.userInitiated, .latencyCritical]
     public static let CaptureVideoQueueQoS: DispatchQoS = .userInteractive
         
+    static let capturePriorityDidChange = Notification.Name("MakeItHome.capturePriorityDidChange")
+
     public static var IsCaptureHigherPriority: Bool {
         get {
             User.object(forKey: "IsCaptureHigherPriority") as? Bool ?? false
         }
         set {
             User.set(newValue, forKey: "IsCaptureHigherPriority")
+            NotificationCenter.default.post(name: capturePriorityDidChange, object: nil)
         }
     }
     

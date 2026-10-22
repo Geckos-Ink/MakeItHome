@@ -38,6 +38,7 @@ python3 "$ROOT/Tests/ScreenRecordingPermissionOnboardingTests.py"
 swiftc -O -parse-as-library "$ROOT/MakeItHome/Helpers/CaptureLifecycle.swift" \
     "$ROOT/Tests/CaptureLifecycleTests.swift" -o "$TEST_DIR/capture-lifecycle-tests"
 "$TEST_DIR/capture-lifecycle-tests"
+python3 "$ROOT/Tests/CapturePriorityTests.py"
 
 swiftc -O -D STRESS_TEST_APP -parse-as-library "$ROOT/MakeItHome/Helpers/StressProcessSample.swift" \
     "$ROOT/Tests/StressProcessSampleTests.swift" -o "$TEST_DIR/stress-process-sample-tests"
