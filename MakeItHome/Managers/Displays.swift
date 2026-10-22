@@ -731,6 +731,10 @@ public class DisplaysManager {
         focusedWindowPointerMonitor.focusWindow(pid: app.id, bundleID: app.bundleId,
                                                windowID: window.isFakeWin ? nil : window.id)
     }
+
+    func prepareFocusForPreview() {
+        focusedWindowPointerMonitor.prepareForPreview()
+    }
 }
 
 // Make display equatable
@@ -3179,6 +3183,7 @@ public class Display : Equatable {
             self.manager.window?.setFrame(NSRect(origin: NSPoint(x:self.screen.frame.minX, y: self.screen.frame.minY), size: self.frame.size), display: true)
             
             //TODO: correct this condition in case of space-changing or prioritization issues
+            if self.windowHidden { self.manager.prepareFocusForPreview() }
             if !Static.screenWake && (dontPrioritizeRunningApp && self.side != 3) {
                 self.manager.window?.makeFirstResponder(Static.AppExtensionWebView)
                 self.manager.window?.makeKeyAndOrderFront(nil)

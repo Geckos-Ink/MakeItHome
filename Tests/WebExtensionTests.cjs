@@ -10,7 +10,7 @@ const background = fs.readFileSync(path.join(resources, 'background.js'), 'utf8'
 const view = fs.readFileSync(path.join(resources, 'assets/extension.html'), 'utf8').match(/<script>([\s\S]*)<\/script>/)[1]
 let checks = 0
 let completed = false
-process.on('beforeExit', ()=>{
+if(require.main === module) process.on('beforeExit', ()=>{
     if(!completed){console.error('FAIL regression suite left an unresolved operation'); process.exitCode = 1}
 })
 function check(name, callback){
@@ -109,7 +109,8 @@ function viewHarness(){
 function seedPreviews(h, infos, position = null){
     h.run(`syncSafariTabs(${JSON.stringify(infos)}, ${JSON.stringify(position)}); applySafariScreenshots(${JSON.stringify(infos.map(tabInfo=>({blob:'YQ==',tabInfo})))})`)
 }
-;(async()=>{
+module.exports = {harness}
+if(require.main === module) (async()=>{
     await check('macOS Safari declares a persistent background page and the matching toolbar entry point', ()=>{
         const manifest = JSON.parse(fs.readFileSync(path.join(resources, 'manifest.json'), 'utf8'))
         assert.equal(manifest.manifest_version,2,'Safari makes all Manifest V3 backgrounds nonpersistent')

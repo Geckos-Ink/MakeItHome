@@ -67,6 +67,8 @@ enum State {
     static var interactions = false
     static var enabled = true
     static var moved = 0
+    static var windowListDelay: Double = 0
+    static var hiddenWindowIDs: Set<Int> = []
 }
 func AXIsProcessTrusted() -> Bool { State.trusted }
 func AXUIElementCreateApplication(_ pid: Int32) -> AXUIElement { AXUIElement(pid, -1, .zero, isApp: true) }
@@ -87,7 +89,9 @@ func AXUIElementCopyAttributeValue(_ element: AXUIElement, _ attribute: CFString
     case kAXFocusedWindowAttribute:
         guard let value = State.focused[element.pid] else { return .failure }
         output.pointee = value
-    case kAXWindowsAttribute: output.pointee = (State.windows[element.pid] ?? []) as NSArray
+    case kAXWindowsAttribute:
+        Thread.sleep(forTimeInterval: State.windowListDelay)
+        output.pointee = (State.windows[element.pid] ?? []) as NSArray
     case kAXPositionAttribute: output.pointee = AXValue(element.frame.origin)
     case kAXSizeAttribute: output.pointee = AXValue(element.frame.size)
     case kAXTitleAttribute: output.pointee = element.title as NSString
@@ -108,11 +112,19 @@ func AXUIElementCopyAttributeValue(_ element: AXUIElement, _ attribute: CFString
     return .success
 }
 func testWindowInfo(_ options: CGWindowListOption, _ id: CGWindowID) -> CFArray? {
-    let windows = options == .optionAll ? Array(State.records.values) : State.records[Int(id)].map { [$0] } ?? []
+    let windows: [AXUIElement]
+    if options.contains(.optionOnScreenOnly) {
+        let foreground = Array(State.focused.values)
+        let focusedIDs = Set(foreground.map(\.id))
+        windows = foreground + State.records.values.filter { !focusedIDs.contains($0.id) }
+    } else {
+        windows = options == .optionAll ? Array(State.records.values) : State.records[Int(id)].map { [$0] } ?? []
+    }
     return windows.map { window in
         [kCGWindowNumber as String: window.id,
          kCGWindowOwnerPID as String: window.pid,
          kCGWindowLayer as String: 0,
+         kCGWindowIsOnscreen as String: !State.hiddenWindowIDs.contains(window.id),
          kCGWindowName as String: window.title,
          kCGWindowBounds as String: window.frame.dictionaryRepresentation] as [String: Any]
     } as CFArray
@@ -190,6 +202,41 @@ enum Static { static let focusedWindowPointerDidChange = Notification.Name("poin
         await settle()
         precondition(State.warps == [CGPoint(x: 2500, y: 400)], "Ordinary same-app cross-screen focus moves the pointer")
 
+        // Opening/closing our surface cannot manufacture a window change.
+        let ownApp = NSRunningApplication(1, "example.makeithome")
+        State.warps = []; State.raised = []
+        State.pointer = CGPoint(x: 400, y: 400)
+        monitor!.prepareForPreview()
+        NSWorkspace.shared.frontmostApplication = ownApp
+        monitor!.sample(); await settle()
+        NSWorkspace.shared.frontmostApplication = app
+        monitor!.focusWindow(pid: 2, bundleID: "example.app", windowID: 22)
+        await settle(400)
+        monitor!.sample(); await settle()
+        precondition(State.raised.isEmpty && State.warps.isEmpty,
+                     "Selecting the window focused before the overscreen must neither raise it nor move the pointer")
+
+        monitor!.focusWindow(pid: 2, bundleID: "example.app", windowID: 21)
+        monitor!.prepareForPreview()
+        NSWorkspace.shared.frontmostApplication = ownApp
+        monitor!.sample(); await settle()
+        NSWorkspace.shared.frontmostApplication = app
+        monitor!.sample(); await settle()
+        await settle(250)
+        precondition(State.warps.isEmpty && State.raised.isEmpty,
+                     "Opening a new surface cancels old selection; returning to an unchanged window is not a focus change")
+
+        State.focused[2] = a
+        monitor!.sample(); await settle()
+        monitor!.prepareForPreview()
+        NSWorkspace.shared.frontmostApplication = ownApp
+        monitor!.sample(); await settle()
+        NSWorkspace.shared.frontmostApplication = app
+        monitor!.focusWindow(pid: 2, bundleID: "example.app", windowID: 22)
+        await settle(400)
+        precondition(State.raised == [22] && State.warps == [CGPoint(x: 2500, y: 400)],
+                     "A different window in the same app must still be selected and receive the pointer")
+
         State.warps = []
         State.pointer = CGPoint(x: 400, y: 400)
         State.interactions = true
@@ -200,10 +247,13 @@ enum Static { static let focusedWindowPointerDidChange = Notification.Name("poin
         State.interactions = false
         monitor!.sample(); await settle()
         precondition(State.warps.isEmpty, "Normal suppressed focus is not replayed later")
+        NSWorkspace.shared.frontmostApplication = other
+        monitor!.prepareForPreview()
+        NSWorkspace.shared.frontmostApplication = app
         monitor!.focusWindow(pid: 2, bundleID: "example.app", windowID: 22)
         await settle(400)
         precondition(State.raised.last == 22 && State.warps == [CGPoint(x: 2500, y: 400)],
-                     "An explicit click on an already-focused remote window must still move the pointer after close")
+                     "Selecting another app must move the pointer even if its window was previously sampled")
         monitor!.sample(); await settle()
         precondition(State.warps.count == 1, "Explicit pointer moves remain one-shot")
 
@@ -235,10 +285,11 @@ enum Static { static let focusedWindowPointerDidChange = Notification.Name("poin
         duplicate.title = b.title
         State.windows[2] = [a, b, duplicate]
         State.raised = []; State.warps = []
+        State.pointer = CGPoint(x: 400, y: 400)
         monitor!.focusWindow(pid: 2, bundleID: "example.app", windowID: 22)
         await settle(400)
-        precondition(State.raised.isEmpty && State.warps.isEmpty,
-                     "Ambiguous public AX geometry matching must not raise a different same-app window")
+        precondition(State.raised.isEmpty && State.warps == [CGPoint(x: 2500, y: 400)],
+                     "Ambiguous AX matching must not raise a peer or block the exact preview's pointer destination")
         State.windows[2] = [a, b]
         State.records[23] = duplicate
         monitor!.focusWindow(pid: 2, bundleID: "example.app", windowID: 22)
@@ -262,7 +313,9 @@ enum Static { static let focusedWindowPointerDidChange = Notification.Name("poin
         State.warps = []
         monitor!.focusWindow(pid: 2, bundleID: "example.app", windowID: 21)
         await settle(400)
-        precondition(State.warps.isEmpty, "Never center on a window that failed to become focused")
+        precondition(State.warps == [CGPoint(x: 500, y: 400)],
+                     "An explicit preview uses its own window coordinates even when AX focus is unsupported")
+        State.warps = []
         TestProcessInfo.processInfo.systemUptime += 2
         monitor!.sample(); await settle()
         precondition(State.warps.isEmpty, "Failed explicit requests expire without delayed movement")
@@ -289,14 +342,76 @@ enum Static { static let focusedWindowPointerDidChange = Notification.Name("poin
                      "The pointer preference must not disable native window selection")
         State.enabled = true
         State.trusted = false
-        State.raised = []
+        State.raised = []; State.warps = []
+        State.pointer = CGPoint(x: 400, y: 400)
+        State.focused[2] = b
+        monitor!.prepareForPreview()
         monitor!.focusWindow(pid: 2, bundleID: "example.app", windowID: 22)
-        await settle(200)
-        precondition(State.raised.isEmpty, "Do not prompt or control windows without Accessibility access")
+        await settle(400)
+        precondition(State.raised.isEmpty && State.warps.isEmpty,
+                     "The exact opening window is also a no-op without Accessibility access")
+        NSWorkspace.shared.frontmostApplication = other
+        monitor!.prepareForPreview()
+        NSWorkspace.shared.frontmostApplication = app
+        monitor!.focusWindow(pid: 2, bundleID: "example.app", windowID: 22)
+        await settle(400)
+        precondition(State.raised.isEmpty && State.warps == [CGPoint(x: 2500, y: 400)],
+                     "A real preview needs no AX grant to move the pointer; native window control still requires it")
+
+        // The app activation request can finish after the first selection query.
+        NSWorkspace.shared.frontmostApplication = other
+        State.pointer = CGPoint(x: 400, y: 400)
+        State.warps = []
+        monitor!.focusWindow(pid: 2, bundleID: "example.app", windowID: 22)
+        await settle(250)
+        precondition(State.warps.isEmpty, "Wait for the requested app to become frontmost")
+        NSWorkspace.shared.frontmostApplication = app
+        await settle(250)
+        precondition(State.warps == [CGPoint(x: 2500, y: 400)], "Delayed activation must not discard the preview move")
+
+        State.warps = []
+        State.pointer = CGPoint(x: 400, y: 400)
+        NSEvent.pressedMouseButtons = 1
+        monitor!.focusWindow(pid: 2, bundleID: "example.app", windowID: 22)
+        await settle(250)
+        precondition(State.warps.isEmpty, "Do not move during a held mouse button")
+        NSEvent.pressedMouseButtons = 0
+        b.frame.origin.x = 2200
+        await settle(250)
+        precondition(State.warps == [CGPoint(x: 2600, y: 400)], "Use fresh selected-window bounds after the mouse is released")
+
+        State.trusted = true
+        State.raised = []; State.warps = []
+        State.pointer = CGPoint(x: 400, y: 400)
+        State.windowListDelay = 0.7
+        monitor!.focusWindow(pid: 2, bundleID: "example.app", windowID: 22)
+        await settle(300)
+        precondition(State.raised.isEmpty && State.warps == [CGPoint(x: 2600, y: 400)],
+                     "A slow AX inventory must not hold up the preview pointer's independent geometry query")
+        await settle(600)
+        State.windowListDelay = 0
+        State.trusted = false
+
+        State.warps = []
+        State.pointer = CGPoint(x: 400, y: 400)
+        State.hiddenWindowIDs = [22]
+        monitor!.focusWindow(pid: 2, bundleID: "example.app", windowID: 22)
+        await settle(250)
+        precondition(State.warps.isEmpty, "Do not move toward a window outside the current visible Spaces")
+        TestProcessInfo.processInfo.systemUptime += 2
+        await settle()
+        State.hiddenWindowIDs = []
+
+        State.warps = []
+        monitor!.focusWindow(pid: 2, bundleID: "example.app", windowID: 31)
+        await settle(250)
+        precondition(State.warps.isEmpty, "A window ID owned by another PID cannot supply preview geometry")
+        TestProcessInfo.processInfo.systemUptime += 2
+        monitor!.sample(); await settle()
         weak var released = monitor
         monitor = nil
         precondition(released == nil, "Timer/observer ownership must not retain the monitor")
-        print("FocusedWindowPointerMonitorTests: PASS (normal and explicit moves, already-focused targets, focus-only notifications, exact unique window matching, newer-click cancellation, failed focus, expiry, preference, permission, lifetime)")
+        print("FocusedWindowPointerMonitorTests: PASS (same-window no-ops, own-surface restoration, different-window selection, ordinary focus, preview coordinates without AX, slow AX isolation, delayed activation, cancellation, expiry, lifetime)")
     }
 }
 '''

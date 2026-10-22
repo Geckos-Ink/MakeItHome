@@ -1,7 +1,7 @@
 import AppKit
 import ApplicationServices
 
-/// Main-thread owned. Only bounded Accessibility reads run on the worker;
+/// Main-thread owned. Read-only window and Accessibility queries use workers;
 /// settings, focus history, screen topology and cursor movement stay on main.
 final class FocusedWindowPointerMonitor {
     private struct Focus: Equatable {
@@ -23,6 +23,7 @@ final class FocusedWindowPointerMonitor {
     private let didMove: (CGPoint) -> Void
     private let queryQueue = DispatchQueue(label: "ink.makeithome.focusedWindowPointer", qos: .userInitiated)
     private let selectionQueue = DispatchQueue(label: "ink.makeithome.previewWindowSelection", qos: .userInitiated)
+    private let previewQueue = DispatchQueue(label: "ink.makeithome.previewPointerGeometry", qos: .userInitiated)
     private final class SelectionToken {
         private let lock = NSLock()
         private var cancelled = false
@@ -30,6 +31,21 @@ final class FocusedWindowPointerMonitor {
         var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return cancelled }
     }
     private var selectionToken: SelectionToken?
+    private struct PreviewOpeningFocus {
+        let pid: pid_t
+        let bundleID: String?
+        let windowID: Int?
+    }
+    private var previewOpeningFocus: PreviewOpeningFocus?
+    private struct PreviewSelection {
+        let pid: pid_t
+        let bundleID: String?
+        let windowID: Int?
+        let initialPID: pid_t?
+        let generation: UInt64
+        let token: SelectionToken
+        let deadline: TimeInterval
+    }
     private var timer: Timer?
     private var observers: [(NotificationCenter, NSObjectProtocol)] = []
     private var policy = FocusedWindowPointerPolicy<Focus>()
@@ -97,6 +113,7 @@ final class FocusedWindowPointerMonitor {
             default: break
             }
             self.reset()
+            self.previewOpeningFocus = nil
             self.windowSelectionGeneration &+= 1
             self.selectionToken?.cancel()
             self.resumeAfter = ProcessInfo.processInfo.systemUptime + 2
@@ -110,42 +127,139 @@ final class FocusedWindowPointerMonitor {
         pendingPointerSelection = nil
     }
 
+    /// Remember the actual foreground window before our overscreen takes focus.
+    /// WindowServer lists onscreen windows front to back; filtering by the
+    /// foreground PID and normal layer avoids treating another app as focused.
+    func prepareForPreview() {
+        dispatchPrecondition(condition: .onQueue(.main))
+        windowSelectionGeneration &+= 1
+        selectionToken?.cancel()
+        pendingPointerSelection = nil
+        previewOpeningFocus = nil
+        guard let app = NSWorkspace.shared.frontmostApplication, !app.isTerminated,
+              app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
+        let records = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]]
+        let window = records?.first {
+            ($0[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == app.processIdentifier &&
+            ($0[kCGWindowLayer as String] as? NSNumber)?.intValue == 0 &&
+            ($0[kCGWindowIsOnscreen as String] as? Bool) == true
+        }
+        previewOpeningFocus = PreviewOpeningFocus(pid: app.processIdentifier, bundleID: app.bundleIdentifier,
+                                                  windowID: (window?[kCGWindowNumber as String] as? NSNumber)?.intValue)
+    }
+
     /// Called after the presenting overscreen has closed and yielded activation.
     /// Resolve a real window through its current WindowServer geometry. Public
     /// AX geometry/title matching must be unique; ambiguous matches never raise a peer.
     func focusWindow(pid: pid_t, bundleID: String?, windowID: Int?) {
         dispatchPrecondition(condition: .onQueue(.main))
         windowSelectionGeneration &+= 1
-        let selection = windowSelectionGeneration
         selectionToken?.cancel()
+        let openingFocus = previewOpeningFocus
+        previewOpeningFocus = nil
+        if let openingFocus, openingFocus.pid == pid, openingFocus.bundleID == bundleID,
+           windowID == nil || openingFocus.windowID == windowID {
+            // Dismissal already restores this app. Neither re-raise its window
+            // nor replay that restoration as a new ordinary pointer move.
+            reset()
+            return
+        }
         let token = SelectionToken()
         selectionToken = token
         pendingPointerSelection = nil
-        guard AXIsProcessTrusted() else { return }
-        let deadline = ProcessInfo.processInfo.systemUptime + 1.5
-        selectionQueue.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-            guard !token.isCancelled else { return }
-            let window = windowID.flatMap { Self.resolveWindow(pid: pid, windowID: $0, deadline: deadline, token: token) }
-            DispatchQueue.main.async { [weak self] in
-                guard let self, !token.isCancelled, self.windowSelectionGeneration == selection,
-                      AXIsProcessTrusted(),
-                      ProcessInfo.processInfo.systemUptime < deadline,
-                      NSWorkspace.shared.frontmostApplication?.processIdentifier == pid,
-                      let app = NSRunningApplication(processIdentifier: pid), !app.isTerminated,
-                      app.bundleIdentifier == bundleID else { return }
-                if windowID != nil && window == nil { return }
-                if let window {
-                    AXUIElementSetMessagingTimeout(window, 0.05)
-                    AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
-                    AXUIElementPerformAction(window, kAXRaiseAction as CFString)
-                    AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
-                    AXUIElementSetAttributeValue(window, kAXFocusedAttribute as CFString, kCFBooleanTrue)
-                }
-                guard self.isEnabled() else { return }
-                self.pendingPointerSelection = (pid, window, deadline)
-                self.sample()
+        let request = PreviewSelection(pid: pid, bundleID: bundleID, windowID: windowID,
+                                       initialPID: NSWorkspace.shared.frontmostApplication?.processIdentifier,
+                                       generation: windowSelectionGeneration, token: token,
+                                       deadline: ProcessInfo.processInfo.systemUptime + 1.5)
+        if windowID != nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+                self?.finishPreviewSelection(request, window: nil, movePointer: true)
             }
         }
+        selectionQueue.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+            guard !token.isCancelled else { return }
+            let window = windowID.flatMap { Self.resolveWindow(pid: pid, windowID: $0, deadline: request.deadline, token: token) }
+            DispatchQueue.main.async { [weak self] in
+                self?.finishPreviewSelection(request, window: window, movePointer: windowID == nil)
+            }
+        }
+    }
+
+    private func selectionIsCurrent(_ request: PreviewSelection) -> Bool {
+        !request.token.isCancelled && windowSelectionGeneration == request.generation &&
+        ProcessInfo.processInfo.systemUptime < request.deadline && !systemAsleep && !sessionInactive &&
+        NSRunningApplication(processIdentifier: request.pid).map {
+            !$0.isTerminated && $0.bundleIdentifier == request.bundleID
+        } == true
+    }
+
+    private func finishPreviewSelection(_ request: PreviewSelection, window: AXUIElement?, movePointer: Bool) {
+        guard selectionIsCurrent(request) else { return }
+        let frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        guard frontPID == request.pid else {
+            // Activation/Space animations can take longer than the first AX
+            // query. Wait within this request's deadline without activating again.
+            guard frontPID == request.initialPID || frontPID == ProcessInfo.processInfo.processIdentifier else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+                self?.finishPreviewSelection(request, window: window, movePointer: movePointer)
+            }
+            return
+        }
+        if let window, AXIsProcessTrusted() {
+            AXUIElementSetMessagingTimeout(window, 0.05)
+            AXUIElementSetAttributeValue(window, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+            AXUIElementPerformAction(window, kAXRaiseAction as CFString)
+            AXUIElementSetAttributeValue(window, kAXMainAttribute as CFString, kCFBooleanTrue)
+            AXUIElementSetAttributeValue(window, kAXFocusedAttribute as CFString, kCFBooleanTrue)
+        }
+        guard movePointer, isEnabled() else { return }
+        if request.windowID != nil {
+            movePointerToPreview(request)
+        } else {
+            // Icon cards have no real window ID; only these need AX focus geometry.
+            pendingPointerSelection = (request.pid, nil, request.deadline)
+            sample()
+        }
+    }
+
+    private func movePointerToPreview(_ request: PreviewSelection) {
+        guard selectionIsCurrent(request), isEnabled(), let windowID = request.windowID else { return }
+        previewQueue.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard !request.token.isCancelled, ProcessInfo.processInfo.systemUptime < request.deadline else { return }
+            let startedAt = ProcessInfo.processInfo.systemUptime
+            let frame = Self.previewFrame(pid: request.pid, windowID: windowID)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.selectionIsCurrent(request), self.isEnabled(),
+                      NSWorkspace.shared.frontmostApplication?.processIdentifier == request.pid else { return }
+                guard let frame, ProcessInfo.processInfo.systemUptime - startedAt < 0.5,
+                      ProcessInfo.processInfo.systemUptime >= self.resumeAfter,
+                      !self.isInteractionActive(), NSEvent.pressedMouseButtons == 0 else {
+                    self.movePointerToPreview(request)
+                    return
+                }
+                // An explicit preview click already identifies its target. Do
+                // not require AX permission/matching just to use public bounds.
+                guard let event = CGEvent(source: nil),
+                      let destination = FocusedWindowPointerGeometry.destination(
+                        window: frame, pointer: event.location, displays: self.displayFrames),
+                      CGWarpMouseCursorPosition(destination) == .success else { return }
+                self.generation &+= 1
+                self.policy.reset()
+                self.pendingPointerSelection = nil
+                if let point = CGEvent(source: nil)?.unflippedLocation { self.didMove(point) }
+            }
+        }
+    }
+
+    private static func previewFrame(pid: pid_t, windowID: Int) -> CGRect? {
+        guard windowID >= 0, windowID <= Int(UInt32.max),
+              let records = CGWindowListCopyWindowInfo(.optionIncludingWindow, CGWindowID(windowID)) as? [[String: Any]],
+              let record = records.first(where: { ($0[kCGWindowNumber as String] as? NSNumber)?.intValue == windowID }),
+              (record[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value == pid,
+              (record[kCGWindowLayer as String] as? NSNumber)?.intValue == 0,
+              (record[kCGWindowIsOnscreen as String] as? Bool) == true,
+              let bounds = record[kCGWindowBounds as String] as? NSDictionary else { return nil }
+        return CGRect(dictionaryRepresentation: bounds as CFDictionary)
     }
 
     private static func resolveWindow(pid: pid_t, windowID: Int, deadline: TimeInterval, token: SelectionToken) -> AXUIElement? {
@@ -234,7 +348,8 @@ final class FocusedWindowPointerMonitor {
             pendingPointerSelection = nil
         }
         if app.processIdentifier == ProcessInfo.processInfo.processIdentifier {
-            _ = policy.observe(nil)
+            // Our temporary surface must not turn restoration of the same
+            // external window into a new focus identity.
             return
         }
         guard !queryInFlight else { return }

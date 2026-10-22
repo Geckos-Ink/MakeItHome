@@ -18,6 +18,7 @@ async function sendJsMessage(msg){
         return false
     }
     
+    const requestGeneration = connectionGeneration
     let req = await makeRequestUrl('/sendJSMessage')
     
     let body = {
@@ -26,11 +27,9 @@ async function sendJsMessage(msg){
     
     try{
         let json = await makePost(req, body)
+        if(requestGeneration !== connectionGeneration) return false
         if(json.status === "error"){
-            if(json.description === "appNotConnected" || json.description === "invalidSecret" || json.description === "invalidToken" || json.description === "missingToken"){
-                resetSecret = true
-                toConnect = true
-            }
+            requireReconnect(json, requestGeneration)
             return false
         }
         return true
@@ -60,6 +59,16 @@ let tokenCache = {
 let storage = {}
 
 let toConnect = true
+let connectionGeneration = 0
+
+function requireReconnect(reply, requestGeneration){
+    if(requestGeneration !== connectionGeneration || reply?.status !== 'error') return
+    if(['appNotConnected', 'invalidSecret', 'invalidToken', 'missingToken'].includes(reply.description)){
+        // A rolling token can expire during sleep or a delayed request. Keep
+        // proof of the existing approval and mint a fresh token on /connect.
+        toConnect = true
+    }
+}
 
 function setSecret(nextSecret){
     secret = nextSecret || ""
@@ -134,7 +143,7 @@ async function storageGet(){
 }
 
 function storageSave(){
-    chrome.storage.local.set({secret: storage.secret || ""})
+    return chrome.storage.local.set({secret: storage.secret || ""})
 }
 
 /**
@@ -688,6 +697,7 @@ async function waitForStatus() {
     waitForStatusInFlight = true
     waitForStatusStartedAt = now
     let runId = ++waitForStatusRunId
+    const requestGeneration = connectionGeneration
     let received = false
 
     try {
@@ -699,7 +709,7 @@ async function waitForStatus() {
         const receivedIds = [...statusReceipts].filter(([,receipt])=>!receipt.done).map(([id])=>id)
         const options = useWait ? {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({receivedIds})} : {}
         let res = await fetchJSONWithTimeout(req, options, useWait ? waitMs + 3500 : screenshotPolicy.statusRequestTimeoutMs)
-        if(runId !== waitForStatusRunId) return
+        if(runId !== waitForStatusRunId || requestGeneration !== connectionGeneration) return
         if(Number.isFinite(res.nextPollInMs)){
             lastServerSuggestedStatusPollMs = res.nextPollInMs
         } else {
@@ -708,14 +718,7 @@ async function waitForStatus() {
 
         
         if (res.status === "error") {
-            if (res.description === "appNotConnected") {
-                toConnect = true;
-            }
-            
-            if (res.description === "invalidSecret" || res.description === "invalidToken" || res.description === "missingToken") {
-                resetSecret = true;
-                toConnect = true;
-            }
+            requireReconnect(res, requestGeneration)
 
             if(toConnect){
                 lastServerSuggestedStatusPollMs = null
@@ -752,7 +755,6 @@ async function waitForStatus() {
     }
 }
 
-let resetSecret = false
 let connectInFlight = false
 async function connect(){
     if(Date.now() < connectionBlockedUntil){
@@ -781,12 +783,6 @@ async function runConnect(){
         setSecret(storage.secret)
     }
 
-    if(resetSecret){
-        setSecret("")
-        storage.secret = ""
-        storageSave()
-    }
-
     let req = await makeRequestUrl('/connect', {
         secret: secret,
         includeExtensionMeta: true
@@ -812,21 +808,22 @@ async function runConnect(){
             connectionBlockedUntil = Date.now() + 1000
         }
 
-        if(json.description === "invalidSecret" || json.description === "invalidToken" || json.description === "missingToken"){
-            resetSecret = true
-        }
-
         toConnect = true
         return false
     }
 
-    if(json?.secret){
-        setSecret(json.secret)
-        storage.secret = json.secret
-        storageSave()
+    if(json?.status !== 'ok' || typeof json.secret !== 'string' || !json.secret){
+        toConnect = true
+        connectionBlockedUntil = Date.now() + connectionRetryMs
+        connectionRetryMs = Math.min(30000, connectionRetryMs * 2)
+        return false
     }
+    setSecret(json.secret)
+    connectionGeneration++
+    storage.secret = json.secret
+    try { await boundedOperation(()=>storageSave(), 1200) }
+    catch(err){ console.warn('Extension credentials could not be saved') }
 
-    resetSecret = false
     connectionBlockedUntil = 0
     connectionRetryMs = 1000
     toConnect = false
@@ -909,6 +906,7 @@ async function setHtmlContent(html, options = {}){
         return false
     }
     
+    const requestGeneration = connectionGeneration
     let req = await makeRequestUrl('/setHtmlContent')
     
     html = sanitizeStringExtensive(html)
@@ -923,12 +921,10 @@ async function setHtmlContent(html, options = {}){
         console.log("setHtmlContent calling")
         let json = await makePost(req, body)
         console.log("setHtmlContent response")
+        if(requestGeneration !== connectionGeneration) return false
 
         if(json.status === "error"){
-            if(json.description === "appNotConnected" || json.description === "invalidSecret" || json.description === "invalidToken" || json.description === "missingToken"){
-                resetSecret = true
-                toConnect = true
-            }
+            requireReconnect(json, requestGeneration)
             return false
         }
 
