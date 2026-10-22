@@ -34,6 +34,7 @@ swiftc -O -parse-as-library "$ROOT/MakeItHome/Helpers/FocusedWindowPointerPolicy
     "$ROOT/Tests/FocusedWindowPointerTests.swift" -o "$TEST_DIR/focused-window-pointer-tests"
 "$TEST_DIR/focused-window-pointer-tests"
 python3 "$ROOT/Tests/DisplaySwitchTests.py"
+python3 "$ROOT/Tests/ScreenRecorderFrameDeliveryTests.py"
 
 swiftc -O -parse-as-library "$ROOT/MakeItHome/Helpers/ScreenRecordingPermissionGate.swift" \
     "$ROOT/Tests/ScreenRecordingPermissionGateTests.swift" -o "$TEST_DIR/screen-recording-permission-gate-tests"

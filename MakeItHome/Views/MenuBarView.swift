@@ -177,7 +177,7 @@ struct MenuBarView: View {
                         Static.User.set(Static.DisableOnDockSide, forKey: "DisableOnDockSide")
                     }
 
-                    Toggle("High priority screen recording", isOn: $highPriorityScreenRecording).onChange(of: highPriorityScreenRecording){ newVal in
+                    Toggle("High priority screen capture", isOn: $highPriorityScreenRecording).onChange(of: highPriorityScreenRecording){ newVal in
                         Static.IsCaptureHigherPriority = newVal
                     }
                     .toggleStyle(.checkbox)

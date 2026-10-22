@@ -301,7 +301,7 @@ class ScreenRecorder: ObservableObject {
             isStarting = false
             print("recording started! display", targetDisplayID)
             
-            for try await frame in frames {
+            for try await var frame in frames {
                 guard runID == captureRunID else {
                     break
                 }
@@ -310,8 +310,10 @@ class ScreenRecorder: ObservableObject {
                     print("lastFrame", NSDate().timeIntervalSince1970)
                 }
                                 
+                // The engine supplies untagged frames. Attach this run's
+                // display identity before both storing and rendering the value.
+                frame.displayID = targetDisplayID
                 lastFrame = frame
-                lastFrame!.displayID = targetDisplayID
 
                 #if STRESS_TEST_APP
                 capturedFrameCount += 1
