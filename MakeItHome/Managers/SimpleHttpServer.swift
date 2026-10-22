@@ -155,11 +155,6 @@ public class SimpleHTTPServer {
     public var assetsAvailable = false
     private let requestQueue = DispatchQueue(label: "ink.geckos.MakeItHome.simpleHttpServer", qos: .userInitiated)
     private let maxRequestBodyBytes = 15 * 1024 * 1024
-    // Owned by requestQueue. Leave descriptor headroom for WebKit/Metal even
-    // when clients disconnect mid-request or leave incomplete bodies open.
-    private let maxActiveConnections = 64
-    private let connectionLifetimeSeconds: TimeInterval = 30
-    private var activeConnections: [ObjectIdentifier: NWConnection] = [:]
     
     private struct HTTPRequest {
         let method: String
@@ -230,23 +225,10 @@ public class SimpleHTTPServer {
     func stop(){
         listener?.cancel()
         listener = nil
-        requestQueue.async {
-            for connection in self.activeConnections.values {
-                connection.cancel()
-            }
-        }
         print("Server stopped")
     }
 
     private func handleNewConnection(connection: NWConnection) {
-        guard activeConnections.count < maxActiveConnections else {
-            connection.cancel()
-            return
-        }
-        let connectionID = ObjectIdentifier(connection)
-        activeConnections[connectionID] = connection
-        let lifetime = DispatchWorkItem { connection.cancel() }
-        requestQueue.asyncAfter(deadline: .now() + connectionLifetimeSeconds, execute: lifetime)
         var receivedData = Data()
         var completed = false
         var cancelStatusWait: (() -> Void)?
@@ -308,9 +290,6 @@ public class SimpleHTTPServer {
         connection.stateUpdateHandler = { state in
             switch state {
             case .failed, .cancelled:
-                lifetime.cancel()
-                self.activeConnections.removeValue(forKey: connectionID)
-                connection.stateUpdateHandler = nil
                 completed = true
                 DispatchQueue.main.async { cancelStatusWait?(); cancelStatusWait = nil }
             default: break

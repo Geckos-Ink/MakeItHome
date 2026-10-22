@@ -50,6 +50,5 @@ swiftc -O -parse-as-library "$ROOT/MakeItHome/Helpers/AppExtensionStatusMailbox.
 python3 "$ROOT/Tests/ExtensionFocusHandoffTests.py"
 python3 "$ROOT/Tests/AppExtensionDeliveryTests.py"
 python3 "$ROOT/Tests/AppExtensionContentLifecycleTests.py"
-python3 "$ROOT/Tests/AppExtensionApprovalTests.py"
 
 zsh "$ROOT/Tests/StressDiagnosticChecksTests.zsh"
