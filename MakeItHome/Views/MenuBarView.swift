@@ -182,10 +182,12 @@ struct MenuBarView: View {
                     }
                     .toggleStyle(.checkbox)
 
-                    Toggle("Move pointer to focused window on another display", isOn: $movePointerToFocusedWindow).onChange(of: movePointerToFocusedWindow) { newVal in
-                        Static.MovePointerToFocusedWindow = newVal
+                    if false { // option currently disabled
+                        Toggle("Move pointer to focused window on another display", isOn: $movePointerToFocusedWindow).onChange(of: movePointerToFocusedWindow) { newVal in
+                            Static.MovePointerToFocusedWindow = newVal
+                        }
+                        .toggleStyle(.checkbox)
                     }
-                    .toggleStyle(.checkbox)
                     
                     Toggle(" \(Image(systemName: "keyboard"))  Enable shortcuts", isOn: $enableShortcuts).onChange(of: enableShortcuts){ newVal in
                         Static.EnableShortcuts = newVal
