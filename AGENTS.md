@@ -155,7 +155,8 @@ Composes the SceneKit capture preview and widget/App Extension overlays, owns `S
 
 Central configuration and runtime registry for preferences, capture/interaction tuning, singleton references, activation state, and Web Extension installation state.
 
-- **Key symbols:** `Init`, `EnableClipboardCapture`, `EnableShortcuts`, `CheckOpenAtStartup`, `refreshWebExtensionInstallButtonVisibility`, capture/overscreen constants, and the shared `TopBarWebView`/`AppExtensionWebView` references.
+- **Key symbols:** `Init`, `EnableClipboardCapture`, `EnableShortcuts`, `IsCaptureHigherPriority`, `CheckOpenAtStartup`, `refreshWebExtensionInstallButtonVisibility`, capture/overscreen constants, and the shared `TopBarWebView`/`AppExtensionWebView` references.
+- **Capture priority preference:** `IsCaptureHigherPriority` persists under the same UserDefaults key, defaults to `false`, and adds one frame to the queue depth when `ScreenRecorder.streamConfiguration` is next constructed.
 - **Called by:** Nearly every native subsystem.
 - **Tests:** Indirect flow-gate coverage only.
 - **Common mistakes:** Distinguish persisted computed properties from transient global state. New preferences require a stable key, a deliberate default, and UI/documentation synchronization.
@@ -390,6 +391,8 @@ Native Safari Web Extension request handler that echoes extension messages back 
 ### [`MakeItHome/Views/MenuBarView.swift`](MakeItHome/Views/MenuBarView.swift)
 
 Menu-bar controls and preferences for display edges, sensitivity, app limits, launch behavior, shortcuts, clipboard capture, and Safari extension installation.
+
+The “High priority screen recording” checkbox below “Disable on Dock side” reflects and saves `Static.IsCaptureHigherPriority`.
 
 - **Key methods:** `openSafariWebExtensionSettings`, `installSafariWebExtension`, `refreshInstallWebExtensionVisibility`, and per-display settings UI.
 - **Depends on:** `Static`, `Display`, and SafariServices.

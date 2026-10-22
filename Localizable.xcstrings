@@ -3587,6 +3587,16 @@
         }
       }
     },
+    "High priority screen recording" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "High priority screen recording"
+          }
+        }
+      }
+    },
     "How to give Screen Recording permissions." : {
       "localizations" : {
         "ar" : {

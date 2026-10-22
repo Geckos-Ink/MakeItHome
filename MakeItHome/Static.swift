@@ -176,7 +176,7 @@ public class Static {
         }
     }
     
-    public static let MenuBarPopupWidth : CGFloat = 300
+    public static let MenuBarPopupWidth : CGFloat = 350
     
     public static let BackgroundUpdate_SetWindowsProperties = false // this should be deprecated
     public static let BackgroundUpdateSeconds_SetWindowsProperties = 0.5 // seconds
@@ -204,7 +204,14 @@ public class Static {
     public static let LatencyCriticalActivityOptions: ProcessInfo.ActivityOptions = [.userInitiated, .latencyCritical]
     public static let CaptureVideoQueueQoS: DispatchQoS = .userInteractive
         
-    public static let IsCaptureHigherPriority = false
+    public static var IsCaptureHigherPriority: Bool {
+        get {
+            User.object(forKey: "IsCaptureHigherPriority") as? Bool ?? false
+        }
+        set {
+            User.set(newValue, forKey: "IsCaptureHigherPriority")
+        }
+    }
     
     public static let ClickMaximumDifference : Double = 0.5
     
