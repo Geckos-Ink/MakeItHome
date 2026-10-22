@@ -17,6 +17,7 @@ struct MenuBarView: View {
     @State private var maxApps : Int
     @State private var disableDockSide : Bool
     @State private var highPriorityScreenRecording : Bool
+    @State private var movePointerToFocusedWindow : Bool
     @State private var enableShortcuts : Bool
     @State private var launchAtStartup : Bool
     @State private var showInDock : Bool
@@ -178,6 +179,11 @@ struct MenuBarView: View {
 
                     Toggle("High priority screen recording", isOn: $highPriorityScreenRecording).onChange(of: highPriorityScreenRecording){ newVal in
                         Static.IsCaptureHigherPriority = newVal
+                    }
+                    .toggleStyle(.checkbox)
+
+                    Toggle("Move pointer to focused window on another display", isOn: $movePointerToFocusedWindow).onChange(of: movePointerToFocusedWindow) { newVal in
+                        Static.MovePointerToFocusedWindow = newVal
                     }
                     .toggleStyle(.checkbox)
                     
@@ -434,6 +440,7 @@ struct MenuBarView: View {
         requireAcceleration = Static.EnableRequiredAcceleration
         disableDockSide = Static.DisableOnDockSide
         highPriorityScreenRecording = Static.IsCaptureHigherPriority
+        movePointerToFocusedWindow = Static.MovePointerToFocusedWindow
         enableShortcuts = Static.EnableShortcuts
         launchAtStartup = Static.OpenAtStartup
         showInDock = Static.ShowInDock

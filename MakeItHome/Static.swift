@@ -165,6 +165,16 @@ public class Static {
     public static var EnableDockMouseSlowering = true
     public static var EnableRequiredAcceleration = true
     public static var DisableOnDockSide = false
+    static let focusedWindowPointerDidChange = Notification.Name("MakeItHome.focusedWindowPointerDidChange")
+
+    public static var MovePointerToFocusedWindow: Bool {
+        get { User.object(forKey: "MovePointerToFocusedWindow") as? Bool ?? true }
+        set {
+            User.set(newValue, forKey: "MovePointerToFocusedWindow")
+            NotificationCenter.default.post(name: focusedWindowPointerDidChange, object: nil)
+        }
+    }
+
     public static var EnableShortcuts : Bool {
         get {
             return User.object(forKey: "EnableShortcuts") as? Bool ?? false

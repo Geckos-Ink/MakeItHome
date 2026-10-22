@@ -492,11 +492,54 @@ class ScreenRecorder: ObservableObject {
     }
     
     /// - Tag: GetAvailableContent
+    private var contentRefreshTask: Task<Void, Never>?
+    private var contentCatalogGeneration: UInt = 0
+    private var contentRefreshGeneration: UInt = 0
+
+    func invalidateAvailableContent() {
+        contentCatalogGeneration &+= 1
+        availableDisplays = []
+    }
+
+    func displayForCapture(id: CGDirectDisplayID) async -> SCDisplay? {
+        if let cached = availableDisplays.first(where: { $0.displayID == id }), CGPreflightScreenCaptureAccess() {
+            return cached
+        }
+        let lookupGeneration = contentRefreshTask == nil ? contentCatalogGeneration : contentRefreshGeneration
+        await refreshAvailableContent()
+        guard !Task.isCancelled else { return nil }
+        // If a hot-plug/geometry change retired the query we joined, request
+        // one current snapshot now, even when the pointer has stopped moving.
+        if lookupGeneration != contentCatalogGeneration {
+            await refreshAvailableContent()
+            guard !Task.isCancelled else { return nil }
+        }
+        return availableDisplays.first { $0.displayID == id }
+    }
+
     public func refreshAvailableContent() async {
+        if let contentRefreshTask {
+            await contentRefreshTask.value
+            return
+        }
+        let generation = contentCatalogGeneration
+        contentRefreshGeneration = generation
+        let task = Task { @MainActor in
+            await loadAvailableContent(generation: generation)
+            // Clear before waking waiters so a stale topology result can be
+            // followed by a fresh lookup on the next request.
+            contentRefreshTask = nil
+        }
+        contentRefreshTask = task
+        await task.value
+    }
+
+    private func loadAvailableContent(generation: UInt) async {
         do {
             // Retrieve the available screen content to capture.
             guard let availableContent = try await shareableContent(excludingDesktopWindows: true,
-                                                                   onScreenWindowsOnly: false) else { return }
+                                                                   onScreenWindowsOnly: false),
+                  generation == contentCatalogGeneration else { return }
             availableDisplays = availableContent.displays
             
             let windows = filterWindows(availableContent.windows)

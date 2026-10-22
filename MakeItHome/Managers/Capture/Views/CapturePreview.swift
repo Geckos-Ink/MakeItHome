@@ -40,6 +40,7 @@ public struct CapturePreview: NSViewRepresentable {
         
         print("CaptureMetalPreview: current display updated")
         DispatchQueue.main.async {
+            guard captureView.curDisplay === display else { return }
             contentLayer = CALayer()
             contentLayer!.contentsGravity = .resizeAspect
             contentLayer!.frame = NSRect(x: 0, y: 0, width: display.frame.width*display.scale, height: display.frame.height*display.scale)
@@ -215,6 +216,7 @@ public struct CapturePreview: NSViewRepresentable {
         }
         
         let applyFrame = {
+            guard frame.displayID == self.captureView.curDisplay?.screen.displayID else { return }
             // Don't update if window is not showed
             /*if(curDisplay?.side == -1 && self.updateFrameCycle % 3 != 0){
                 return

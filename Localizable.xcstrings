@@ -3949,6 +3949,18 @@
         }
       }
     },
+    "Move pointer to focused window on another display" : {
+      "comment" : "Menu bar preference for following focused windows across displays.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Move pointer to focused window on another display"
+          }
+        }
+      }
+    },
     "No screen recording permission." : {
       "localizations" : {
         "ar" : {
