@@ -732,8 +732,16 @@ public class DisplaysManager {
                                                windowID: window.isFakeWin ? nil : window.id)
     }
 
-    func prepareFocusForPreview() {
-        focusedWindowPointerMonitor.prepareForPreview()
+    func prepareFocusForPreview() -> (app: NSRunningApplication, windowID: Int?)? {
+        guard let focus = focusedWindowPointerMonitor.prepareForPreview(),
+              let app = NSRunningApplication(processIdentifier: focus.pid),
+              !app.isTerminated, app.bundleIdentifier == focus.bundleID else { return nil }
+        return (app, focus.windowID)
+    }
+
+    func restoreFocusAfterPreview(app: NSRunningApplication, windowID: Int?, isCurrent: @escaping () -> Bool) {
+        focusedWindowPointerMonitor.restoreFocusAfterPreview(pid: app.processIdentifier, bundleID: app.bundleIdentifier,
+                                                            windowID: windowID, isCurrent: isCurrent)
     }
 }
 
@@ -2412,7 +2420,7 @@ public class Display : Equatable {
         recordingPaused = false
         toBeRecorded = false
         pendingWindowAfterClose = nil
-        frontWinBefore = nil
+        frontWindowIDBefore = nil
         frontAppBefore = nil
         frontSpaceBefore = -1
         edgeActivationPressure = [CGFloat](repeating: 0, count: 4)
@@ -2999,7 +3007,7 @@ public class Display : Equatable {
         }
     }
 
-    var frontWinBefore : AppWindows.Window?
+    private var frontWindowIDBefore: Int?
     private var frontAppBefore : NSRunningApplication?
     private var frontSpaceBefore = -1
     fileprivate var pendingWindowAfterClose : AppWindows.Window?
@@ -3015,7 +3023,7 @@ public class Display : Equatable {
 
         pendingWindowAfterClose = nil
         curFrontWindow = nil
-        frontWinBefore = nil
+        frontWindowIDBefore = nil
         frontAppBefore = nil
         frontSpaceBefore = -1
         let closingSide = sideToClose >= 0 ? sideToClose : side
@@ -3123,25 +3131,16 @@ public class Display : Equatable {
     }
 
     private func rememberFocusBeforeShowing() {
-        let focusCandidate = NSWorkspace.shared.frontmostApplication.flatMap { app in
-            app != NSRunningApplication.current && !app.isTerminated ? app : nil
-        } ?? curFrontApp.flatMap { app in
-            app != NSRunningApplication.current && !app.isTerminated ? app : nil
-        }
-
-        // The frontmost app can still belong to the previous Desktop. Save
-        // focus only when its tracked window belongs to the settled Space.
-        if let focusCandidate,
-           let currentWindow = curFrontWindow,
-           currentWindow.app?.runningApp == focusCandidate,
-           currentWindow.appearsInThiSpace,
-           currentWindow.spaceId == currentSpaceId,
+        // The preview catalog can prefer a larger or titled sibling. Use the
+        // actual front-to-back WindowServer snapshot before taking focus.
+        let focus = manager.prepareFocusForPreview()
+        if let focus,
            flowGate.allowsAutomaticFocusRestore(toSpaceID: currentSpaceId) {
-            frontWinBefore = currentWindow
-            frontAppBefore = focusCandidate
+            frontWindowIDBefore = focus.windowID
+            frontAppBefore = focus.app
             frontSpaceBefore = currentSpaceId
         } else {
-            frontWinBefore = nil
+            frontWindowIDBefore = nil
             frontAppBefore = nil
             frontSpaceBefore = -1
         }
@@ -3149,7 +3148,7 @@ public class Display : Equatable {
 
     private func restoreFocusAfterHiding() {
         defer {
-            frontWinBefore = nil
+            frontWindowIDBefore = nil
             frontAppBefore = nil
             frontSpaceBefore = -1
         }
@@ -3177,17 +3176,15 @@ public class Display : Equatable {
             return
         }
 
-        // Live scans and hovered cards can change during presentation. A close
-        // without a click restores the opening target, never that mutable result.
-        if let previousWindow = frontWinBefore,
-           previousWindow.app?.runningApp == previousApp,
-           previousWindow.stillExisting,
-           previousWindow.appearsInThiSpace,
-           previousWindow.spaceId == currentSpaceId {
-            previousWindow.activate()
-            return
+        let generation = flowGate.presentationGeneration
+        let openingSpaceID = frontSpaceBefore
+        manager.restoreFocusAfterPreview(app: previousApp, windowID: frontWindowIDBefore) { [weak self] in
+            guard let self else { return false }
+            return self.manager.curDisplay === self && self.windowHidden &&
+                self.flowGate.presentationGeneration == generation &&
+                self.currentSpaceId == openingSpaceID &&
+                self.flowGate.allowsAutomaticFocusRestore(toSpaceID: openingSpaceID)
         }
-
         previousApp.activate(options: [])
     }
 
@@ -3229,7 +3226,6 @@ public class Display : Equatable {
             self.manager.window?.setFrame(NSRect(origin: NSPoint(x:self.screen.frame.minX, y: self.screen.frame.minY), size: self.frame.size), display: true)
             
             //TODO: correct this condition in case of space-changing or prioritization issues
-            if self.windowHidden { self.manager.prepareFocusForPreview() }
             if !Static.screenWake && (dontPrioritizeRunningApp && self.side != 3) {
                 self.manager.window?.makeFirstResponder(Static.AppExtensionWebView)
                 self.manager.window?.makeKeyAndOrderFront(nil)

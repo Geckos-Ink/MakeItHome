@@ -121,7 +121,7 @@ class RunLoop {
     var pendingAppExtensionFocus: (app: NSRunningApplication, completion: () -> Void)?
     var curFrontWindow: Int? = 55
     var frontAppBefore: NSRunningApplication? = .current
-    var frontWinBefore: Int? = 55
+    var frontWindowIDBefore: Int? = 55
     var frontSpaceBefore = 3
     var side = 2, sideToClose = 2
     var shortcutOpenTimer: Timer? = Timer()

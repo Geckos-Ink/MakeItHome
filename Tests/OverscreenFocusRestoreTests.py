@@ -68,6 +68,13 @@ final class Manager {
     let window: Surface? = Surface()
     let capturePreview: Any = CapturePreview()
     let contentView: ContentView? = ContentView()
+    var openingFocus: (app: NSRunningApplication, windowID: Int?)?
+    var pendingRestore: (() -> Bool)?
+    func prepareFocusForPreview() -> (app: NSRunningApplication, windowID: Int?)? { openingFocus }
+    func restoreFocusAfterPreview(app: NSRunningApplication, windowID: Int?, isCurrent: @escaping () -> Bool) {
+        Calls.values.append("restore:\(windowID ?? -1)")
+        pendingRestore = isCurrent
+    }
     func screenRecorderSelectDisplay() {}
 }
 final class App { let runningApp: NSRunningApplication; init(_ app: NSRunningApplication) { runningApp = app } }
@@ -90,7 +97,7 @@ final class Display {
     var flowGate = PreviewFlowGate()
     var currentSpaceId = 10
     var spaceIsChanging: Bool { flowGate.spaceIsChanging }
-    var frontWinBefore: Window?
+    var frontWindowIDBefore: Int?
     var frontAppBefore: NSRunningApplication?
     var frontSpaceBefore = -1
     var pendingWindowAfterClose: Window?
@@ -129,6 +136,7 @@ final class Display {
             let display = Display()
             display.curFrontWindow = original
             display.curFrontApp = originalApp
+            display.manager.openingFocus = (originalApp, 12)
             NSWorkspace.shared.frontmostApplication = originalApp
             display.rememberFocusBeforeShowing()
             NSWorkspace.shared.frontmostApplication = .current
@@ -138,15 +146,21 @@ final class Display {
         let changedScan = opened()
         changedScan.curFrontWindow = Window(22, otherApp)
         await close(changedScan)
-        precondition(Calls.values == ["orderBack", "deactivate", "window:11", "app:2", "close"],
-                     "A no-click exit must restore the opening target after yielding the overscreen")
-        precondition(changedScan.windowHidden && changedScan.frontWinBefore == nil &&
+        precondition(Calls.values == ["orderBack", "deactivate", "restore:12", "app:2", "close"],
+                     "Restore the actual WindowServer ID even when the preview catalog has a sibling")
+        precondition(changedScan.manager.pendingRestore?() == true)
+        precondition(changedScan.windowHidden && changedScan.frontWindowIDBefore == nil &&
                      changedScan.frontAppBefore == nil && changedScan.frontSpaceBefore == -1)
 
         let peerScan = opened()
         peerScan.curFrontWindow = Window(12, originalApp)
         await close(peerScan)
-        precondition(Calls.values.contains("window:11") && !Calls.values.contains("window:12"))
+        precondition(Calls.values.contains("restore:12") && !Calls.values.contains("window:11"))
+        peerScan.windowHidden = false
+        precondition(peerScan.manager.pendingRestore?() == false, "Reopening cancels a queued restore")
+        peerScan.windowHidden = true
+        peerScan.currentSpaceId = 20
+        precondition(peerScan.manager.pendingRestore?() == false, "Space changes cancel a queued restore")
 
         let selected = opened()
         selected.pendingWindowAfterClose = Window(22, otherApp, space: 20)
@@ -172,7 +186,7 @@ final class Display {
         original.stillExisting = false
         await close(closedTarget)
         precondition(Calls.values.contains("app:2") && !Calls.values.contains("window:11"),
-                     "A closed window may restore its live app without selecting a stale window")
+                     "The preview catalog must never supply a fallback sibling to raise")
         original.stillExisting = true
 
         let terminated = opened()
@@ -186,7 +200,7 @@ final class Display {
         unknown.curFrontApp = originalApp
         unknown.currentSpaceId = -1
         unknown.rememberFocusBeforeShowing()
-        precondition(unknown.frontWinBefore == nil && unknown.frontAppBefore == nil)
+        precondition(unknown.frontWindowIDBefore == nil && unknown.frontAppBefore == nil)
 
         let stale = opened()
         stale.hideWindow()

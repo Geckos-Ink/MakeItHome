@@ -101,12 +101,14 @@ func AXUIElementCopyAttributeValue(_ element: AXUIElement, _ attribute: CFString
     return .success
 }
 @discardableResult func AXUIElementSetAttributeValue(_ element: AXUIElement, _ attribute: CFString, _ value: CFTypeRef) -> AXError {
+    precondition(Thread.isMainThread, "AX focus mutations belong on main")
     if State.allowRaise && (attribute as String == kAXMainAttribute || attribute as String == kAXFocusedAttribute) {
         State.focused[element.pid] = element
     }
     return .success
 }
 @discardableResult func AXUIElementPerformAction(_ element: AXUIElement, _ action: CFString) -> AXError {
+    precondition(Thread.isMainThread, "AX raises belong on main")
     State.raised.append(element.id)
     if State.allowRaise { State.focused[element.pid] = element }
     return .success
@@ -215,6 +217,64 @@ enum Static { static let focusedWindowPointerDidChange = Notification.Name("poin
         monitor!.sample(); await settle()
         precondition(State.raised.isEmpty && State.warps.isEmpty,
                      "Selecting the window focused before the overscreen must neither raise it nor move the pointer")
+
+        // App activation can focus a sibling even though the right PID is frontmost.
+        // Restore the saved physical window, not a catalog entry or the app alone.
+        State.focused[2] = a
+        let opening = monitor!.prepareForPreview()
+        precondition(opening?.windowID == 21 && opening?.pid == 2)
+        NSWorkspace.shared.frontmostApplication = ownApp
+        monitor!.restoreFocusAfterPreview(pid: 2, bundleID: "example.app", windowID: opening?.windowID,
+                                         isCurrent: { true })
+        State.focused[2] = b
+        NSWorkspace.shared.frontmostApplication = app
+        monitor!.sample()
+        await settle(400)
+        monitor!.sample(); await settle()
+        precondition(State.focused[2] === a && State.raised == [21] && State.warps.isEmpty,
+                     "No-click dismissal must correct sibling focus without moving the pointer")
+
+        State.raised = []
+        monitor!.prepareForPreview()
+        State.focused[2] = b
+        monitor!.focusWindow(pid: 2, bundleID: "example.app", windowID: 21)
+        await settle(400)
+        precondition(State.focused[2] === a && State.raised == [21] && State.warps.isEmpty,
+                     "Clicking the opening window must also correct app activation selecting its sibling")
+
+        State.raised = []
+        monitor!.restoreFocusAfterPreview(pid: 2, bundleID: "example.app", windowID: 21, isCurrent: { true })
+        await settle(400)
+        precondition(State.raised.isEmpty && State.warps.isEmpty, "Correct native focus needs no redundant raise")
+
+        State.focused[2] = b
+        var restoreIsCurrent = true
+        monitor!.restoreFocusAfterPreview(pid: 2, bundleID: "example.app", windowID: 21,
+                                         isCurrent: { restoreIsCurrent })
+        restoreIsCurrent = false
+        await settle(400)
+        precondition(State.raised.isEmpty && State.focused[2] === b, "A Space/lifecycle change cancels restoration")
+
+        monitor!.restoreFocusAfterPreview(pid: 2, bundleID: "example.app", windowID: 21, isCurrent: { true })
+        monitor!.prepareForPreview()
+        await settle(400)
+        precondition(State.raised.isEmpty, "Reopening the overscreen cancels an older restoration")
+
+        State.hiddenWindowIDs = [21]
+        monitor!.restoreFocusAfterPreview(pid: 2, bundleID: "example.app", windowID: 21, isCurrent: { true })
+        await settle(400)
+        precondition(State.raised.isEmpty, "Do not raise a target that left the visible Space")
+        State.hiddenWindowIDs = []
+        State.records.removeValue(forKey: 21)
+        monitor!.restoreFocusAfterPreview(pid: 2, bundleID: "example.app", windowID: 21, isCurrent: { true })
+        await settle(400)
+        precondition(State.raised.isEmpty, "A closed original never substitutes its surviving sibling")
+        State.records[21] = a
+        State.trusted = false
+        monitor!.restoreFocusAfterPreview(pid: 2, bundleID: "example.app", windowID: 21, isCurrent: { true })
+        await settle(400)
+        precondition(State.raised.isEmpty && State.warps.isEmpty, "Native restore respects Accessibility access")
+        State.trusted = true
 
         monitor!.focusWindow(pid: 2, bundleID: "example.app", windowID: 21)
         monitor!.prepareForPreview()
@@ -378,7 +438,7 @@ enum Static { static let focusedWindowPointerDidChange = Notification.Name("poin
         NSEvent.pressedMouseButtons = 0
         b.frame.origin.x = 2200
         await settle(250)
-        precondition(State.warps == [CGPoint(x: 2600, y: 400)], "Use fresh selected-window bounds after the mouse is released")
+        precondition(State.warps == [CGPoint(x: 2600, y: 400)], "Use fresh selected-window bounds after the mouse is released: \(State.warps)")
 
         State.trusted = true
         State.raised = []; State.warps = []
@@ -408,10 +468,26 @@ enum Static { static let focusedWindowPointerDidChange = Notification.Name("poin
         precondition(State.warps.isEmpty, "A window ID owned by another PID cannot supply preview geometry")
         TestProcessInfo.processInfo.systemUptime += 2
         monitor!.sample(); await settle()
+        State.trusted = true
+        State.enabled = false
+        State.focused[2] = b
+        State.raised = []; State.warps = []
+        monitor!.restoreFocusAfterPreview(pid: 2, bundleID: "example.app", windowID: 21, isCurrent: { true })
+        await settle(400)
+        precondition(State.focused[2] === a && State.raised == [21] && State.warps.isEmpty,
+                     "Disabling pointer movement must not disable exact focus restoration")
+        State.raised = []
+        State.focused[2] = b
+        State.windowListDelay = 2
+        monitor!.restoreFocusAfterPreview(pid: 2, bundleID: "example.app", windowID: 21, isCurrent: { true })
+        await settle(2300)
+        State.windowListDelay = 0
+        precondition(State.raised.isEmpty && State.focused[2] === b,
+                     "The real-time restore deadline cancels stalled AX work even without another focus event")
         weak var released = monitor
         monitor = nil
         precondition(released == nil, "Timer/observer ownership must not retain the monitor")
-        print("FocusedWindowPointerMonitorTests: PASS (same-window no-ops, own-surface restoration, different-window selection, ordinary focus, preview coordinates without AX, slow AX isolation, delayed activation, cancellation, expiry, lifetime)")
+        print("FocusedWindowPointerMonitorTests: PASS (exact sibling restoration, same-window no-ops, no restore pointer move, visibility/Space/cancellation/deadline guards, explicit selection, ordinary focus, AX isolation, lifetime)")
     }
 }
 '''

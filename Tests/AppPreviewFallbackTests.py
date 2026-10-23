@@ -319,7 +319,7 @@ fixture = fixture.replace('PRODUCTION_MATERIAL', between(
 fixture = fixture.replace('PRODUCTION_APP_LIST', between(
     displays, '    public func getOrderedApps()', '    func removeWindows('))
 fixture = fixture.replace('PRODUCTION_SELECTION', between(
-    displays, '    @MainActor func selectPreviewWindow(', '    var frontWinBefore :'))
+    displays, '    @MainActor func selectPreviewWindow(', '    private var frontWindowIDBefore:'))
 fixture = fixture.replace('PRODUCTION_CLICK', between(
     preview, '        override public func mouseUp(', '        override public func rightMouseDown(').replace('override public func mouseUp', 'func mouseUp'))
 fixture = fixture.replace('PRODUCTION_REMOVAL', between(
