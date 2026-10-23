@@ -1790,13 +1790,10 @@ public struct CapturePreview: NSViewRepresentable {
                 if showAppsWin.count <  Static.MaxApps || hasLockedBy {
                     
                     let appNode = AppNode(view: self, app: app!.value, asIcon: false)
-                    let currentWindow = display.curFrontWindow.flatMap {
-                        $0.inUsing && $0.app?.id == display.curFrontApp?.processIdentifier ? $0 : nil
-                    }
                     
                     _ = app!.value.getOrderedWindows()
                     if app!.value.display === display { app!.value.clearUnusedWindows() }
-                    if let lastEl = app!.value.preferredPreviewWindow(side: display.side, excludingCurrentWindow: currentWindow) {
+                    if let lastEl = app!.value.preferredPreviewWindow(side: display.side, on: display) {
                         
                         if(lastEl.displayPreview != nil && (lastEl.lockedBy == -1 || lastEl.lockedBy == Static.curDisplay?.side)){
                             let winPlane = WindowPlane(app: appNode, win: lastEl, view: self)
@@ -1834,7 +1831,7 @@ public struct CapturePreview: NSViewRepresentable {
                                 }
                             }
                             
-                            let winner = app!.value.preferredPreviewWindow(side: display.side, excludingCurrentWindow: currentWindow)
+                            let winner = app!.value.preferredPreviewWindow(side: display.side, on: display)
                             
                             if winner != nil {
                                 let winPlane = WindowPlane(app: appNode, win: winner!, view: self)

@@ -1157,27 +1157,18 @@ public class Display : Equatable {
             }
         }
 
-        func mostRecentCapturedWindow() -> Window? {
-            previewWindows().filter { $0.lastPreview != nil }.max {
-                if $0.lastPreviewCapturedAt == $1.lastPreviewCapturedAt { return $0.id < $1.id }
-                return $0.lastPreviewCapturedAt < $1.lastPreviewCapturedAt
-            }
-        }
-
-        /// Select an actual window, including one owned by another display,
-        /// so its preview, title and activation all refer to the same target.
-        func preferredPreviewWindow(side: Int, excludingCurrentWindow current: Window? = nil) -> Window? {
+        /// Prefer this screen's last focused window, including the one already
+        /// in use. Capture recency must never substitute a sibling window.
+        func preferredPreviewWindow(side: Int, on presentingDisplay: Display) -> Window? {
             let eligible = previewWindows().filter { $0.lockedBy == -1 || $0.lockedBy == side }
             let pinned = eligible.filter { $0.lockedBy == side }
-            let allCaptured = eligible.filter { $0.lastPreview != nil }
-            // A window that moved between displays may have multiple retained
-            // owners. Its WindowServer ID still identifies the same window.
-            let alternatives = allCaptured.filter { $0.id != current?.id }
-            let captured = alternatives.isEmpty ? allCaptured : alternatives
-            return (pinned.isEmpty ? captured : pinned).max {
-                if $0.lastPreviewCapturedAt == $1.lastPreviewCapturedAt { return $0.id < $1.id }
-                return $0.lastPreviewCapturedAt < $1.lastPreviewCapturedAt
-            } ?? eligible.max { $0.avgTime < $1.avgTime }
+            let local = eligible.filter { $0.app?.display === presentingDisplay }
+            let candidates = pinned.isEmpty ? (local.isEmpty ? eligible : local) : pinned
+            let focused = candidates.filter { $0.app?.lastWindow === $0 }
+            return (focused.isEmpty ? candidates : focused).max {
+                if $0.avgTime == $1.avgTime { return $0.id < $1.id }
+                return $0.avgTime < $1.avgTime
+            }
         }
         
         public class Window : Equatable {
@@ -1203,28 +1194,16 @@ public class Display : Equatable {
             
             public var lastShotTime : Date = Date(timeIntervalSince1970: 0)
             public var lastPreview : CGImage? = nil
-            private(set) var lastPreviewCapturedAt: TimeInterval = 0
-
-            /// A missing window image may borrow the app's latest capture;
-            /// selection, title, Space and activation still belong to this window.
-            var displayPreview: CGImage? {
-                if let lastPreview { return lastPreview }
-                guard !isFakeWin else { return nil }
-                return app?.mostRecentCapturedWindow()?.lastPreview
-            }
+            /// A card shows only its selected window's image. An uncaptured
+            /// focused window uses the icon path until its own frame arrives.
+            var displayPreview: CGImage? { lastPreview }
 
             var displayPreviewAspectRatio: CGFloat {
-                if lastPreview == nil, let image = displayPreview, image.height > 0 {
-                    return CGFloat(image.width) / CGFloat(image.height)
-                }
                 return widthHeightRatio
             }
 
             var displayPreviewSize: CGSize? {
                 if let size = lastRect?.size, size.width > 0, size.height > 0 { return size }
-                if lastPreview == nil, !isFakeWin,
-                   let size = app?.mostRecentCapturedWindow()?.lastRect?.size,
-                   size.width > 0, size.height > 0 { return size }
                 return displayPreview.map { CGSize(width: $0.width, height: $0.height) }
             }
             public var lastRect : NSRect? = nil
@@ -1404,7 +1383,6 @@ public class Display : Equatable {
                             }
                             
                             self.lastPreview = finalImg
-                            self.lastPreviewCapturedAt = ProcessInfo.processInfo.systemUptime
                             self.lastShotTime = shotTime
                             
                             if self.previewsList.index(forKey: sec) == nil {
@@ -1845,8 +1823,6 @@ public class Display : Equatable {
                 
                 let orderedWindows = windows //windows?.sorted(by: sortWinByLayer)
                 
-                var winnerTitle = ""
-                
                 for win in orderedWindows!{
                     if let dict = win as? [String: AnyObject] {
                         
@@ -1901,8 +1877,6 @@ public class Display : Equatable {
                                     displayFrame: self.frame)
                         }
                         
-                        let thisTimeHasTitle = winner != nil && winnerTitle == "" && !(winTitle ?? "").isEmpty
-                        
                         if winTitle == lowerTitle && winOnScreen == 1 && rectOnCurrentDisplay {
                             // found placeholder panel
                             if !scannedHolderIds.contains(winId) {
@@ -1910,7 +1884,9 @@ public class Display : Equatable {
                                 //print("space holder observed", winId) /// Enable for debug purposes
                             }
                         }
-                        else if (winner == nil || thisTimeHasTitle) && (winOnScreen == 1 && rectOnCurrentDisplay && !excludedApps.contains(winOwnerName ?? "") && winOwnerChecked && (rect.width+rect.height)/2 > 150)/* window must be enough big */{
+                        else if winner == nil && winLayer == 0 && winOnScreen == 1 &&
+                                    rectOnCurrentDisplay && winOwnerChecked &&
+                                    !excludedApps.contains(winOwnerName ?? "") && rect.width > 0 && rect.height > 0 {
                             // winOnScreen == Int(self.screen.displayID)
                             
                             // Check if it's showed elsewhere
@@ -1961,7 +1937,6 @@ public class Display : Equatable {
                             winner = dict
                             winnerRect = rect
                             
-                            winnerTitle = winTitle ?? ""
                             //appWin?.lastRect = rect
                             
                             fullscreenGeometryCandidate = fullscreenGeometryCandidate ||
@@ -2234,6 +2209,11 @@ public class Display : Equatable {
                 
                 self.curFrontWindow = appWin
                 appWin.app?.lastWindow = appWin
+                // Focus recency belongs to the window selected by this scan,
+                // including a newly focused window with no capture yet.
+                let focusedAt = Date().timeIntervalSince1970
+                appWin.avgTime = focusedAt
+                appWin.app?.avgTime = focusedAt
                 
                 appWin.isFullscreen = self.isFullscreen
                 

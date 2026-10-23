@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise production same-app preview fallback and material use with inert images/UI."""
+"""Exercise last-focused window selection and image ownership with inert images/UI."""
 from pathlib import Path
 import subprocess
 import tempfile
@@ -89,7 +89,7 @@ final class Display {
             init(_ id: Int, _ app: AppWindows) { self.id = id; self.app = app; app.windows[id] = self }
             func capture(_ image: CGImage?, at time: TimeInterval) {
                 lastPreview = image
-                lastPreviewCapturedAt = time
+                avgTime = time
             }
         }
     }
@@ -176,88 +176,82 @@ final class ClickedApp { var lastClickedWindow: WindowPlane? }
         let localSource = Display.AppWindows.Window(2, local)
         let localImage = CGImage(800, 400)
         localSource.capture(localImage, at: 10)
-        precondition(target.displayPreview === localImage, "Reuse another window's capture from the same app")
-
+        local.lastWindow = target
         let remoteSource = Display.AppWindows.Window(3, remote)
         let remoteImage = CGImage(900, 600)
         remoteSource.capture(remoteImage, at: 20)
+        remote.lastWindow = remoteSource
         let unrelated = Display.AppWindows.Window(4, other)
         unrelated.capture(CGImage(500, 500), at: 100)
         let wrongBundle = Display.AppWindows.Window(5, wrongIdentity)
         wrongBundle.capture(CGImage(500, 500), at: 200)
-        precondition(target.displayPreview === remoteImage,
-                     "Choose the newest capture across displays with the same PID and bundle identity")
-        precondition(target.displayPreviewAspectRatio == 1.5, "Keep the borrowed image's aspect ratio")
-        precondition(target.lastRect == nil && target.displayPreviewSize == CGSize(width: 900, height: 600),
-                     "A fallback must provide safe sizing before the selected window has capture geometry")
-        remoteSource.lastRect = CGRect(x: 1920, y: 100, width: 1800, height: 1200)
-        precondition(target.displayPreviewSize == CGSize(width: 1800, height: 1200),
-                     "Use the source window's point dimensions when available")
+        precondition(target.displayPreview == nil && target.displayPreviewSize == nil,
+                     "An uncaptured focused window must never borrow a sibling image or geometry")
+        precondition(local.preferredPreviewWindow(side: 2, on: a) === target &&
+                     remote.preferredPreviewWindow(side: 2, on: a) === target,
+                     "The last focused local window wins even if a sibling or remote window has a newer capture")
         plane.setMaterial()
-        precondition(plane.geometry.firstMaterial?.diffuse.contents === remoteImage &&
-                     plane.geometry.firstMaterial?.multiply.contents === remoteImage,
-                     "The production material path must actually display the fallback")
-        let uploads = plane.geometry.firstMaterial!.diffuse.uploads
-        plane.setMaterial()
-        precondition(plane.geometry.firstMaterial!.diffuse.uploads == uploads,
-                     "Do not upload an unchanged fallback texture repeatedly")
-        precondition(plane.win === target && target.app === local && target.spaceId == 77 &&
-                     target.winTitle == "Selected local window",
-                     "The fallback image must not replace the selected window, its title, Space or activation owner")
-        precondition(a.apps.count == 1 && b.apps.count == 2 && c.apps.count == 1 && local.windows.count == 2,
-                     "Do not merge other screens' app lists or insert foreign windows")
+        precondition(plane.geometry.firstMaterial?.diffuse.contents == nil,
+                     "Use the icon path until the selected window has its own image")
 
         let ownImage = CGImage(600, 150)
         target.capture(ownImage, at: 5)
-        precondition(target.displayPreview === ownImage && target.displayPreviewAspectRatio == 4,
-                     "An existing capture of the selected window takes priority over an app fallback")
+        target.inUsing = true
+        precondition(local.preferredPreviewWindow(side: 2, on: a) === target,
+                     "Do not substitute another window just because the focused local window is in use")
+        precondition(target.displayPreview === ownImage && target.displayPreviewAspectRatio == 4 &&
+                     target.displayPreviewSize == CGSize(width: 600, height: 150))
         plane.setMaterial()
-        precondition(plane.geometry.firstMaterial?.diffuse.contents === ownImage)
-        target.lastPreview = nil
+        precondition(plane.geometry.firstMaterial?.diffuse.contents === ownImage &&
+                     plane.geometry.firstMaterial?.multiply.contents === ownImage,
+                     "The production material uses exactly the selected window's image")
+        let uploads = plane.geometry.firstMaterial!.diffuse.uploads
         plane.setMaterial()
-        precondition(plane.geometry.firstMaterial?.diffuse.contents === remoteImage)
+        precondition(plane.geometry.firstMaterial!.diffuse.uploads == uploads,
+                     "Do not upload an unchanged texture repeatedly")
+        precondition(plane.win === target && target.app === local && target.spaceId == 77 &&
+                     target.winTitle == "Selected local window")
 
-        remote.runningApp.isTerminated = true
-        precondition(target.displayPreview === localImage, "Do not reuse a retired process's window")
-        remote.runningApp.isTerminated = false
-        remoteSource.app = nil
-        precondition(target.displayPreview === localImage, "Do not borrow a detached window's cache")
-        remoteSource.app = remote
-        remoteSource.isFakeWin = true
-        precondition(target.displayPreview === localImage, "Fake icon windows are never fallback sources")
-        remoteSource.isFakeWin = false
-        remoteSource.lastPreview = nil
-        localSource.lastPreview = nil
+        local.lastWindow = localSource
+        precondition(remote.preferredPreviewWindow(side: 2, on: a) === localSource,
+                     "Switching focus between local windows changes that screen's card")
+        precondition(local.preferredPreviewWindow(side: 2, on: b) === remoteSource,
+                     "The presenting display decides local ownership, not the global app representative")
+        let movedCurrent = Display.AppWindows.Window(target.id, remote)
+        movedCurrent.capture(remoteImage, at: 110)
+        precondition(local.preferredPreviewWindow(side: 2, on: a) === localSource,
+                     "A retained remote copy must never displace this screen's last focused window")
+        remote.windows.removeValue(forKey: movedCurrent.id)
+        precondition(local.preferredPreviewWindow(side: 2, on: c) === remoteSource,
+                     "Apps with no local history retain their last focused remote window")
+        local.lastWindow = nil
+        target.avgTime = 30
+        precondition(local.preferredPreviewWindow(side: 2, on: a) === target,
+                     "Missing focus references use local focus recency, never remote capture recency")
+        local.lastWindow = target
+        target.app = nil
+        precondition(local.preferredPreviewWindow(side: 2, on: a) === localSource,
+                     "Detached focus references cannot supply a target")
+        target.app = local
+
+        localSource.lockedBy = 2
+        precondition(remote.preferredPreviewWindow(side: 2, on: b) === localSource,
+                     "Explicit edge pins retain their selected real window")
+        localSource.lockedBy = -1
+        target.lastPreview = nil
         plane.setMaterial()
         precondition(target.displayPreview == nil && plane.geometry.firstMaterial?.diffuse.contents == nil &&
                      plane.geometry.firstMaterial?.multiply.contents == nil,
-                     "Eviction must release a fallback texture instead of retaining stale imagery")
-
-        localSource.capture(localImage, at: 30)
+                     "Evicting this window's image clears its material instead of showing a sibling")
         let fakeTarget = Display.AppWindows.Window(-1, local)
         fakeTarget.isFakeWin = true
-        precondition(fakeTarget.displayPreview == nil, "An icon placeholder must not borrow a real capture")
+        precondition(fakeTarget.displayPreview == nil)
         fakeTarget.lastPreview = ownImage
         precondition(fakeTarget.displayPreview === ownImage, "Keep the existing icon rendering path")
         local.runningApp.isTerminated = true
-        precondition(target.displayPreview == nil, "Terminated app instances cannot borrow cached captures")
+        precondition(local.preferredPreviewWindow(side: 2, on: a) == nil,
+                     "A retired app representative cannot supply a window")
         local.runningApp.isTerminated = false
-        remoteSource.capture(remoteImage, at: 40)
-        precondition(local.preferredPreviewWindow(side: 2) === remoteSource,
-                     "The latest captured window on another display must be selectable even with a local cached window")
-        target.capture(ownImage, at: 100)
-        precondition(local.preferredPreviewWindow(side: 2, excludingCurrentWindow: target) === remoteSource,
-                     "When this app's local window is already in use, offer its last other-window capture")
-        let movedCurrent = Display.AppWindows.Window(target.id, remote)
-        movedCurrent.capture(ownImage, at: 110)
-        precondition(local.preferredPreviewWindow(side: 2, excludingCurrentWindow: target) === remoteSource,
-                     "A retained copy of the current window on another display is not another window")
-        remote.windows.removeValue(forKey: movedCurrent.id)
-        target.lastPreview = nil
-        localSource.lockedBy = 2
-        precondition(remote.preferredPreviewWindow(side: 2) === localSource,
-                     "Pinned windows keep precedence on their selected edge")
-        localSource.lockedBy = -1
 
         // Equal timestamps used to collide as dictionary keys. Include apps
         // that have only ever appeared on B/C, and keep one entry per PID.
@@ -306,14 +300,14 @@ final class ClickedApp { var lastClickedWindow: WindowPlane? }
                      "Removing a card must use node identity, including equal-title apps")
         precondition(a.apps[42] == nil && b.apps[42] == nil && b.apps[99] === other && c.apps[42] === wrongIdentity,
                      "Explicit removal clears all same-process histories without touching another identity")
-        print("AppPreviewFallbackTests: PASS (cached fallback, global app inventory, timestamp ties, latest cross-screen target, pinned windows, actual click/close handoff, eviction, icons)")
+        print("AppPreviewFallbackTests: PASS (last-focused local window, no sibling images, presenting-display ownership, global app inventory, pins, click/close handoff, eviction, icons)")
     }
 }
 '''
 fixture = fixture.replace('PRODUCTION_LOOKUP', between(
     displays, '        func previewWindows()', '        public class Window :'))
 fixture = fixture.replace('PRODUCTION_PROPERTIES', between(
-    displays, '            private(set) var lastPreviewCapturedAt:', '            public var lastRect :'))
+    displays, '            /// A card shows only its selected window', '            public var lastRect :'))
 fixture = fixture.replace('PRODUCTION_MATERIAL', between(
     preview, '            public func setMaterial ()', '            public func addToNode(node:',))
 fixture = fixture.replace('PRODUCTION_APP_LIST', between(

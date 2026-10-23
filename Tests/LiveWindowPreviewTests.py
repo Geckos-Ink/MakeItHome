@@ -100,6 +100,7 @@ final class Display {
     let isMain = true
     var curFrontWindow: Window?
     var winnerRect = NSRect.zero
+    var scannedWindowID: Int?
     let menuHeight: CGFloat = 24
     let excludedApps = ["MakeItHome"]
     let lowerTitle = "makeithome"
@@ -125,6 +126,7 @@ final class Display {
         func getWindow(winId: Int) -> Window? { nil }
         func rectContainsWinnerRect(rect: CGRect) -> Bool { rect.contains(winnerRect) }
         PRODUCTION_SCAN
+            scannedWindowID = winner?["kCGWindowNumber"] as? Int
             return winnerBehindSomething
         }
         return cycleWindows(windows: windows)
@@ -144,7 +146,6 @@ final class Window {
     var ciiRevision: UInt = 0
     var isProcessingCii = false
     var lastPreview: CGImage?
-    var lastPreviewCapturedAt: TimeInterval = 0
     var lastShotTime = Date()
     var previewsList: [Int: CGImage] = [:]
     var avgPixel = NSColor.black
@@ -244,10 +245,11 @@ final class Window {
 
         // The overscreen's real WindowServer scan must ignore our own windows
         // while retaining occlusion checks for actual foreign overlays.
-        func info(_ pid: Int, _ name: String, _ rect: CGRect) -> CFDictionary {
+        func info(_ pid: Int, _ name: String, _ rect: CGRect,
+                  id: Int? = nil, title: String? = nil, layer: Int = 0) -> CFDictionary {
             ["kCGWindowOwnerPID": pid, "kCGWindowOwnerName": name,
-             "kCGWindowIsOnscreen": 1, "kCGWindowLayer": 0,
-             "kCGWindowName": name, "kCGWindowNumber": pid,
+             "kCGWindowIsOnscreen": 1, "kCGWindowLayer": layer,
+             "kCGWindowName": title ?? name, "kCGWindowNumber": id ?? pid,
              "kCGWindowBounds": ["X": rect.minX, "Y": rect.minY,
                                  "Width": rect.width, "Height": rect.height]] as NSDictionary as! CFDictionary
         }
@@ -257,6 +259,18 @@ final class Window {
         let foreign = info(43, "Other", overlayRect)
         precondition(!cropDisplay.isOccluded([own, target]), "Our excluded overscreen cannot freeze its live preview")
         precondition(cropDisplay.isOccluded([foreign, target]), "Foreign occlusion remains enforced")
+        let focused = info(42, "Target", CGRect(x: 100, y: 100, width: 500, height: 400), id: 70, title: "")
+        let sibling = info(42, "Target", CGRect(x: 50, y: 50, width: 600, height: 500), id: 71, title: "Named sibling")
+        _ = cropDisplay.isOccluded([focused, sibling])
+        precondition(cropDisplay.scannedWindowID == 70,
+                     "A titled or larger sibling behind the focused window must not replace it")
+        let popup = info(42, "Target", CGRect(x: 100, y: 100, width: 500, height: 400), id: 72, layer: 8)
+        _ = cropDisplay.isOccluded([popup, focused, sibling])
+        precondition(cropDisplay.scannedWindowID == 70, "Only normal windows establish preview focus")
+        let smallFocused = info(42, "Target", CGRect(x: 100, y: 100, width: 100, height: 100), id: 73)
+        _ = cropDisplay.isOccluded([smallFocused, sibling])
+        precondition(cropDisplay.scannedWindowID == 73,
+                     "A small focused window must not be replaced by its larger sibling")
         print("LiveWindowPreviewTests: PASS (25 fps delivery, slow renderer, newest-only backlog, pause/close, display ownership)")
     }
 }
