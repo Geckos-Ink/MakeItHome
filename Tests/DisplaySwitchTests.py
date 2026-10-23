@@ -170,6 +170,7 @@ struct CapturedFrame { let displayID: UInt32?; let surface: Surface? }
     var toBeRecorded = true
     var pendingWindowAfterClose: Int? = 9
     var frontAppBefore: Int? = 5
+    var frontWinBefore: Int? = 5
     var frontSpaceBefore = 77
     var edgeActivationPressure = [CGFloat](repeating: 40, count: 4)
     var windowHidden = false

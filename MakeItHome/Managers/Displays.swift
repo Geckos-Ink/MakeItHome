@@ -1284,6 +1284,11 @@ public class Display : Equatable {
                 self.lastCiiElabored = false
                 self.lastCiiPriorityScale = priorityScale
                 ciiRevision &+= 1
+
+                // Live cards must not wait for the idle elaboration timer or pointer motion.
+                if display.aboveByPixels > 0 {
+                    checkForCii()
+                }
             }
             
             public func clean(){
@@ -1386,7 +1391,7 @@ public class Display : Equatable {
                             //guard let self = self else { return }
                             self.isProcessingCii = false
                             
-                            guard revision == self.ciiRevision else {
+                            guard self.display === display else {
                                 return
                             }
                             
@@ -1408,8 +1413,15 @@ public class Display : Equatable {
                             display.previewUpdated = true
                             self.winPlane?.setMaterial()
                             
-                            self.lastCiiElabored = true
-                            self.lastCii = nil
+                            if revision == self.ciiRevision {
+                                self.lastCiiElabored = true
+                                self.lastCii = nil
+                            } else if display.aboveByPixels > 0 {
+                                // Publish completed work even if a newer frame arrived while
+                                // rendering, then process only the newest pending image.
+                                // Rejecting every older revision can starve live previews.
+                                self.checkForCii()
+                            }
                         }
                     }
                 }
@@ -1662,6 +1674,9 @@ public class Display : Equatable {
     var lastAppWin : AppWindows.Window? = nil
     var winnerRect : NSRect = NSRect.zero
     var prevWinnerRect : NSRect = NSRect.zero
+    private var lastCroppedPreviewFrameTime: TimeInterval = 0
+    private var lastCroppedPreviewWindowID: Int?
+    private var previewCropInFlight = false
     
     var lastAllWins : [CFDictionary] = []
     
@@ -1951,7 +1966,10 @@ public class Display : Equatable {
                                     winnerRect,
                                     displayFrame: self.frame)
                         }
-                        else if !winOwnerChecked && winner == nil{
+                        else if !winOwnerChecked && winner == nil &&
+                                    winPid != Int(NSRunningApplication.current.processIdentifier) {
+                            // Our full-display overscreen is excluded from the capture stream.
+                            // It must not occlude the app whose live card it is presenting.
                             if rect != self.screen.frame{
                                 aheadRects.append(rect)
                             } // else Dock
@@ -2251,6 +2269,15 @@ public class Display : Equatable {
                            let lf = screenRecorder.lastFrame,
                            lf.displayID == self.screen.displayID,
                            let pixelBuffer = lf.pixelBuffer {
+
+                            // Window discovery ticks faster than capture. Process each source
+                            // frame once per target instead of continuously superseding it.
+                            guard !previewCropInFlight,
+                                  lf.captureTime != lastCroppedPreviewFrameTime ||
+                                    appWin.id != lastCroppedPreviewWindowID else { return false }
+                            lastCroppedPreviewFrameTime = lf.captureTime
+                            lastCroppedPreviewWindowID = appWin.id
+                            previewCropInFlight = true
                             
                             let ps = screenRecorder.priorityScale
                             let scale : CGFloat = self.scale * ps // cause of window size change
@@ -2295,7 +2322,11 @@ public class Display : Equatable {
                             
                             imageProcessingQueue.async { [weak self, weak appWin] in
                                 autoreleasepool {
-                                    guard let self = self, let appWin = appWin else { return }
+                                    guard let self = self else { return }
+                                    defer {
+                                        DispatchQueue.main.async { self.previewCropInFlight = false }
+                                    }
+                                    guard let appWin = appWin else { return }
                                     
                                     let cii = CIImage(cvPixelBuffer: pixelBuffer)
                                     if !cii.extent.contains(NSPoint(x: rect.midX, y: rect.midY)) {
@@ -2306,7 +2337,9 @@ public class Display : Equatable {
                                     let cropped = cii.cropped(to: rect)
                                     
                                     DispatchQueue.main.async { [weak self, weak appWin] in
-                                        guard let self = self, let appWin = appWin else { return }
+                                        guard let self = self, let appWin = appWin,
+                                              self.manager.curDisplay === self,
+                                              self.curFrontWindow === appWin else { return }
                                         appWin.updateCii(cropped, rect: backingRect, priorityScale: ps, display: self)
                                     }
                                 }
@@ -2379,6 +2412,7 @@ public class Display : Equatable {
         recordingPaused = false
         toBeRecorded = false
         pendingWindowAfterClose = nil
+        frontWinBefore = nil
         frontAppBefore = nil
         frontSpaceBefore = -1
         edgeActivationPressure = [CGFloat](repeating: 0, count: 4)
@@ -2981,6 +3015,7 @@ public class Display : Equatable {
 
         pendingWindowAfterClose = nil
         curFrontWindow = nil
+        frontWinBefore = nil
         frontAppBefore = nil
         frontSpaceBefore = -1
         let closingSide = sideToClose >= 0 ? sideToClose : side
@@ -3087,8 +3122,34 @@ public class Display : Equatable {
         completion()
     }
 
+    private func rememberFocusBeforeShowing() {
+        let focusCandidate = NSWorkspace.shared.frontmostApplication.flatMap { app in
+            app != NSRunningApplication.current && !app.isTerminated ? app : nil
+        } ?? curFrontApp.flatMap { app in
+            app != NSRunningApplication.current && !app.isTerminated ? app : nil
+        }
+
+        // The frontmost app can still belong to the previous Desktop. Save
+        // focus only when its tracked window belongs to the settled Space.
+        if let focusCandidate,
+           let currentWindow = curFrontWindow,
+           currentWindow.app?.runningApp == focusCandidate,
+           currentWindow.appearsInThiSpace,
+           currentWindow.spaceId == currentSpaceId,
+           flowGate.allowsAutomaticFocusRestore(toSpaceID: currentSpaceId) {
+            frontWinBefore = currentWindow
+            frontAppBefore = focusCandidate
+            frontSpaceBefore = currentSpaceId
+        } else {
+            frontWinBefore = nil
+            frontAppBefore = nil
+            frontSpaceBefore = -1
+        }
+    }
+
     private func restoreFocusAfterHiding() {
         defer {
+            frontWinBefore = nil
             frontAppBefore = nil
             frontSpaceBefore = -1
         }
@@ -3107,24 +3168,27 @@ public class Display : Equatable {
 
         // On the first visit to a Desktop, currentSpaceId can still point at the Desktop we just
         // left. Never let a no-selection close turn that stale ID into an automatic Space change.
-        guard flowGate.allowsAutomaticFocusRestore(toSpaceID: currentSpaceId) else {
+        guard flowGate.allowsAutomaticFocusRestore(toSpaceID: currentSpaceId),
+              PreviewFlowGate.shouldRestorePreviousFocus(
+                openedSpaceID: frontSpaceBefore,
+                currentSpaceID: currentSpaceId),
+              let previousApp = frontAppBefore,
+              !previousApp.isTerminated else {
             return
         }
 
-        if let currentWindow = curFrontWindow,
-           currentWindow.appearsInThiSpace,
-           currentWindow.spaceId == currentSpaceId {
-            currentWindow.activate()
+        // Live scans and hovered cards can change during presentation. A close
+        // without a click restores the opening target, never that mutable result.
+        if let previousWindow = frontWinBefore,
+           previousWindow.app?.runningApp == previousApp,
+           previousWindow.stillExisting,
+           previousWindow.appearsInThiSpace,
+           previousWindow.spaceId == currentSpaceId {
+            previousWindow.activate()
             return
         }
 
-        if PreviewFlowGate.shouldRestorePreviousFocus(
-            openedSpaceID: frontSpaceBefore,
-            currentSpaceID: currentSpaceId),
-           let previousApp = frontAppBefore,
-           !previousApp.isTerminated {
-            previousApp.activate(options: [])
-        }
+        previousApp.activate(options: [])
     }
 
     func showWindow(){
@@ -3156,26 +3220,8 @@ public class Display : Equatable {
             
             let dontPrioritizeRunningApp = self.spaceIsChanging || self.curFrontWindow?.app?.runningApp != NSRunningApplication.current
 
-            let focusCandidate = NSWorkspace.shared.frontmostApplication.flatMap { app in
-                app != NSRunningApplication.current && !app.isTerminated ? app : nil
-            } ?? self.curFrontApp.flatMap { app in
-                app != NSRunningApplication.current && !app.isTerminated ? app : nil
-            }
-
-            // FrontmostApplication may still report an app whose only window is on the previous
-            // Desktop. Save it for restoration only when its tracked window is visibly current.
-            if let focusCandidate,
-               let currentWindow = self.curFrontWindow,
-               currentWindow.app?.runningApp == focusCandidate,
-               currentWindow.appearsInThiSpace,
-               currentWindow.spaceId == self.currentSpaceId,
-               self.flowGate.allowsAutomaticFocusRestore(toSpaceID: self.currentSpaceId) {
-                self.frontAppBefore = focusCandidate
-                self.frontSpaceBefore = self.currentSpaceId
-            }
-            else {
-                self.frontAppBefore = nil
-                self.frontSpaceBefore = -1
+            if self.windowHidden {
+                self.rememberFocusBeforeShowing()
             }
             
             //change dimension
@@ -3218,8 +3264,6 @@ public class Display : Equatable {
             self.manager.window?.level = .mainMenu + 1
             self.manager.window?.isOpaque = true
             self.manager.window?.alphaValue = 1
-            
-            self.frontWinBefore = dontPrioritizeRunningApp ? nil : self.curFrontWindow
             
             delay(ms: 250){
                 self.setRecorderProfile(lowProfile: false)

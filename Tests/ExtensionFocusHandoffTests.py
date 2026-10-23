@@ -12,7 +12,7 @@ root = Path(__file__).resolve().parents[1]
 owner = root / 'MakeItHome/Managers/Displays.swift'
 source = owner.read_text()
 start = source.index('    func focusAppExtension(')
-end = source.index('    private func restoreFocusAfterHiding()', start)
+end = source.index('    private func rememberFocusBeforeShowing()', start)
 method = source[start:end]
 fixture = r'''
 import Foundation
@@ -121,6 +121,7 @@ class RunLoop {
     var pendingAppExtensionFocus: (app: NSRunningApplication, completion: () -> Void)?
     var curFrontWindow: Int? = 55
     var frontAppBefore: NSRunningApplication? = .current
+    var frontWinBefore: Int? = 55
     var frontSpaceBefore = 3
     var side = 2, sideToClose = 2
     var shortcutOpenTimer: Timer? = Timer()

@@ -67,6 +67,7 @@ struct CMTime { let value: Int64; let timescale: CMTimeScale }
     PRODUCTION_UPDATE
     PRODUCTION_CONFIGURATION
     func depth() -> Int { streamConfiguration.queueDepth }
+    func fps() -> Int32 { streamConfiguration.minimumFrameInterval.timescale }
     func refreshThenStop() {
         updateEngine()
         isRunning = false
@@ -83,6 +84,9 @@ struct CMTime { let value: Int64; let timescale: CMTimeScale }
     @MainActor static func main() async throws {
         let first = ScreenRecorder()
         precondition(first.depth() == 4, "Fresh installs default to normal priority")
+        first.isLowPriority = false
+        first.priorityFrameRate = 25
+        precondition(first.fps() == 25, "Open overscreen requests 25 fps at normal priority")
         // No global StoreView: each recorder must observe the preference itself.
         let running = ScreenRecorder()
         running.isRunning = true
@@ -93,11 +97,12 @@ struct CMTime { let value: Int64; let timescale: CMTimeScale }
         precondition(SCStreamConfiguration.constructions >= before + 2,
                      "Rebuild configurations for running and stopped recorders")
         precondition(first.captureEngine.depths.isEmpty, "Do not start a stopped stream")
-        precondition(running.captureEngine.depths.last == 5, "Update the running low profile")
+        precondition(running.captureEngine.depths.last == 6, "Update the running low profile")
+        precondition(first.fps() == 50, "High priority doubles the live capture rate")
         let restarted = ScreenRecorder()
-        precondition(restarted.depth() == 5, "New recorder reads saved priority at startup")
+        precondition(restarted.depth() == 6, "New recorder reads saved priority at startup")
         restarted.isLowPriority = false
-        precondition(restarted.depth() == 8, "Saved priority applies to the high profile")
+        precondition(restarted.depth() == 9, "Saved priority applies to the high profile")
         running.isLowPriority = false
         Static.IsCaptureHigherPriority = false
         await drain(running)
@@ -107,7 +112,7 @@ struct CMTime { let value: Int64; let timescale: CMTimeScale }
         Static.IsCaptureHigherPriority = false
         Static.IsCaptureHigherPriority = true
         await drain(running)
-        precondition(running.captureEngine.depths.last == 8, "Rapid changes converge to latest")
+        precondition(running.captureEngine.depths.last == 9, "Rapid changes converge to latest")
         let count = running.captureEngine.depths.count
         running.refreshThenStop()
         await drain(running)
