@@ -37,6 +37,7 @@ python3 "$ROOT/Tests/DisplaySwitchTests.py"
 python3 "$ROOT/Tests/ScreenRecorderFrameDeliveryTests.py"
 python3 "$ROOT/Tests/LiveWindowPreviewTests.py"
 python3 "$ROOT/Tests/AppPreviewFallbackTests.py"
+python3 "$ROOT/Tests/DesktopWallpaperTests.py"
 python3 "$ROOT/Tests/FocusedWindowPointerMonitorTests.py"
 
 swiftc -O -parse-as-library "$ROOT/MakeItHome/Helpers/ScreenRecordingPermissionGate.swift" \

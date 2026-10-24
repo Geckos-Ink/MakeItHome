@@ -168,9 +168,7 @@ public class DisplaysManager {
                 
         Timer.scheduledTimer(withTimeInterval: Static.UpdateWallpaperEvery, repeats: true) { timer in
             Task {
-                if self.curDekstop == nil || self.curDisplay?.isMain ?? false || true{
-                    self.curDisplay?.updatDesktopImage()
-                }
+                self.curDisplay?.updatDesktopImage()
                 
                 // Try to solve "screen blocking" bug
                 if Static.ReloadScreenRecorderDisplay{
@@ -2542,77 +2540,64 @@ public class Display : Equatable {
     ///
     
     var ready = false
-    var curDesktopUrl : URL? = URL(string: "zero")
-    func updatDesktopImage(){
+    private var desktopBackground: CGImage?
+    private var desktopRefreshInFlight = false
 
-        var deskUrl : URL? = nil // MyAppleEvents.getCurrentWallpaperURL()
-        
-        if deskUrl == nil {
-            let deskUrlFunc = NSWorkspace.desktopImageURL(NSWorkspace.shared)
-            deskUrl = deskUrlFunc(screen)
-        }
-        
-        // temporary solution: check if img is too small, and check if desktop is in dark mode
-        if deskUrl?.absoluteString.contains("System/Library/Desktop%20Pictures/Solid%20Colors/") ?? false {
-            deskUrl = nil
-        }
-        
-        if(deskUrl != curDesktopUrl){
-            
-            func setDefaultWallpaper(){
-                var url = Bundle.main.url(forResource:"wallpaper", withExtension:"jpeg")
-                
-                if isDarkMode() {
-                    url = Bundle.main.url(forResource:"wallpaperDark", withExtension:"jpeg")
-                }
-                
-                if url != nil {
-                    manager.curDekstop = CIImage(contentsOf: url!)
-                }
-                else {
-                    return
-                }
-            }
-            
-            if(deskUrl == nil){
-                setDefaultWallpaper()
-            }
-            else {
-                manager.curDekstop = CIImage(contentsOf: deskUrl!)
-                
-                if manager.curDekstop != nil {
-                    manager.curDekstop = resizeCI(image: manager.curDekstop!, scale: 0.3) // pretty arbitrary
-                }
-                else {
-                    setDefaultWallpaper()
+    func updatDesktopImage() {
+        Task { @MainActor [weak self] in
+            guard let self, self.manager.curDisplay === self, !self.desktopRefreshInFlight else { return }
+            self.desktopRefreshInFlight = true
+            let displayID = self.screen.displayID
+            let screenFrame = self.screen.frame
+            let displayFrame = CGDisplayBounds(displayID)
+            let url = NSWorkspace.shared.desktopImageURL(for: self.screen)
+            let dark = isDarkMode()
+            let fallback = Bundle.main.url(forResource: dark ? "wallpaperDark" : "wallpaper", withExtension: "jpeg")
+            DesktopWallpaper.capture(displayID: displayID) { [weak self] sample in
+                guard let self else { return }
+                self.imageProcessingQueue.async { [weak self] in
+                    let rendered = sample.flatMap {
+                        DesktopWallpaper.render(images: $0.images, windowFrame: $0.windowFrame, displayFrame: displayFrame)
+                    } ?? DesktopWallpaper.render(images: DesktopWallpaper.fileFrames(url: url), displayFrame: displayFrame)
+                    // Keep a previous good wallpaper through transient capture/file failures.
+                    let defaultImage = rendered == nil
+                        ? DesktopWallpaper.render(images: DesktopWallpaper.fileFrames(url: fallback), displayFrame: displayFrame)
+                        : nil
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self else { return }
+                        self.desktopRefreshInFlight = false
+                        guard self.screen.displayID == displayID, self.screen.frame == screenFrame,
+                              NSWorkspace.shared.desktopImageURL(for: self.screen) == url,
+                              isDarkMode() == dark else {
+                            self.updatDesktopImage()
+                            return
+                        }
+                        if let image = rendered ?? (self.desktopBackground == nil ? defaultImage : nil) {
+                            self.desktopBackground = image
+                        }
+                        self.setCurDesktopImage(refresh: false)
+                    }
                 }
             }
-            
-            if manager.curDekstop != nil{
-                manager.curDekstop = blurredCI(image: manager.curDekstop!, radius: 20)
-                
-                if(manager.capturePreview != nil){
-                    curDesktopUrl = deskUrl
-                    setCurDesktopImage()
-                }
-            }
-            
-            ready = true
         }
     }
-    
-    func setCurDesktopImage(){
-        guard let desktop = manager.curDekstop else {
+
+    func setCurDesktopImage(refresh: Bool = true) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in self?.setCurDesktopImage(refresh: refresh) }
             return
         }
-        
-        DispatchQueue.main.async {
-            if #available(macOS 12.3, *){
-                let background = (self.manager.capturePreview as? CapturePreview)?.captureView.scene?.background
-                background?.contents = convertToCGImage(image: desktop)
-                background?.contentsTransform = SCNMatrix4MakeScale(0.5,0.5,0.5)
-            }
+        guard manager.curDisplay === self else { return }
+        if refresh { updatDesktopImage() }
+        let background = (manager.capturePreview as? CapturePreview)?.captureView.scene?.background
+        guard let desktopBackground else {
+            background?.contents = NSColor.windowBackgroundColor
+            return
         }
+        manager.curDekstop = CIImage(cgImage: desktopBackground)
+        ready = true
+        background?.contents = desktopBackground
+        background?.contentsTransform = SCNMatrix4Identity
     }
     
     func releaseSceneKitReferences(){
