@@ -195,7 +195,7 @@ public class AppExtensionWebViewCoordinator: NSObject, WKNavigationDelegate, Dra
     }
 }
 
-public class AppExtensionWKWV : WKWebView{
+public class AppExtensionWKWV : SleepAwareWebView{
     
     ///
     /// Send message

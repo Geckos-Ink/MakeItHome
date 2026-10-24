@@ -18,6 +18,7 @@ async function sendJsMessage(msg){
         return false
     }
     
+    const requestGeneration = connectionGeneration
     let req = await makeRequestUrl('/sendJSMessage')
     
     let body = {
@@ -26,11 +27,9 @@ async function sendJsMessage(msg){
     
     try{
         let json = await makePost(req, body)
+        if(requestGeneration !== connectionGeneration) return false
         if(json.status === "error"){
-            if(json.description === "appNotConnected" || json.description === "invalidSecret" || json.description === "invalidToken" || json.description === "missingToken"){
-                resetSecret = true
-                toConnect = true
-            }
+            requireReconnect(json, requestGeneration)
             return false
         }
         return true
@@ -60,6 +59,16 @@ let tokenCache = {
 let storage = {}
 
 let toConnect = true
+let connectionGeneration = 0
+
+function requireReconnect(reply, requestGeneration){
+    if(requestGeneration !== connectionGeneration || reply?.status !== 'error') return
+    if(['appNotConnected', 'invalidSecret', 'invalidToken', 'missingToken'].includes(reply.description)){
+        // A rolling token can expire during sleep or a delayed request. Keep
+        // proof of the existing approval and mint a fresh token on /connect.
+        toConnect = true
+    }
+}
 
 function setSecret(nextSecret){
     secret = nextSecret || ""
@@ -134,7 +143,7 @@ async function storageGet(){
 }
 
 function storageSave(){
-    chrome.storage.local.set({secret: storage.secret || ""})
+    return chrome.storage.local.set({secret: storage.secret || ""})
 }
 
 /**
@@ -213,7 +222,7 @@ async function readTextFile(asset) {
 
 
 async function makeGet(url){
-    return await fetchJSONWithTimeout(url, {}, 5000)
+    return await fetchJSONWithTimeout(url, {}, 2200)
 }
 
 async function makePost(url, body, maxRetries = 1){
@@ -230,7 +239,7 @@ async function makePost(url, body, maxRetries = 1){
                     "Content-Type": "application/json",
                     "Body-Length": body.length.toString()
                 }
-            }, 5000)
+            }, 2200)
         }
         catch(error){
             if(attempt >= maxRetries){
@@ -247,45 +256,15 @@ function waitFor(ms, cbk){
     setTimeout(cbk, ms)
 }
 
-// Function to get the current active tab information
-function getCurrentTabInfo() {
-    return new Promise((res, err)=>{
-        // Query the active tab in the current window
-        chrome.tabs.query({ active: true, currentWindow: true })
-            .then((tabs) => {
-                if (tabs.length === 0) {
-                    console.log('No active tab found');
-                    return;
-                }
-
-                // Assuming the first tab in the array is the active tab
-                let activeTab = tabs[0];
-                
-                if(false){
-                    console.log('Tab ID:', activeTab.id);
-                    console.log('Tab URL:', activeTab.url);
-                    console.log('Tab Title:', activeTab.title);
-                    console.log("activeTab", activeTab)
-                }
-                
-                confirmTabOrder(activeTab.id)
-
-                // You can also access other properties of the tab if needed
-                // console.log('Tab Index:', activeTab.index);
-                // console.log('Tab Window ID:', activeTab.windowId);
-                
-                res(activeTab)
-            })
-            .catch((error) => {
-                console.error('Error getting active tab:', error);
-                err(error)
-            });
-    })
+// A tab can be active in a background window. Ask Safari for the selected tab
+// in its last focused window; reading status must not manufacture user activity.
+async function getCurrentTabInfo() {
+    const [tab] = await safariAPI(chrome.tabs, 'query', {active: true, lastFocusedWindow: true})
+    return normalizeTabInfo(tab) ? tab : null
 }
 
 let tabs = {}
-let orderedTabs = []
-let safariCarouselOrder = [] // Runtime ID order, independent of capture/MRU priority.
+let safariCarouselOrder = [] // Runtime ID order, independent of capture/delivery priority.
 
 const screenshotPolicy = {
     minCaptureGapMs: 1000,
@@ -299,7 +278,7 @@ const screenshotPolicy = {
     statusPollIdleMs: 3200,
     statusRequestTimeoutMs: 3500,
     statusMaxInFlightMs: 12000,
-    captureTimeoutMs: 3500,
+    captureTimeoutMs: 1000,
     maxSendWhenShowing: 4,
     maxPreviewCount: 60,
     maxPreviewChars: 8 * 1024 * 1024,
@@ -308,7 +287,7 @@ const screenshotPolicy = {
     maxSendWhenIdle: 1
 }
 
-let activeTabId = null
+let activeTabId = null // Last observed by a fresh Safari query, never inferred from tab order.
 let lastActiveAt = 0
 let lastCaptureAt = 0
 let captureRequested = false
@@ -339,10 +318,6 @@ let waitForStatusRunId = 0
 let lastServerSuggestedStatusPollMs = null
 let statusWaitSupported = false
 let connectionBlockedUntil = 0
-
-function spliceOrderedTabs(index){
-    orderedTabs.splice(index, 1)
-}
 
 let tabFocusRunId = 0
 let tabFocusRetryTimer = null
@@ -406,6 +381,8 @@ async function focusOnTab(id, options = {}){
     lastTabFocusFailureStage = 'resolveTab'
     let tab = await resolveSafariTab(id)
     if(!tab || !isCurrent()) return false
+    // Selection is self-contained: an already active tab may belong to another
+    // or minimized window, so always request both window focus and tab activation.
     const focusWindow = async windowId=>{
         lastTabFocusFailureStage = 'focusWindow'
         const options = {focused: true}
@@ -441,14 +418,15 @@ async function focusOnTab(id, options = {}){
     await safariAPI(chrome.tabs, 'update', id, {active: true})
     if(!isCurrent()) return false
     lastTabFocusFailureStage = 'verifyTab'
-    const [selected, focusedWindow] = await Promise.all([
-        resolveSafariTab(id), safariAPI(chrome.windows, 'getLastFocused')
+    const [selected, activeTab, focusedWindow] = await Promise.all([
+        resolveSafariTab(id), getCurrentTabInfo(), safariAPI(chrome.windows, 'getLastFocused')
     ])
     const confirmed = isCurrent() && selected?.id === id && selected.active === true &&
+                      activeTab?.id === id && activeTab.windowId === selected.windowId &&
                       focusedWindow?.id === selected.windowId && focusedWindow.focused === true
     if(confirmed) lastTabFocusFailureStage = null
     else if(isCurrent()) lastTabFocusFailureStage = selected?.id !== id ? 'verifyTabId' :
-        selected.active !== true ? 'verifyActiveTab' : 'verifyFocusedWindow'
+        selected.active !== true || activeTab?.id !== id ? 'verifyActiveTab' : 'verifyFocusedWindow'
     return confirmed
 }
 
@@ -486,27 +464,6 @@ async function requestTabFocus(id){
     } finally {
         if(runId === tabFocusRunId) pendingTabFocusId = null
     }
-}
-
-const maxOpenedTabs = 10
-// markActive: only real user interactions (tab switch, navigation, click) should
-// refresh lastActiveAt. The capture loop also confirms the order, and if it marked
-// activity too, the loop would keep itself in the fast "active" gear forever
-function confirmTabOrder(id, markActive = true){
-    activeTabId = id
-    if(markActive){
-        lastActiveAt = Date.now()
-    }
-
-    let index = orderedTabs.indexOf(id)
-    if(index >= 0){
-        spliceOrderedTabs(index)
-    }
-    
-    orderedTabs.push(id)
-    
-    while(orderedTabs.length > maxOpenedTabs)
-        spliceOrderedTabs(0)
 }
 
 function normalizeTabInfo(tab){
@@ -556,8 +513,6 @@ async function checkOpenTabs(options = {}){
     for(const id of Object.keys(tabs)){
         if(!tabsObj[id]) delete tabs[id]
     }
-    orderedTabs = orderedTabs.filter(id=>tabsObj[id])
-
     // Title metadata does not wait for a screenshot. Keep existing tab
     // order in the view; newly discovered tabs follow Safari window/index order.
     const inventory = Object.values(tabsObj).map(normalizeTabInfo)
@@ -610,7 +565,7 @@ function nextWaitForStatus(delayMs = getStatusPollIntervalMs()){
 }
 
 // Include the response body in the deadline; fetch alone ends at the headers.
-async function fetchJSONWithTimeout(url, options = {}, timeoutMs = 3500){
+async function fetchJSONWithTimeout(url, options = {}, timeoutMs = 2200){
     const controller = new AbortController()
     return boundedOperation(async()=>{
         const response = await fetch(url, {...options, signal: controller.signal})
@@ -742,6 +697,7 @@ async function waitForStatus() {
     waitForStatusInFlight = true
     waitForStatusStartedAt = now
     let runId = ++waitForStatusRunId
+    const requestGeneration = connectionGeneration
     let received = false
 
     try {
@@ -753,7 +709,7 @@ async function waitForStatus() {
         const receivedIds = [...statusReceipts].filter(([,receipt])=>!receipt.done).map(([id])=>id)
         const options = useWait ? {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({receivedIds})} : {}
         let res = await fetchJSONWithTimeout(req, options, useWait ? waitMs + 3500 : screenshotPolicy.statusRequestTimeoutMs)
-        if(runId !== waitForStatusRunId) return
+        if(runId !== waitForStatusRunId || requestGeneration !== connectionGeneration) return
         if(Number.isFinite(res.nextPollInMs)){
             lastServerSuggestedStatusPollMs = res.nextPollInMs
         } else {
@@ -762,14 +718,7 @@ async function waitForStatus() {
 
         
         if (res.status === "error") {
-            if (res.description === "appNotConnected") {
-                toConnect = true;
-            }
-            
-            if (res.description === "invalidSecret" || res.description === "invalidToken" || res.description === "missingToken") {
-                resetSecret = true;
-                toConnect = true;
-            }
+            requireReconnect(res, requestGeneration)
 
             if(toConnect){
                 lastServerSuggestedStatusPollMs = null
@@ -806,7 +755,6 @@ async function waitForStatus() {
     }
 }
 
-let resetSecret = false
 let connectInFlight = false
 async function connect(){
     if(Date.now() < connectionBlockedUntil){
@@ -835,12 +783,6 @@ async function runConnect(){
         setSecret(storage.secret)
     }
 
-    if(resetSecret){
-        setSecret("")
-        storage.secret = ""
-        storageSave()
-    }
-
     let req = await makeRequestUrl('/connect', {
         secret: secret,
         includeExtensionMeta: true
@@ -866,21 +808,22 @@ async function runConnect(){
             connectionBlockedUntil = Date.now() + 1000
         }
 
-        if(json.description === "invalidSecret" || json.description === "invalidToken" || json.description === "missingToken"){
-            resetSecret = true
-        }
-
         toConnect = true
         return false
     }
 
-    if(json?.secret){
-        setSecret(json.secret)
-        storage.secret = json.secret
-        storageSave()
+    if(json?.status !== 'ok' || typeof json.secret !== 'string' || !json.secret){
+        toConnect = true
+        connectionBlockedUntil = Date.now() + connectionRetryMs
+        connectionRetryMs = Math.min(30000, connectionRetryMs * 2)
+        return false
     }
+    setSecret(json.secret)
+    connectionGeneration++
+    storage.secret = json.secret
+    try { await boundedOperation(()=>storageSave(), 1200) }
+    catch(err){ console.warn('Extension credentials could not be saved') }
 
-    resetSecret = false
     connectionBlockedUntil = 0
     connectionRetryMs = 1000
     toConnect = false
@@ -963,6 +906,7 @@ async function setHtmlContent(html, options = {}){
         return false
     }
     
+    const requestGeneration = connectionGeneration
     let req = await makeRequestUrl('/setHtmlContent')
     
     html = sanitizeStringExtensive(html)
@@ -974,13 +918,13 @@ async function setHtmlContent(html, options = {}){
     }
     
     try {
+        console.log("setHtmlContent calling")
         let json = await makePost(req, body)
+        console.log("setHtmlContent response")
+        if(requestGeneration !== connectionGeneration) return false
 
         if(json.status === "error"){
-            if(json.description === "appNotConnected" || json.description === "invalidSecret" || json.description === "invalidToken" || json.description === "missingToken"){
-                resetSecret = true
-                toConnect = true
-            }
+            requireReconnect(json, requestGeneration)
             return false
         }
 
@@ -1118,14 +1062,14 @@ async function captureScreenshot(isCurrent) {
         }
 
         if(!valid()) return {changed: false, reason: 'captureSuperseded'}
-        const [activeTab] = await safariAPI(chrome.tabs, 'query', {active: true, currentWindow: true})
+        const activeTab = await getCurrentTabInfo()
         if(!valid()) return {changed: false, reason: 'captureSuperseded'}
         if(!activeTab){
+            activeTabId = null
             captureRequested = false
             return {changed: false, reason: "noActiveTab"}
         }
         
-        confirmTabOrder(activeTab.id, false)
         activeTabId = activeTab.id
         
         let tabInfo = normalizeTabInfo(activeTab)
@@ -1198,11 +1142,6 @@ function getTabPriorityScore(tabId){
     }
     if(tab.needsResend){
         score += 250
-    }
-    
-    let orderIndex = orderedTabs.indexOf(tab.id)
-    if(orderIndex >= 0){
-        score += orderIndex * 10
     }
     
     if(tab.lastCaptureAt){
@@ -1297,8 +1236,9 @@ async function runScreenshotLoop(){
     }
 }
 
-// Add a listener for the browser action
-chrome.action.onClicked.addListener(()=>{
+// macOS Safari uses a persistent Manifest V2 background page. Keep its toolbar
+// listener on the matching API so startup cannot fail before the polling loops.
+chrome.browserAction.onClicked.addListener(()=>{
     checkConnect()
     scheduleScreenshotLoop(120)
 });
@@ -1347,11 +1287,11 @@ setTimeout(()=>{
 }, 500)
 
 chrome.tabs.onActivated.addListener((activeInfo)=>{
-    if(!activeInfo || !Number.isFinite(activeInfo.tabId)){
+    if(!activeInfo || !Number.isSafeInteger(activeInfo.tabId) || activeInfo.tabId < 0){
         return
     }
     
-    confirmTabOrder(activeInfo.tabId)
+    lastActiveAt = Date.now()
     captureRevision++
     captureRequested = true
     markTabsDirty()
@@ -1367,8 +1307,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab)=>{
             let nextTabInfo = JSON.stringify(normalized)
             tabs[tabId].lastStrTabInfo = nextTabInfo
             
-            if(tab.active){
-                activeTabId = tabId
+            if(tab.active && tabId === activeTabId){
                 if(changeInfo.url || changeInfo.status === "complete"){
                     lastActiveAt = Date.now()
                     captureRequested = true
@@ -1377,7 +1316,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab)=>{
         }
     }
     
-    if((changeInfo.url || changeInfo.status === 'loading') && (tab?.active || tabId === activeTabId)) captureRevision++
+    if((changeInfo.url || changeInfo.status === 'loading') && tabId === activeTabId) captureRevision++
     // Ignore intermediate "loading" events: pages can fire dozens of them,
     // and title tickers on background tabs must not tighten the capture loop
     let meaningfulChange = changeInfo.status === "complete" || changeInfo.url || changeInfo.title || changeInfo.favIconUrl
@@ -1402,10 +1341,7 @@ chrome.tabs.onRemoved.addListener((tabId)=>{
     captureRevision++
     if(tabId === pendingTabFocusId) cancelTabFocusRetry()
     delete tabs[tabId]
-    let index = orderedTabs.indexOf(tabId)
-    if(index >= 0){
-        spliceOrderedTabs(index)
-    }
+    if(tabId === activeTabId) activeTabId = null
     
     markTabsDirty()
     scheduleScreenshotLoop(120)

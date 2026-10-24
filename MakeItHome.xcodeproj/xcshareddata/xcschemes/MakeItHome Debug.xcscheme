@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
-   LastUpgradeVersion = "2600"
-   version = "2.0">
+   LastUpgradeVersion = "2710"
+   version = "1.7">
    <BuildAction
       parallelizeBuildables = "YES"
       buildImplicitDependencies = "YES"
@@ -17,7 +17,6 @@
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "8BB0E382293DC881006DA326"
                BuildableName = "MakeItHome.app"
-               BlueprintName = "MakeItHome"
                ReferencedContainer = "container:MakeItHome.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -31,31 +30,29 @@
       shouldAutocreateTestPlan = "YES">
    </TestAction>
    <LaunchAction
-      buildConfiguration = "Release"
-      selectedDebuggerIdentifier = ""
-      selectedLauncherIdentifier = "Xcode.IDEFoundation.Launcher.PosixSpawn"
-      disableMainThreadChecker = "YES"
+      buildConfiguration = "Debug"
+      selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
+      selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       launchStyle = "0"
       useCustomWorkingDirectory = "NO"
       ignoresPersistentStateOnLaunch = "NO"
-      debugDocumentVersioning = "NO"
-      debugXPCServices = "NO"
+      debugDocumentVersioning = "YES"
       debugServiceExtension = "internal"
       enableGPUValidationMode = "1"
-      allowLocationSimulation = "NO"
-      viewDebuggingEnabled = "No"
-      queueDebuggingEnabled = "No"
-      disablePerformanceAntipatternChecker = "YES">
+      allowLocationSimulation = "YES"
+      queueDebuggingEnabled = "No">
       <BuildableProductRunnable
          runnableDebuggingMode = "0">
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "8BB0E382293DC881006DA326"
             BuildableName = "MakeItHome.app"
-            BlueprintName = "MakeItHome"
             ReferencedContainer = "container:MakeItHome.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
+      <MetalAPIValidationSettings
+         isEnabled = "No">
+      </MetalAPIValidationSettings>
    </LaunchAction>
    <ProfileAction
       buildConfiguration = "Release"
@@ -69,7 +66,6 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "8BB0E382293DC881006DA326"
             BuildableName = "MakeItHome.app"
-            BlueprintName = "MakeItHome"
             ReferencedContainer = "container:MakeItHome.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

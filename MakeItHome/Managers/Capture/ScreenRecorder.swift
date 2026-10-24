@@ -90,6 +90,19 @@ class ScreenRecorder: ObservableObject {
     
     // Combine subscribers.
     private var subscriptions = Set<AnyCancellable>()
+    private var captureHigherPriority = Static.IsCaptureHigherPriority {
+        didSet { updateEngine() }
+    }
+
+    init() {
+        NotificationCenter.default.publisher(for: Static.capturePriorityDidChange)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.captureHigherPriority = Static.IsCaptureHigherPriority
+            }
+            .store(in: &subscriptions)
+    }
+
     private var permissionRequestGate = ScreenRecordingPermissionGate()
     private static var cursorControlRequestScheduled = false
     private static var permissionOnboarding: ScreenRecordingPermissionOnboarding {
@@ -288,7 +301,7 @@ class ScreenRecorder: ObservableObject {
             isStarting = false
             print("recording started! display", targetDisplayID)
             
-            for try await frame in frames {
+            for try await var frame in frames {
                 guard runID == captureRunID else {
                     break
                 }
@@ -297,8 +310,10 @@ class ScreenRecorder: ObservableObject {
                     print("lastFrame", NSDate().timeIntervalSince1970)
                 }
                                 
+                // The engine supplies untagged frames. Attach this run's
+                // display identity before both storing and rendering the value.
+                frame.displayID = targetDisplayID
                 lastFrame = frame
-                lastFrame!.displayID = targetDisplayID
 
                 #if STRESS_TEST_APP
                 capturedFrameCount += 1
@@ -397,9 +412,9 @@ class ScreenRecorder: ObservableObject {
     
     /// - Tag: UpdateCaptureConfig
     private func updateEngine() {
+        let configuration = streamConfiguration
         guard isRunning, let filter = contentFilter else { return }
 
-        let configuration = streamConfiguration
         let runID = captureRunID
         captureUpdateTask?.cancel()
         captureUpdateTask = Task { [weak self, captureEngine] in
@@ -468,21 +483,65 @@ class ScreenRecorder: ObservableObject {
         }
                 
         // Set the capture interval at 25 fps.
-        streamConfig.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(self.priorityFrameRate))
+        streamConfig.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(Double(self.priorityFrameRate) * (captureHigherPriority ? 2.0 : 1.0)))
         
         // Increase the depth of the frame queue to ensure high fps at the expense of increasing
         // the memory footprint of WindowServer.
-        streamConfig.queueDepth = self.isLowPriority ? lowProfileDepth : 7 // was 8
+        streamConfig.queueDepth = (self.isLowPriority ? lowProfileDepth : 7) + (captureHigherPriority ? 2 : 0) // was 8
+        // todo: make lowProfileDepth and "7" a Static variable
         
         return streamConfig
     }
     
     /// - Tag: GetAvailableContent
+    private var contentRefreshTask: Task<Void, Never>?
+    private var contentCatalogGeneration: UInt = 0
+    private var contentRefreshGeneration: UInt = 0
+
+    func invalidateAvailableContent() {
+        contentCatalogGeneration &+= 1
+        availableDisplays = []
+    }
+
+    func displayForCapture(id: CGDirectDisplayID) async -> SCDisplay? {
+        if let cached = availableDisplays.first(where: { $0.displayID == id }), CGPreflightScreenCaptureAccess() {
+            return cached
+        }
+        let lookupGeneration = contentRefreshTask == nil ? contentCatalogGeneration : contentRefreshGeneration
+        await refreshAvailableContent()
+        guard !Task.isCancelled else { return nil }
+        // If a hot-plug/geometry change retired the query we joined, request
+        // one current snapshot now, even when the pointer has stopped moving.
+        if lookupGeneration != contentCatalogGeneration {
+            await refreshAvailableContent()
+            guard !Task.isCancelled else { return nil }
+        }
+        return availableDisplays.first { $0.displayID == id }
+    }
+
     public func refreshAvailableContent() async {
+        if let contentRefreshTask {
+            await contentRefreshTask.value
+            return
+        }
+        let generation = contentCatalogGeneration
+        contentRefreshGeneration = generation
+        let task = Task { @MainActor in
+            await loadAvailableContent(generation: generation)
+            // Clear before waking waiters so a stale topology result can be
+            // followed by a fresh lookup on the next request.
+            contentRefreshTask = nil
+        }
+        contentRefreshTask = task
+        await task.value
+    }
+
+    private func loadAvailableContent(generation: UInt) async {
         do {
             // Retrieve the available screen content to capture.
             guard let availableContent = try await shareableContent(excludingDesktopWindows: true,
-                                                                   onScreenWindowsOnly: false) else { return }
+                                                                   onScreenWindowsOnly: false),
+                  generation == contentCatalogGeneration else { return }
             availableDisplays = availableContent.displays
             
             let windows = filterWindows(availableContent.windows)

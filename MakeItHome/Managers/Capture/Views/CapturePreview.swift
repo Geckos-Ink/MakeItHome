@@ -40,6 +40,7 @@ public struct CapturePreview: NSViewRepresentable {
         
         print("CaptureMetalPreview: current display updated")
         DispatchQueue.main.async {
+            guard captureView.curDisplay === display else { return }
             contentLayer = CALayer()
             contentLayer!.contentsGravity = .resizeAspect
             contentLayer!.frame = NSRect(x: 0, y: 0, width: display.frame.width*display.scale, height: display.frame.height*display.scale)
@@ -215,6 +216,7 @@ public struct CapturePreview: NSViewRepresentable {
         }
         
         let applyFrame = {
+            guard frame.displayID == self.captureView.curDisplay?.screen.displayID else { return }
             // Don't update if window is not showed
             /*if(curDisplay?.side == -1 && self.updateFrameCycle % 3 != 0){
                 return
@@ -492,8 +494,8 @@ public struct CapturePreview: NSViewRepresentable {
             if(!self.draggedClickedApp && diff < Static.ClickMaximumDifference){
                 //Static.curDisplay?.activateNewApp = true
                 
-                if self.clickedOnApp?.lastClickedWindow != nil {
-                    self.clickedOnApp?.app.activate(win: self.clickedOnApp!.lastClickedWindow!.win)
+                if let window = self.clickedOnApp?.lastClickedWindow?.win {
+                    self.curDisplay?.selectPreviewWindow(window)
                 }
             }
             
@@ -1186,7 +1188,7 @@ public struct CapturePreview: NSViewRepresentable {
                 
                 for win in windows {
                     var w = width
-                    let maxW = parentView.pixelsToScene(pixels: win.win.lastRect?.size.width ?? 1.0)/2.5
+                    let maxW = parentView.pixelsToScene(pixels: win.win.displayPreviewSize?.width ?? 1.0)/2.5
                     
                     if(width > maxW){
                         w = maxW
@@ -1195,7 +1197,7 @@ public struct CapturePreview: NSViewRepresentable {
                     large = w
                     
                     win.geometry.width = w
-                    win.geometry.height = self.asIcon ? w : w / win.win.widthHeightRatio
+                    win.geometry.height = self.asIcon ? w : w / win.win.displayPreviewAspectRatio
                     
                     otherSideSize = win.geometry.height
                     
@@ -1226,7 +1228,7 @@ public struct CapturePreview: NSViewRepresentable {
                 
                 for win in windows {
                     var h = height
-                    let maxH = parentView.pixelsToScene(pixels: win.win.lastRect!.size.height)/2.5
+                    let maxH = parentView.pixelsToScene(pixels: win.win.displayPreviewSize?.height ?? 1.0)/2.5
                     
                     if(height > maxH){
                         h = maxH
@@ -1234,7 +1236,7 @@ public struct CapturePreview: NSViewRepresentable {
                     
                     large = h
                     
-                    win.geometry.width = self.asIcon ? h : h * win.win.widthHeightRatio
+                    win.geometry.width = self.asIcon ? h : h * win.win.displayPreviewAspectRatio
                     win.geometry.height = h
                     
                     otherSideSize = win.geometry.width
@@ -1557,19 +1559,20 @@ public struct CapturePreview: NSViewRepresentable {
                     return [bloomFilter]
                 }
 
-                if win.lastPreview?.width ?? 16384  < 16384 {
+                let preview = win.displayPreview
+                if preview?.width ?? 16384  < 16384 {
 
                     self.geometry.firstMaterial?.writesToDepthBuffer = false
 
                     // Re-upload the texture only when the preview actually changed:
                     // this runs for every window on each preview update
-                    if appliedPreview !== win.lastPreview {
-                        appliedPreview = win.lastPreview
+                    if appliedPreview !== preview {
+                        appliedPreview = preview
 
-                        self.geometry.firstMaterial?.diffuse.contents = win.lastPreview
+                        self.geometry.firstMaterial?.diffuse.contents = preview
 
                         if true { //TODO: check its utility
-                            self.geometry.firstMaterial?.multiply.contents = win.lastPreview
+                            self.geometry.firstMaterial?.multiply.contents = preview
                             self.geometry.firstMaterial?.multiply.intensity = 0.6
                         }
                     }
@@ -1589,7 +1592,9 @@ public struct CapturePreview: NSViewRepresentable {
                     }
                 }
                 else {
-                    //TODO: remove window from previews
+                    appliedPreview = nil
+                    self.geometry.firstMaterial?.diffuse.contents = nil
+                    self.geometry.firstMaterial?.multiply.contents = nil
                 }
                 
                 //self.geometry.firstMaterial?.lightingModel = .constant
@@ -1689,13 +1694,18 @@ public struct CapturePreview: NSViewRepresentable {
         public func removeAppNode(app: AppNode, force: Bool){
             // Remove the preview from the scene before laying out the remaining ones.
             app.remove()
-            listApp?.removeValue(forKey: app.app.title) //ugly way, but temporary
-            
-            let id = app.app.runningApp.processIdentifier;
-            curDisplay?.apps[id]?.destroyWindows()
-            
-            if(force){
-                curDisplay?.apps.removeValue(forKey: id)
+            let keys = listApp?.elements.filter { $0.value === app }.map(\.key) ?? []
+            for key in keys { listApp?.removeValue(forKey: key) }
+            if force {
+                // The card now represents one process across displays. Explicit
+                // user removal clears that process's histories on every screen.
+                for display in app.app.display.manager.displays {
+                    if let owner = display.apps[app.app.id], owner.bundleId == app.app.bundleId {
+                        owner.destroyWindows(force: true)
+                    }
+                }
+            } else {
+                app.app.destroyWindows()
             }
 
             guard listApp != nil, curDisplay != nil else {
@@ -1719,7 +1729,7 @@ public struct CapturePreview: NSViewRepresentable {
             }
         }
         
-        var orderedApps : OrderedDictionary<Double, Display.AppWindows>?
+        var orderedApps : OrderedDictionary<pid_t, Display.AppWindows>?
         var listApp : OrderedDictionary<String, AppNode>?
         
         var side : Int = 0
@@ -1776,27 +1786,16 @@ public struct CapturePreview: NSViewRepresentable {
                 
                 app?.value.index = a
                 
-                let hasLockedBy = app!.value.hasLockedBy()
+                let hasLockedBy = app!.value.previewWindows().contains { $0.lockedBy == display.side }
                 if showAppsWin.count <  Static.MaxApps || hasLockedBy {
                     
                     let appNode = AppNode(view: self, app: app!.value, asIcon: false)
                     
-                    let wins = app!.value.getOrderedWindows()
-                    if(!wins.isEmpty){
-                        var lastEl = wins.elements[wins.count-1].value
+                    _ = app!.value.getOrderedWindows()
+                    if app!.value.display === display { app!.value.clearUnusedWindows() }
+                    if let lastEl = app!.value.preferredPreviewWindow(side: display.side, on: display) {
                         
-                        print("wins per app:",wins.count)
-                        if lastEl.inUsing && lastEl.spaceId != -1 && wins.count > 1{
-                            let penultimo = wins.elements[wins.count-2].value
-                            
-                            let isOnSameSpace = penultimo.spaceId == curDisplay?.currentSpaceId && penultimo.spaceId != lastEl.spaceId
-                            
-                            if penultimo.spaceId != -1 && (penultimo.spaceId != lastEl.spaceId || isOnSameSpace) && (penultimo.lockedBy == -1 || penultimo.lockedBy == Static.curDisplay?.side) {
-                                lastEl = penultimo
-                            }
-                        }
-                        
-                        if(lastEl.lastPreview != nil && (lastEl.lockedBy == -1 || lastEl.lockedBy == Static.curDisplay?.side)){
+                        if(lastEl.displayPreview != nil && (lastEl.lockedBy == -1 || lastEl.lockedBy == Static.curDisplay?.side)){
                             let winPlane = WindowPlane(app: appNode, win: lastEl, view: self)
                             appNode.windows.insert(winPlane, at: appNode.windows.count)
                             winPlane.addToNode(node: appNode.node)
@@ -1818,7 +1817,7 @@ public struct CapturePreview: NSViewRepresentable {
                             if showAppsWin.count > Static.MaxApps {
                                 for i in stride(from: showAppsWin.count-1, through: 0, by: -1) {
                                     let rem = showAppsWin[i]
-                                    if !rem.app.hasLockedBy(){
+                                    if !rem.app.previewWindows().contains(where: { $0.lockedBy == display.side }) {
                                         showAppsWin.remove(at: i)
                                         
                                         rem.asIcon = true
@@ -1832,16 +1831,7 @@ public struct CapturePreview: NSViewRepresentable {
                                 }
                             }
                             
-                            let wins = app!.value.getOrderedWindows()
-                            var winner : Display.AppWindows.Window?
-                            
-                            for w in stride(from: wins.count-1, through: 0, by: -1){
-                                let win = wins[wins.keys[w]]!
-                                if win.lockedBy == Static.curDisplay!.side{
-                                    winner = win
-                                    break
-                                }
-                            }
+                            let winner = app!.value.preferredPreviewWindow(side: display.side, on: display)
                             
                             if winner != nil {
                                 let winPlane = WindowPlane(app: appNode, win: winner!, view: self)
@@ -1858,7 +1848,6 @@ public struct CapturePreview: NSViewRepresentable {
                         }
                     }
                     
-                    app!.value.clearUnusedWindows()
                 }
                 else {
                     app?.value.considered = false
@@ -1883,7 +1872,7 @@ public struct CapturePreview: NSViewRepresentable {
                     app?.value.considered = false
                     
                     // remove immediately previews (?)
-                    for win in app!.value.windows {
+                    for win in app!.value.windows where app!.value.display === display {
                         if win.value.lockedBy == -1 {
                             win.value.lastPreview = nil
                         }
@@ -1892,7 +1881,7 @@ public struct CapturePreview: NSViewRepresentable {
                 
                 if !(app?.value.considered ?? true){
                     //MARK: Clear unused app
-                    if !(app?.value.appeared ?? true){
+                    if !(app?.value.appeared ?? true), app!.value.display === display {
                         app?.value.destroyWindows() //just destroy windows saves (move outside if for doing always)
                     }
                 }
@@ -1900,14 +1889,14 @@ public struct CapturePreview: NSViewRepresentable {
             
             for appNode in showAppsWin {
                 appNode.addToNode(node: nodeApps!)
-                listApp![appNode.app.title] = appNode
+                listApp!["\(appNode.app.title)\u{0}\(appNode.app.id)"] = appNode
             }
             
             for appNode in showAppsIcon {
                 appNode.addToNode(node: nodeApps!)
                 
                 let title = appNode.app.title
-                listApp![Static.GroupMiniPreviews ? "ZZZZZZZZZZ\(title)" : title] = appNode
+                listApp!["\(Static.GroupMiniPreviews ? "ZZZZZZZZZZ" : "")\(title)\u{0}\(appNode.app.id)"] = appNode
             }
             
             listApp!.sort(by: { $0.key < $1.key })
@@ -1938,12 +1927,12 @@ public struct CapturePreview: NSViewRepresentable {
                     var spacing : CGFloat = 0
 
                     for win in app.value.windows {
-                        let maxSide = pixelsToScene(pixels: (sideVertical ? win.win.lastRect?.size.width : win.win.lastRect?.size.height) ?? 1.0)/2.5
+                        let maxSide = pixelsToScene(pixels: (sideVertical ? win.win.displayPreviewSize?.width : win.win.displayPreviewSize?.height) ?? 1.0)/2.5
                         let side = min(size, maxSide)
 
                         var otherSide = side
                         if !app.value.asIcon {
-                            otherSide = sideVertical ? side / win.win.widthHeightRatio : side * win.win.widthHeightRatio
+                            otherSide = sideVertical ? side / win.win.displayPreviewAspectRatio : side * win.win.displayPreviewAspectRatio
                         }
 
                         if otherSide > spacing {

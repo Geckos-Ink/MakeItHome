@@ -98,6 +98,13 @@ public class DisplaysManager {
     private var strictMotionState = StrictMotionState()
     fileprivate var mainScreenHeight: CGFloat = 0
     private var recorderSelectionTask: Task<Void, Never>?
+    private var recorderSelectionDisplayID: CGDirectDisplayID?
+    private var recorderSelectionGeneration: UInt = 0
+    private var captureDisplayFrames: [CGDirectDisplayID: CGRect] = [:]
+    private var captureDisplayScales: [CGDirectDisplayID: CGFloat] = [:]
+    private var capturePreviewNeedsConfiguration = true
+    private weak var configuredCaptureDisplay: Display?
+    private var captureCatalogNeedsInvalidation = true
     var curMouseLoc : NSPoint = NSPoint(x:0,y:0);
     var curDisplay : Display?
     
@@ -117,6 +124,14 @@ public class DisplaysManager {
     let enableMouseEvent = false
     
     public let clipboard = Clipboard()
+    private lazy var focusedWindowPointerMonitor = FocusedWindowPointerMonitor(
+        isEnabled: { Static.MovePointerToFocusedWindow },
+        isInteractionActive: { [weak self] in
+            Static.isExtensionApprovalPromptShowing || NSApp.modalWindow != nil ||
+            (self?.displays.contains { $0.aboveByPixels > 0 || $0.fullOverscreenMode } ?? true)
+        },
+        didMove: { [weak self] point in self?.synchronizeStrictMotionOrigin(to: point) }
+    )
     
     init(){
         Static.clipboard = clipboard
@@ -197,6 +212,7 @@ public class DisplaysManager {
         
         // Update screen settings
         NotificationCenter.default.addObserver(self, selector: #selector(displayConfigurationChanged(_:)), name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        focusedWindowPointerMonitor.start()
     }
     
     @objc func displayConfigurationChanged(_ notification: Notification) {
@@ -208,9 +224,7 @@ public class DisplaysManager {
         
         //notification.object // self.isFullscreen
         
-        for dis in displays{
-            dis.loadScreenInfo()
-        }
+        initCurrentDisplays()
     }
     
     @objc func spaceChange() {
@@ -228,7 +242,7 @@ public class DisplaysManager {
     
     func getDisplayFromNSScreen(screen : NSScreen) -> Display? {
         for display in self.displays {
-            if display.screen == screen {
+            if display.screen.displayID == screen.displayID {
                 return display
             }
         }
@@ -241,7 +255,14 @@ public class DisplaysManager {
     public func initCurrentDisplays(load: Bool = false){
         
         screens = NSScreen.screens
-        mainScreenHeight = NSScreen.main?.frame.maxY ?? screens.first?.frame.maxY ?? 0
+        // The global AppKit/Quartz origin is tied to the first (menu-bar)
+        // display, not NSScreen.main, which follows the focused window.
+        mainScreenHeight = screens.first?.frame.maxY ?? 0
+        let frames = Dictionary(uniqueKeysWithValues: screens.map { ($0.displayID, $0.frame) })
+        let scales = Dictionary(uniqueKeysWithValues: screens.map { ($0.displayID, $0.backingScaleFactor) })
+        let topologyChanged = frames != captureDisplayFrames || scales != captureDisplayScales
+        captureDisplayFrames = frames
+        captureDisplayScales = scales
         
         var foundSomething = false
         
@@ -258,11 +279,7 @@ public class DisplaysManager {
                 foundSomething = true
             }
             else {
-                //TODO: add more checker, like in case of resolution changing
-                if screen.displayID != display!.screen.displayID{
-                    display?.screen = screen
-                    foundSomething = true
-                }
+                display?.screen = screen
             }
             
             display?.found = true
@@ -277,7 +294,7 @@ public class DisplaysManager {
             }
         }
         
-        if foundSomething {
+        if foundSomething || topologyChanged {
             for display in self.displays {
                 if display.found {
                     display.loadScreenInfo()
@@ -292,6 +309,16 @@ public class DisplaysManager {
             
             displays.remove(at: displays.firstIndex{$0 === display}!)
         }
+
+        if topologyChanged, #available(macOS 12.3, *) {
+            capturePreviewNeedsConfiguration = true
+            for display in displays { display.scDisplay = nil }
+            captureCatalogNeedsInvalidation = true
+            recorderSelectionTask?.cancel()
+            recorderSelectionTask = nil
+            recorderSelectionDisplayID = nil
+            screenRecorderSelectDisplay()
+        }
     }
     
     func screenRecorderSelectDisplay(){
@@ -299,78 +326,72 @@ public class DisplaysManager {
             return
         }
         
+        let requestedDisplay = curDisplay
+        let requestedID = requestedDisplay?.screen.displayID
+        // A selection task owns the frame consumer for its whole run. Repeated
+        // resume requests must not cancel that consumer or restart its lookup.
+        if recorderSelectionTask != nil, recorderSelectionDisplayID == requestedID { return }
         recorderSelectionTask?.cancel()
+        recorderSelectionGeneration &+= 1
+        let generation = recorderSelectionGeneration
+        recorderSelectionDisplayID = requestedID
         recorderSelectionTask = Task { @MainActor [weak self] in
-            guard let self = self,
+            guard let self else { return }
+            defer {
+                if self.recorderSelectionGeneration == generation {
+                    self.recorderSelectionTask = nil
+                    self.recorderSelectionDisplayID = nil
+                }
+            }
+            guard !Task.isCancelled,
+                  self.curDisplay === requestedDisplay,
                   let screenRecorder = self.contentView?.store.screenRecorder as? ScreenRecorder else {
                 return
             }
-            
-            await screenRecorder.refreshAvailableContent()
-
-            guard !Task.isCancelled else {
+            if self.captureCatalogNeedsInvalidation {
+                screenRecorder.invalidateAvailableContent()
+                self.captureCatalogNeedsInvalidation = false
+            }
+            guard let activeDisplay = requestedDisplay,
+                  activeDisplay.shouldKeepScreenRecorderActive(), let requestedID else {
+                await screenRecorder.stop()
                 return
             }
-            
-            let activeDisplay = self.curDisplay
-            let activeDisplayId = activeDisplay?.screen.displayID
-            let scDisplay = screenRecorder.availableDisplays.first { $0.displayID == activeDisplayId }
-            
-            guard let activeDisplay,
+            // Switch rendering ownership before any cold inventory wait so
+            // late frames from the departed screen cannot paint this surface.
+            if self.capturePreviewNeedsConfiguration || self.configuredCaptureDisplay !== activeDisplay {
+                screenRecorder.capturePreview.currentDisplay(display: activeDisplay)
+                self.configuredCaptureDisplay = activeDisplay
+                self.capturePreviewNeedsConfiguration = false
+            }
+
+            // Normal crossings reuse the catalog. Only cold/hot-plug paths
+            // need the potentially slow WindowServer content enumeration.
+            let scDisplay = await screenRecorder.displayForCapture(id: requestedID)
+            guard !Task.isCancelled, self.curDisplay === activeDisplay else { return }
+            guard let scDisplay,
                   activeDisplay.shouldKeepScreenRecorderActive(),
-                  let scDisplay else {
-                guard !Task.isCancelled else { return }
+                  activeDisplay.screen.displayID == scDisplay.displayID else {
                 await screenRecorder.stop()
                 return
             }
             
             print("starting recording on display", scDisplay.displayID)
             activeDisplay.scDisplay = scDisplay
-            screenRecorder.capturePreview.currentDisplay(display: activeDisplay)
             guard !Task.isCancelled else { return }
             await screenRecorder.start(lowProfile: true, display: scDisplay)
         }
     }
     
     public func getPointerDisplay(cursor: CGPoint, justGet: Bool = false) -> Display? {
-        var inDisplay : Display?
-        
-        // This for compensate the "mouse movement bug"
-        for display in self.displays {
-            if display.aboveByPixels > 0{
-                inDisplay = display
-                display.mouseIn = true
-            }
-            else {
-                display.mouseIn = false
-            }
-        }
-        
-        if(inDisplay == nil){
-            for display in self.displays {
-                if(!justGet){
-                    display.mouseIn = false
-                }
-                
-                let frame = display.screen.frame
-                if frame.contains(cursor){
-                    inDisplay = display
-                }
-            }
-        }
-        
-        if(!justGet){
-            if(inDisplay == nil){
-                inDisplay = curDisplay
-            }
-            
-            if inDisplay != curDisplay {
-                inDisplay?.justArrived = true
-            }
-            
-            inDisplay?.mouseIn = true
-        }
-                        
+        // Coordinates are authoritative, even if the previous display still
+        // has overscreen pressure or a Space holder is settling. Forecast and
+        // adjacent-edge probes must be read-only.
+        let coordinateDisplay = displays.first { $0.screen.frame.contains(cursor) }
+        if justGet { return coordinateDisplay }
+        let inDisplay = coordinateDisplay ?? curDisplay
+        for display in displays { display.mouseIn = display === inDisplay }
+        if inDisplay !== curDisplay { inDisplay?.justArrived = true }
         return inDisplay
     }
     
@@ -394,6 +415,8 @@ public class DisplaysManager {
         if(display != nil){
             if(self.curDisplay?.screen != display!.screen){
                 print("display id", display!.screen.displayID, self.curMouseLoc)
+
+                self.curDisplay?.leaveForAnotherDisplay()
                 
                 //MARK: Display changed
                 
@@ -402,6 +425,9 @@ public class DisplaysManager {
                 
                 Static.curDisplay = display
                 self.curDisplay = display
+                display!.recordingPaused = false
+                display!.frontMostAppSince = 0
+                display!.appSwitched_noScreenshot = true
                 
                 if !(display!.disable) {
                                                             
@@ -699,6 +725,24 @@ public class DisplaysManager {
             }
         }
     }
+
+    func focusPreviewTarget(_ window: Display.AppWindows.Window) {
+        guard let app = window.app else { return }
+        focusedWindowPointerMonitor.focusWindow(pid: app.id, bundleID: app.bundleId,
+                                               windowID: window.isFakeWin ? nil : window.id)
+    }
+
+    func prepareFocusForPreview() -> (app: NSRunningApplication, windowID: Int?)? {
+        guard let focus = focusedWindowPointerMonitor.prepareForPreview(),
+              let app = NSRunningApplication(processIdentifier: focus.pid),
+              !app.isTerminated, app.bundleIdentifier == focus.bundleID else { return nil }
+        return (app, focus.windowID)
+    }
+
+    func restoreFocusAfterPreview(app: NSRunningApplication, windowID: Int?, isCurrent: @escaping () -> Bool) {
+        focusedWindowPointerMonitor.restoreFocusAfterPreview(pid: app.processIdentifier, bundleID: app.bundleIdentifier,
+                                                            windowID: windowID, isCurrent: isCurrent)
+    }
 }
 
 // Make display equatable
@@ -760,16 +804,20 @@ public class Display : Equatable {
     //MARK: AppWindows
     
     // https://www.advancedswift.com/ordereddictionary/
-    public func getOrderedApps() -> OrderedDictionary<Double, AppWindows>{
-        var dict = OrderedDictionary<Double, AppWindows>()
-        
-        for (id, app) in apps{            
-            dict[app.avgTime] = app
+    public func getOrderedApps() -> OrderedDictionary<pid_t, AppWindows>{
+        var dict = OrderedDictionary<pid_t, AppWindows>()
+        // One entry per live process across all displays. Timestamp keys used
+        // to silently overwrite apps that shared the same recency value.
+        for display in manager.displays {
+            for app in display.apps.values where !app.runningApp.isTerminated {
+                if let existing = dict[app.id], existing.avgTime >= app.avgTime { continue }
+                dict[app.id] = app
+            }
         }
-                
-        //MARK: TODO: invert order (also for getOrderedWindow)
-        dict.sort(by: { $0.key > $1.key })
-        
+        dict.sort {
+            if $0.value.avgTime == $1.value.avgTime { return $0.key < $1.key }
+            return $0.value.avgTime > $1.value.avgTime
+        }
         return dict
     }
     
@@ -1036,7 +1084,7 @@ public class Display : Equatable {
             }
         }
         
-        var lastOrderedDict : OrderedDictionary<Double, Window>? = nil
+        var lastOrderedDict : OrderedDictionary<Int, Window>? = nil
         
         public func clearUnusedWindows(){
             if lastOrderedDict != nil {
@@ -1078,18 +1126,49 @@ public class Display : Equatable {
             return win
         }
         
-        public func getOrderedWindows() -> OrderedDictionary<Double, Window>{
-            var dict = OrderedDictionary<Double, Window>()
+        public func getOrderedWindows() -> OrderedDictionary<Int, Window>{
+            var dict = OrderedDictionary<Int, Window>()
             
             for (id, win) in self.windows{
-                dict[win.avgTime] = win
+                dict[win.id] = win
             }
             
-            dict.sort(by: { $0.key < $1.key })
+            dict.sort {
+                if $0.value.avgTime == $1.value.avgTime { return $0.key < $1.key }
+                return $0.value.avgTime < $1.value.avgTime
+            }
             
             self.lastOrderedDict = dict
             
             return dict
+        }
+
+        func previewWindows() -> [Window] {
+            guard !runningApp.isTerminated else { return [] }
+            let owners = [self] + display.manager.displays
+                .filter { $0 !== display }
+                .compactMap { $0.apps[id] }
+            return owners.filter {
+                $0.id == id && $0.bundleId == bundleId && !$0.runningApp.isTerminated
+            }.flatMap { owner in
+                owner.windows.values.filter {
+                    $0.app === owner && !$0.isFakeWin
+                }
+            }
+        }
+
+        /// Prefer this screen's last focused window, including the one already
+        /// in use. Capture recency must never substitute a sibling window.
+        func preferredPreviewWindow(side: Int, on presentingDisplay: Display) -> Window? {
+            let eligible = previewWindows().filter { $0.lockedBy == -1 || $0.lockedBy == side }
+            let pinned = eligible.filter { $0.lockedBy == side }
+            let local = eligible.filter { $0.app?.display === presentingDisplay }
+            let candidates = pinned.isEmpty ? (local.isEmpty ? eligible : local) : pinned
+            let focused = candidates.filter { $0.app?.lastWindow === $0 }
+            return (focused.isEmpty ? candidates : focused).max {
+                if $0.avgTime == $1.avgTime { return $0.id < $1.id }
+                return $0.avgTime < $1.avgTime
+            }
         }
         
         public class Window : Equatable {
@@ -1115,6 +1194,18 @@ public class Display : Equatable {
             
             public var lastShotTime : Date = Date(timeIntervalSince1970: 0)
             public var lastPreview : CGImage? = nil
+            /// A card shows only its selected window's image. An uncaptured
+            /// focused window uses the icon path until its own frame arrives.
+            var displayPreview: CGImage? { lastPreview }
+
+            var displayPreviewAspectRatio: CGFloat {
+                return widthHeightRatio
+            }
+
+            var displayPreviewSize: CGSize? {
+                if let size = lastRect?.size, size.width > 0, size.height > 0 { return size }
+                return displayPreview.map { CGSize(width: $0.width, height: $0.height) }
+            }
             public var lastRect : NSRect? = nil
             public var previewsList : [Int : CGImage] = [:]
             
@@ -1180,6 +1271,11 @@ public class Display : Equatable {
                 self.lastCiiElabored = false
                 self.lastCiiPriorityScale = priorityScale
                 ciiRevision &+= 1
+
+                // Live cards must not wait for the idle elaboration timer or pointer motion.
+                if display.aboveByPixels > 0 {
+                    checkForCii()
+                }
             }
             
             public func clean(){
@@ -1282,7 +1378,7 @@ public class Display : Equatable {
                             //guard let self = self else { return }
                             self.isProcessingCii = false
                             
-                            guard revision == self.ciiRevision else {
+                            guard self.display === display else {
                                 return
                             }
                             
@@ -1303,8 +1399,15 @@ public class Display : Equatable {
                             display.previewUpdated = true
                             self.winPlane?.setMaterial()
                             
-                            self.lastCiiElabored = true
-                            self.lastCii = nil
+                            if revision == self.ciiRevision {
+                                self.lastCiiElabored = true
+                                self.lastCii = nil
+                            } else if display.aboveByPixels > 0 {
+                                // Publish completed work even if a newer frame arrived while
+                                // rendering, then process only the newest pending image.
+                                // Rejecting every older revision can starve live previews.
+                                self.checkForCii()
+                            }
                         }
                     }
                 }
@@ -1557,6 +1660,9 @@ public class Display : Equatable {
     var lastAppWin : AppWindows.Window? = nil
     var winnerRect : NSRect = NSRect.zero
     var prevWinnerRect : NSRect = NSRect.zero
+    private var lastCroppedPreviewFrameTime: TimeInterval = 0
+    private var lastCroppedPreviewWindowID: Int?
+    private var previewCropInFlight = false
     
     var lastAllWins : [CFDictionary] = []
     
@@ -1717,8 +1823,6 @@ public class Display : Equatable {
                 
                 let orderedWindows = windows //windows?.sorted(by: sortWinByLayer)
                 
-                var winnerTitle = ""
-                
                 for win in orderedWindows!{
                     if let dict = win as? [String: AnyObject] {
                         
@@ -1773,16 +1877,16 @@ public class Display : Equatable {
                                     displayFrame: self.frame)
                         }
                         
-                        let thisTimeHasTitle = winner != nil && winnerTitle == "" && !(winTitle ?? "").isEmpty
-                        
                         if winTitle == lowerTitle && winOnScreen == 1 && rectOnCurrentDisplay {
                             // found placeholder panel
                             if !scannedHolderIds.contains(winId) {
                                 scannedHolderIds.append(winId)
-                                print("space holder observed", winId)
+                                //print("space holder observed", winId) /// Enable for debug purposes
                             }
                         }
-                        else if (winner == nil || thisTimeHasTitle) && (winOnScreen == 1 && rectOnCurrentDisplay && !excludedApps.contains(winOwnerName ?? "") && winOwnerChecked && (rect.width+rect.height)/2 > 150)/* window must be enough big */{
+                        else if winner == nil && winLayer == 0 && winOnScreen == 1 &&
+                                    rectOnCurrentDisplay && winOwnerChecked &&
+                                    !excludedApps.contains(winOwnerName ?? "") && rect.width > 0 && rect.height > 0 {
                             // winOnScreen == Int(self.screen.displayID)
                             
                             // Check if it's showed elsewhere
@@ -1833,7 +1937,6 @@ public class Display : Equatable {
                             winner = dict
                             winnerRect = rect
                             
-                            winnerTitle = winTitle ?? ""
                             //appWin?.lastRect = rect
                             
                             fullscreenGeometryCandidate = fullscreenGeometryCandidate ||
@@ -1846,7 +1949,10 @@ public class Display : Equatable {
                                     winnerRect,
                                     displayFrame: self.frame)
                         }
-                        else if !winOwnerChecked && winner == nil{
+                        else if !winOwnerChecked && winner == nil &&
+                                    winPid != Int(NSRunningApplication.current.processIdentifier) {
+                            // Our full-display overscreen is excluded from the capture stream.
+                            // It must not occlude the app whose live card it is presenting.
                             if rect != self.screen.frame{
                                 aheadRects.append(rect)
                             } // else Dock
@@ -1944,7 +2050,7 @@ public class Display : Equatable {
                         }
                     }
 
-                    print("stable unique space holder found", settledID)
+                    //print("stable unique space holder found", settledID) /// ENABLE FOR DEBUG PURPOSES
                 }
             }
             
@@ -2103,6 +2209,11 @@ public class Display : Equatable {
                 
                 self.curFrontWindow = appWin
                 appWin.app?.lastWindow = appWin
+                // Focus recency belongs to the window selected by this scan,
+                // including a newly focused window with no capture yet.
+                let focusedAt = Date().timeIntervalSince1970
+                appWin.avgTime = focusedAt
+                appWin.app?.avgTime = focusedAt
                 
                 appWin.isFullscreen = self.isFullscreen
                 
@@ -2146,6 +2257,15 @@ public class Display : Equatable {
                            let lf = screenRecorder.lastFrame,
                            lf.displayID == self.screen.displayID,
                            let pixelBuffer = lf.pixelBuffer {
+
+                            // Window discovery ticks faster than capture. Process each source
+                            // frame once per target instead of continuously superseding it.
+                            guard !previewCropInFlight,
+                                  lf.captureTime != lastCroppedPreviewFrameTime ||
+                                    appWin.id != lastCroppedPreviewWindowID else { return false }
+                            lastCroppedPreviewFrameTime = lf.captureTime
+                            lastCroppedPreviewWindowID = appWin.id
+                            previewCropInFlight = true
                             
                             let ps = screenRecorder.priorityScale
                             let scale : CGFloat = self.scale * ps // cause of window size change
@@ -2190,7 +2310,11 @@ public class Display : Equatable {
                             
                             imageProcessingQueue.async { [weak self, weak appWin] in
                                 autoreleasepool {
-                                    guard let self = self, let appWin = appWin else { return }
+                                    guard let self = self else { return }
+                                    defer {
+                                        DispatchQueue.main.async { self.previewCropInFlight = false }
+                                    }
+                                    guard let appWin = appWin else { return }
                                     
                                     let cii = CIImage(cvPixelBuffer: pixelBuffer)
                                     if !cii.extent.contains(NSPoint(x: rect.midX, y: rect.midY)) {
@@ -2201,7 +2325,9 @@ public class Display : Equatable {
                                     let cropped = cii.cropped(to: rect)
                                     
                                     DispatchQueue.main.async { [weak self, weak appWin] in
-                                        guard let self = self, let appWin = appWin else { return }
+                                        guard let self = self, let appWin = appWin,
+                                              self.manager.curDisplay === self,
+                                              self.curFrontWindow === appWin else { return }
                                         appWin.updateCii(cropped, rect: backingRect, priorityScale: ps, display: self)
                                     }
                                 }
@@ -2217,8 +2343,10 @@ public class Display : Equatable {
     }
     
     public func newSet(){
+        let generation = flowGate.presentationGeneration
         DispatchQueue.main.async {
-            let contentView = self.manager.contentView!
+            guard self.manager.curDisplay === self,
+                  self.flowGate.presentationGeneration == generation else { return }
             //let screenRecorder = contentView.store.screenRecorder
                         
             if !self.disable{
@@ -2243,6 +2371,57 @@ public class Display : Equatable {
                 self.absAccDelta = CGPoint.zero*/
             }
         }
+    }
+
+    /// A coordinate-confirmed display crossing must release the old surface
+    /// immediately. Do not restore its focus or stop the shared recorder here.
+    @MainActor func leaveForAnotherDisplay() {
+        flowGate.beginInteractionDismissal(now: ProcessInfo.processInfo.systemUptime)
+        // Crossing invalidates old callbacks but adds no edge-reentry delay.
+        flowGate.endInteractionDismissal()
+        shortcutOpenTimer?.invalidate()
+        shortcutOpenTimer = nil
+        shortcutAnimationInProgress = false
+        cancelRecorderPrewarm()
+        let closingSide = side
+        let wasVisible = !windowHidden
+        aboveBy = 0
+        aboveByPixels = 0
+        prevAboveByPixels = 0
+        forceAboveBy = 0
+        overrideAboveByDiff = 0
+        ignoreMousePositionForAboveBy = 0
+        side = -1
+        sideToClose = -1
+        activateNewApp = false
+        timerHideWindowStarted = false
+        onMoreAboveBy = false
+        checkedDragging = false
+        recordingPaused = false
+        toBeRecorded = false
+        pendingWindowAfterClose = nil
+        frontWindowIDBefore = nil
+        frontAppBefore = nil
+        frontSpaceBefore = -1
+        edgeActivationPressure = [CGFloat](repeating: 0, count: 4)
+        resetMouseTrackingForShortcutAnimation(mouse: NSEvent.mouseLocation)
+        outFullOverscreenMode()
+        Static.OnAppExtensionZone = false
+        Static.isDraggingInside = false
+        if wasVisible {
+            Static.AppExtensionWebView?.exiting()
+            if #available(macOS 12.3, *) {
+                if closingSide >= 0 {
+                    (manager.capturePreview as? CapturePreview)?.setCurrentAbove(side: closingSide, aboveBy: 0, display: self)
+                }
+                (manager.capturePreview as? CapturePreview)?.captureView.unset()
+            }
+            manager.window?.orderOut(nil)
+            manager.window?.alphaValue = 0
+            Static.mainWindowInUsing = false
+        }
+        windowHidden = true
+        updatePerformanceActivity()
     }
     
     ///
@@ -2445,8 +2624,10 @@ public class Display : Equatable {
     }
     
     func setRecorderProfile(lowProfile: Bool){
+        let generation = flowGate.presentationGeneration
         DispatchQueue.main.async{
-            guard self.manager.curDisplay === self else {
+            guard self.manager.curDisplay === self,
+                  self.flowGate.presentationGeneration == generation else {
                 return
             }
             
@@ -2474,7 +2655,10 @@ public class Display : Equatable {
                 let waitForIt : Int = 0
                 delay(ms: waitForIt){
                     let priority: TaskPriority = lowProfile ? .utility : .userInteractive
-                    Task(priority: priority){
+                    Task(priority: priority) { @MainActor in
+                        guard self.manager.curDisplay === self,
+                              self.flowGate.presentationGeneration == generation,
+                              self.shouldKeepScreenRecorderActive() else { return }
                         await screenRecorder.start(lowProfile: lowProfile, display: scDisplay)
                     }
                 }
@@ -2485,10 +2669,13 @@ public class Display : Equatable {
     }
     
     func recorderPause(){
+        let generation = flowGate.presentationGeneration
         if #available(macOS 12.3, *){
             DispatchQueue.main.async{
-                let screenRecorder = (self.manager.contentView?.store.screenRecorder as! ScreenRecorder)
-                Task{
+                Task { @MainActor in
+                    guard self.manager.curDisplay === self,
+                          self.flowGate.presentationGeneration == generation,
+                          let screenRecorder = self.manager.contentView?.store.screenRecorder as? ScreenRecorder else { return }
                     await screenRecorder.stop()
                 }
             }
@@ -2543,6 +2730,7 @@ public class Display : Equatable {
     }
 
     func stopScreenRecordingIfNeeded() {
+        let generation = flowGate.presentationGeneration
         cancelRecorderPrewarm()
         recordingPaused = false
         toBeRecorded = false
@@ -2553,6 +2741,8 @@ public class Display : Equatable {
         }
         
         Task { @MainActor in
+            guard self.manager.curDisplay === self,
+                  self.flowGate.presentationGeneration == generation else { return }
             (self.manager.capturePreview as? CapturePreview)?.captureView.stopRendering()
             
             guard let screenRecorder = self.manager.contentView?.store.screenRecorder as? ScreenRecorder else {
@@ -2678,20 +2868,17 @@ public class Display : Equatable {
             return
         }
         
-        guard let screenRecorder = self.manager.contentView?.store.screenRecorder as? ScreenRecorder else {
-            return
-        }
-        
         if !recorderPrewarmActive {
             recorderPrewarmActive = true
+            let generation = flowGate.presentationGeneration
             
             DispatchQueue.main.async {
+                guard self.manager.curDisplay === self,
+                      self.flowGate.presentationGeneration == generation else { return }
                 (self.manager.capturePreview as? CapturePreview)?.captureView.restartRendering()
             }
             
-            Task(priority: .userInteractive) {
-                await screenRecorder.start(lowProfile: false, display: self.scDisplay as? SCDisplay)
-            }
+            setRecorderProfile(lowProfile: false)
             
             updatePerformanceActivity()
         }
@@ -2713,9 +2900,6 @@ public class Display : Equatable {
         recorderPrewarmWorkItem = nil
         
         guard manager.curDisplay === self, !disable else {
-            DispatchQueue.main.async {
-                (self.manager.capturePreview as? CapturePreview)?.captureView.stopRendering()
-            }
             updatePerformanceActivity()
             return
         }
@@ -2728,15 +2912,12 @@ public class Display : Equatable {
             return
         }
         
-        guard let screenRecorder = self.manager.contentView?.store.screenRecorder as? ScreenRecorder else {
-            return
-        }
-        
-        Task(priority: .utility) {
-            await screenRecorder.start(lowProfile: true, display: self.scDisplay as? SCDisplay)
-        }
+        setRecorderProfile(lowProfile: true)
+        let generation = flowGate.presentationGeneration
         
         DispatchQueue.main.async {
+            guard self.manager.curDisplay === self,
+                  self.flowGate.presentationGeneration == generation else { return }
             (self.manager.capturePreview as? CapturePreview)?.captureView.stopRendering()
         }
         
@@ -2795,7 +2976,18 @@ public class Display : Equatable {
     }
     
     //MARK: Window show/hide
-    var frontWinBefore : AppWindows.Window?
+    @MainActor func selectPreviewWindow(_ window: AppWindows.Window) {
+        guard let owner = window.app, !owner.runningApp.isTerminated else { return }
+        owner.lastWindow = window
+        // The presenting display owns dismissal; the chosen window retains its
+        // source display/app identity. Reuse the bounded close/activation handoff.
+        focusAppExtension(app: owner) { [weak self, window] in
+            guard let self, window.app === owner else { return }
+            self.manager.focusPreviewTarget(window)
+        }
+    }
+
+    private var frontWindowIDBefore: Int?
     private var frontAppBefore : NSRunningApplication?
     private var frontSpaceBefore = -1
     fileprivate var pendingWindowAfterClose : AppWindows.Window?
@@ -2811,6 +3003,7 @@ public class Display : Equatable {
 
         pendingWindowAfterClose = nil
         curFrontWindow = nil
+        frontWindowIDBefore = nil
         frontAppBefore = nil
         frontSpaceBefore = -1
         let closingSide = sideToClose >= 0 ? sideToClose : side
@@ -2917,8 +3110,25 @@ public class Display : Equatable {
         completion()
     }
 
+    private func rememberFocusBeforeShowing() {
+        // The preview catalog can prefer a larger or titled sibling. Use the
+        // actual front-to-back WindowServer snapshot before taking focus.
+        let focus = manager.prepareFocusForPreview()
+        if let focus,
+           flowGate.allowsAutomaticFocusRestore(toSpaceID: currentSpaceId) {
+            frontWindowIDBefore = focus.windowID
+            frontAppBefore = focus.app
+            frontSpaceBefore = currentSpaceId
+        } else {
+            frontWindowIDBefore = nil
+            frontAppBefore = nil
+            frontSpaceBefore = -1
+        }
+    }
+
     private func restoreFocusAfterHiding() {
         defer {
+            frontWindowIDBefore = nil
             frontAppBefore = nil
             frontSpaceBefore = -1
         }
@@ -2937,31 +3147,33 @@ public class Display : Equatable {
 
         // On the first visit to a Desktop, currentSpaceId can still point at the Desktop we just
         // left. Never let a no-selection close turn that stale ID into an automatic Space change.
-        guard flowGate.allowsAutomaticFocusRestore(toSpaceID: currentSpaceId) else {
+        guard flowGate.allowsAutomaticFocusRestore(toSpaceID: currentSpaceId),
+              PreviewFlowGate.shouldRestorePreviousFocus(
+                openedSpaceID: frontSpaceBefore,
+                currentSpaceID: currentSpaceId),
+              let previousApp = frontAppBefore,
+              !previousApp.isTerminated else {
             return
         }
 
-        if let currentWindow = curFrontWindow,
-           currentWindow.appearsInThiSpace,
-           currentWindow.spaceId == currentSpaceId {
-            currentWindow.activate()
-            return
+        let generation = flowGate.presentationGeneration
+        let openingSpaceID = frontSpaceBefore
+        manager.restoreFocusAfterPreview(app: previousApp, windowID: frontWindowIDBefore) { [weak self] in
+            guard let self else { return false }
+            return self.manager.curDisplay === self && self.windowHidden &&
+                self.flowGate.presentationGeneration == generation &&
+                self.currentSpaceId == openingSpaceID &&
+                self.flowGate.allowsAutomaticFocusRestore(toSpaceID: openingSpaceID)
         }
-
-        if PreviewFlowGate.shouldRestorePreviousFocus(
-            openedSpaceID: frontSpaceBefore,
-            currentSpaceID: currentSpaceId),
-           let previousApp = frontAppBefore,
-           !previousApp.isTerminated {
-            previousApp.activate(options: [])
-        }
+        previousApp.activate(options: [])
     }
 
     func showWindow(){
         let presentationGeneration = flowGate.presentationGeneration
         DispatchQueue.main.async {
             guard self.flowGate.allowsScheduledPresentation(generation: presentationGeneration,
-                                                           now: ProcessInfo.processInfo.systemUptime) else { return }
+                                                           now: ProcessInfo.processInfo.systemUptime),
+                  self.manager.curDisplay === self else { return }
             if self.checkWindowStatus(reclose: false){
                 return
             }
@@ -2985,26 +3197,8 @@ public class Display : Equatable {
             
             let dontPrioritizeRunningApp = self.spaceIsChanging || self.curFrontWindow?.app?.runningApp != NSRunningApplication.current
 
-            let focusCandidate = NSWorkspace.shared.frontmostApplication.flatMap { app in
-                app != NSRunningApplication.current && !app.isTerminated ? app : nil
-            } ?? self.curFrontApp.flatMap { app in
-                app != NSRunningApplication.current && !app.isTerminated ? app : nil
-            }
-
-            // FrontmostApplication may still report an app whose only window is on the previous
-            // Desktop. Save it for restoration only when its tracked window is visibly current.
-            if let focusCandidate,
-               let currentWindow = self.curFrontWindow,
-               currentWindow.app?.runningApp == focusCandidate,
-               currentWindow.appearsInThiSpace,
-               currentWindow.spaceId == self.currentSpaceId,
-               self.flowGate.allowsAutomaticFocusRestore(toSpaceID: self.currentSpaceId) {
-                self.frontAppBefore = focusCandidate
-                self.frontSpaceBefore = self.currentSpaceId
-            }
-            else {
-                self.frontAppBefore = nil
-                self.frontSpaceBefore = -1
+            if self.windowHidden {
+                self.rememberFocusBeforeShowing()
             }
             
             //change dimension
@@ -3025,6 +3219,7 @@ public class Display : Equatable {
             // Delay because it use to slow down performances for some reason
             delay(ms: 25){
                 guard !self.windowHidden,
+                      self.manager.curDisplay === self,
                       self.flowGate.allowsScheduledPresentation(generation: presentationGeneration,
                                                                now: ProcessInfo.processInfo.systemUptime) else { return }
                 NSApplication.shared.activate(ignoringOtherApps: true)
@@ -3045,8 +3240,6 @@ public class Display : Equatable {
             self.manager.window?.level = .mainMenu + 1
             self.manager.window?.isOpaque = true
             self.manager.window?.alphaValue = 1
-            
-            self.frontWinBefore = dontPrioritizeRunningApp ? nil : self.curFrontWindow
             
             delay(ms: 250){
                 self.setRecorderProfile(lowProfile: false)
@@ -3082,6 +3275,7 @@ public class Display : Equatable {
             Timer.scheduledTimer(withTimeInterval: 0.1, repeats: false) { timer in
                 // Search may have entered fullscreen after this close was scheduled.
                 guard self.flowGate.presentationGeneration == presentationGeneration,
+                      self.manager.curDisplay === self,
                       !self.fullOverscreenMode, !self.windowHidden,
                       !self.shortcutAnimationInProgress else { return }
 
@@ -3123,7 +3317,9 @@ public class Display : Equatable {
                     // Forced operation for solving the "screen not updated issue"
                     // it starts automatically screen recording in low profile
                     delay(ms: 500){
-                        if allowRecorderRestart && self.aboveByPixels == 0 && self.side == -1 && self.shouldKeepScreenRecorderActive() {
+                        if allowRecorderRestart && self.manager.curDisplay === self &&
+                            self.flowGate.presentationGeneration == presentationGeneration &&
+                            self.aboveByPixels == 0 && self.side == -1 && self.shouldKeepScreenRecorderActive() {
                             if Static.ReloadScreenRecorderDisplay {
                                 self.manager.screenRecorderSelectDisplay()
                             }

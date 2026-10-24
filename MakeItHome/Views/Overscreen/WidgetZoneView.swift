@@ -923,7 +923,7 @@ private final class PersistentNativeWebViewHost: NSView, WKNavigationDelegate, W
         configuration.websiteDataStore = .default()
         configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
 
-        webView = WKWebView(frame: .zero, configuration: configuration)
+        webView = SleepAwareWebView(frame: .zero, configuration: configuration)
         super.init(frame: .zero)
 
         wantsLayer = true
@@ -1073,7 +1073,7 @@ private final class PersistentNativeWebViewHost: NSView, WKNavigationDelegate, W
     }
 }
 
-public class TopWKWV : WKWebView, NSDraggingSource{
+public class TopWKWV : SleepAwareWebView, NSDraggingSource{
 
     public override var acceptsFirstResponder: Bool { return true }
 

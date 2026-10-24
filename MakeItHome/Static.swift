@@ -165,6 +165,16 @@ public class Static {
     public static var EnableDockMouseSlowering = true
     public static var EnableRequiredAcceleration = true
     public static var DisableOnDockSide = false
+    static let focusedWindowPointerDidChange = Notification.Name("MakeItHome.focusedWindowPointerDidChange")
+
+    public static var MovePointerToFocusedWindow: Bool {
+        get { User.object(forKey: "MovePointerToFocusedWindow") as? Bool ?? true }
+        set {
+            User.set(newValue, forKey: "MovePointerToFocusedWindow")
+            NotificationCenter.default.post(name: focusedWindowPointerDidChange, object: nil)
+        }
+    }
+
     public static var EnableShortcuts : Bool {
         get {
             return User.object(forKey: "EnableShortcuts") as? Bool ?? false
@@ -176,7 +186,7 @@ public class Static {
         }
     }
     
-    public static let MenuBarPopupWidth : CGFloat = 300
+    public static let MenuBarPopupWidth : CGFloat = 350
     
     public static let BackgroundUpdate_SetWindowsProperties = false // this should be deprecated
     public static let BackgroundUpdateSeconds_SetWindowsProperties = 0.5 // seconds
@@ -204,6 +214,18 @@ public class Static {
     public static let LatencyCriticalActivityOptions: ProcessInfo.ActivityOptions = [.userInitiated, .latencyCritical]
     public static let CaptureVideoQueueQoS: DispatchQoS = .userInteractive
         
+    static let capturePriorityDidChange = Notification.Name("MakeItHome.capturePriorityDidChange")
+
+    public static var IsCaptureHigherPriority: Bool {
+        get {
+            User.object(forKey: "IsCaptureHigherPriority") as? Bool ?? false
+        }
+        set {
+            User.set(newValue, forKey: "IsCaptureHigherPriority")
+            NotificationCenter.default.post(name: capturePriorityDidChange, object: nil)
+        }
+    }
+    
     public static let ClickMaximumDifference : Double = 0.5
     
     public static var MaxApps = 5
@@ -447,7 +469,7 @@ public class Static {
     public static var isDraggingFromPoint : NSPoint?
     
     public static var screenWake = false
-    // A blocking extension-approval alert must never compete with the overscreen window.
+    // An extension-approval panel must never compete with the overscreen window.
     // Display.active uses this to keep every display dismissed for the alert's lifetime.
     public static var isExtensionApprovalPromptShowing = false
     

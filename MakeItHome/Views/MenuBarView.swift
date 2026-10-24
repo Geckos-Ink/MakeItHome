@@ -16,6 +16,8 @@ struct MenuBarView: View {
     @State private var requireAcceleration : Bool
     @State private var maxApps : Int
     @State private var disableDockSide : Bool
+    @State private var highPriorityScreenRecording : Bool
+    @State private var movePointerToFocusedWindow : Bool
     @State private var enableShortcuts : Bool
     @State private var launchAtStartup : Bool
     @State private var showInDock : Bool
@@ -174,6 +176,18 @@ struct MenuBarView: View {
                         
                         Static.User.set(Static.DisableOnDockSide, forKey: "DisableOnDockSide")
                     }
+
+                    Toggle("High priority screen capture", isOn: $highPriorityScreenRecording).onChange(of: highPriorityScreenRecording){ newVal in
+                        Static.IsCaptureHigherPriority = newVal
+                    }
+                    .toggleStyle(.checkbox)
+
+                    if false { // option currently disabled
+                        Toggle("Move pointer to focused window on another display", isOn: $movePointerToFocusedWindow).onChange(of: movePointerToFocusedWindow) { newVal in
+                            Static.MovePointerToFocusedWindow = newVal
+                        }
+                        .toggleStyle(.checkbox)
+                    }
                     
                     Toggle(" \(Image(systemName: "keyboard"))  Enable shortcuts", isOn: $enableShortcuts).onChange(of: enableShortcuts){ newVal in
                         Static.EnableShortcuts = newVal
@@ -204,7 +218,7 @@ struct MenuBarView: View {
                             print("default browser was successfully opened")
                         }
                     }, label: {
-                        Text("\(Image(systemName: "questionmark.circle.fill")) Help").frame(width: 150).padding(2)//.padding(.horizontal ,50)
+                        Text("\(Image(systemName: "questionmark.circle.fill")) Help").frame(width: 250).padding(2)//.padding(.horizontal ,50)
                     }).background(Color(red: 0.15, green: 0.75, blue: 0.3)).cornerRadius(5).buttonStyle(.bordered)
                         .padding(.top, 10)
                     
@@ -214,7 +228,7 @@ struct MenuBarView: View {
 
                     if showInstallWebExtension || true { // show always
                         Button(action: installSafariWebExtension, label: {
-                            Text("\(Image(systemName: "arrow.down.app.fill")) Install Safari extension").frame(width: 150).padding(2)
+                            Text("\(Image(systemName: "arrow.down.app.fill")) Install Safari extension").frame(width: 250).padding(2)
                         }).background(Color(red: 0.25, green: 0.4, blue: 0.95)).cornerRadius(5).buttonStyle(.bordered)
                     }
                     
@@ -224,7 +238,7 @@ struct MenuBarView: View {
                             NSWorkspace.shared.open(url)
                         }
                     }, label: {
-                        Text("\(Image(systemName: "scribble.variable")) Review!").frame(width: 150).padding(2)//.padding(.horizontal ,40)
+                        Text("\(Image(systemName: "scribble.variable")) Review!").frame(width: 250).padding(2)//.padding(.horizontal ,40)
                     }).background(Color(red: 1, green: 0.4, blue: 0.2)).cornerRadius(5).buttonStyle(.bordered)
                 
                     Button(action: {
@@ -237,33 +251,41 @@ struct MenuBarView: View {
                         sharingPicker.show(relativeTo: NSZeroRect, of: currentMenuBarNSView!, preferredEdge: .minY)
                         
                     }, label: {
-                        Text("\(Image(systemName: "square.and.arrow.up.circle.fill")) Share!").frame(width: 150).padding(2)//.padding(.horizontal ,40)
+                        Text("\(Image(systemName: "square.and.arrow.up.circle.fill")) Share!").frame(width: 250).padding(2)//.padding(.horizontal ,40)
                     }).background(Color(red: 0.2, green: 0.2, blue: 1)).cornerRadius(5).buttonStyle(.bordered)
-                }
-                
-                Button(action: {
-                    if let url = URL(string: "https://github.com/Geckos-Ink/MakeItHome"){
-                        if NSWorkspace.shared.open(url) {
-                            print("default browser was successfully opened")
-                            
-                        }
-                    }
-                }){
-                    VStack{
-                        Image("GeckosInkLogo").resizable().frame(width: 80, height: 80)
-                        Text("by Gecko's Ink")
-                        Text("\(Image(systemName: "lizard.fill")) \(appVersion)")
-                    }.onHover { inside in
-                        if inside {
-                            NSCursor.pointingHand.push()
-                        } else {
-                            NSCursor.pop()
-                        }
-                    }
                     
-                }.frame(width:100).buttonStyle(.borderless)
-                
-
+                    
+                    if false { // Logo disabled
+                        // Before was outside after, in VStack
+                        Button(action: {
+                            if let url = URL(string: "https://github.com/Geckos-Ink/MakeItHome"){
+                                if NSWorkspace.shared.open(url) {
+                                    print("default browser was successfully opened")
+                                    
+                                }
+                            }
+                        }){
+                            VStack{
+                                Image("GeckosInkLogo").resizable().frame(width: 80, height: 80)
+                                Text("by Gecko's Ink")
+                                Text("\(Image(systemName: "lizard.fill")) \(appVersion)")
+                            }.onHover { inside in
+                                if inside {
+                                    NSCursor.pointingHand.push()
+                                } else {
+                                    NSCursor.pop()
+                                }
+                            }
+                            
+                        }.frame(width:100).buttonStyle(.borderless)
+                    }
+                    else {
+                        VStack {
+                            Text("by Gecko's Ink")
+                            Text("\(Image(systemName: "lizard.fill")) \(appVersion)")
+                        }.padding(.top, 5)
+                    }
+                }
             }
             
             VStack{
@@ -419,6 +441,8 @@ struct MenuBarView: View {
         maxApps = Static.MaxApps
         requireAcceleration = Static.EnableRequiredAcceleration
         disableDockSide = Static.DisableOnDockSide
+        highPriorityScreenRecording = Static.IsCaptureHigherPriority
+        movePointerToFocusedWindow = Static.MovePointerToFocusedWindow
         enableShortcuts = Static.EnableShortcuts
         launchAtStartup = Static.OpenAtStartup
         showInDock = Static.ShowInDock

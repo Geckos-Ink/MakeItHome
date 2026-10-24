@@ -30,6 +30,15 @@ swiftc -O -parse-as-library "$CLIPBOARD_BOUNDS" "$CLIPBOARD_TESTS" -o "$TEST_DIR
 swiftc -O -parse-as-library "$PREVIEW_TITLE_TEXT" "$PREVIEW_TITLE_TESTS" -o "$TEST_DIR/preview-title-text-tests"
 "$TEST_DIR/preview-title-text-tests"
 
+swiftc -O -parse-as-library "$ROOT/MakeItHome/Helpers/FocusedWindowPointerPolicy.swift" \
+    "$ROOT/Tests/FocusedWindowPointerTests.swift" -o "$TEST_DIR/focused-window-pointer-tests"
+"$TEST_DIR/focused-window-pointer-tests"
+python3 "$ROOT/Tests/DisplaySwitchTests.py"
+python3 "$ROOT/Tests/ScreenRecorderFrameDeliveryTests.py"
+python3 "$ROOT/Tests/LiveWindowPreviewTests.py"
+python3 "$ROOT/Tests/AppPreviewFallbackTests.py"
+python3 "$ROOT/Tests/FocusedWindowPointerMonitorTests.py"
+
 swiftc -O -parse-as-library "$ROOT/MakeItHome/Helpers/ScreenRecordingPermissionGate.swift" \
     "$ROOT/Tests/ScreenRecordingPermissionGateTests.swift" -o "$TEST_DIR/screen-recording-permission-gate-tests"
 "$TEST_DIR/screen-recording-permission-gate-tests"
@@ -38,6 +47,7 @@ python3 "$ROOT/Tests/ScreenRecordingPermissionOnboardingTests.py"
 swiftc -O -parse-as-library "$ROOT/MakeItHome/Helpers/CaptureLifecycle.swift" \
     "$ROOT/Tests/CaptureLifecycleTests.swift" -o "$TEST_DIR/capture-lifecycle-tests"
 "$TEST_DIR/capture-lifecycle-tests"
+python3 "$ROOT/Tests/CapturePriorityTests.py"
 
 swiftc -O -D STRESS_TEST_APP -parse-as-library "$ROOT/MakeItHome/Helpers/StressProcessSample.swift" \
     "$ROOT/Tests/StressProcessSampleTests.swift" -o "$TEST_DIR/stress-process-sample-tests"
@@ -48,7 +58,9 @@ swiftc -O -parse-as-library "$ROOT/MakeItHome/Helpers/AppExtensionStatusMailbox.
 "$TEST_DIR/app-extension-status-mailbox-tests"
 
 python3 "$ROOT/Tests/ExtensionFocusHandoffTests.py"
+python3 "$ROOT/Tests/OverscreenFocusRestoreTests.py"
 python3 "$ROOT/Tests/AppExtensionDeliveryTests.py"
 python3 "$ROOT/Tests/AppExtensionContentLifecycleTests.py"
+python3 "$ROOT/Tests/AppExtensionApprovalTests.py"
 
 zsh "$ROOT/Tests/StressDiagnosticChecksTests.zsh"

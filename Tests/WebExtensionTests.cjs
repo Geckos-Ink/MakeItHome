@@ -10,7 +10,7 @@ const background = fs.readFileSync(path.join(resources, 'background.js'), 'utf8'
 const view = fs.readFileSync(path.join(resources, 'assets/extension.html'), 'utf8').match(/<script>([\s\S]*)<\/script>/)[1]
 let checks = 0
 let completed = false
-process.on('beforeExit', ()=>{
+if(require.main === module) process.on('beforeExit', ()=>{
     if(!completed){console.error('FAIL regression suite left an unresolved operation'); process.exitCode = 1}
 })
 function check(name, callback){
@@ -22,6 +22,7 @@ function harness(){
     const timers = new Map(), events = {}, writes = []
     function event(name){ return events[name] = {addListener(fn){this.listener = fn}} }
     let openTabs = [{id: 1, windowId: 10, index: 0, active: true, title: 'One', url: 'https://example.test'}]
+    let lastFocusedWindow = {id:10, focused:true}
     const ctx = vm.createContext({
         console: {log(){}, warn(){}, error(){}}, TextEncoder, AbortController, crypto: webcrypto,
         Date: class extends Date { static now(){return now} },
@@ -30,10 +31,11 @@ function harness(){
         chrome: {
             runtime: {getManifest: ()=>({name:'Test', version:'1'}), id:'fixture', getURL:x=>x, onMessage:event('message')},
             storage: {local: {get: async()=>({}), set: async value=>writes.push(value)}},
-            action: {onClicked:event('action')},
+            browserAction: {onClicked:event('action')},
             tabs: {
                 query(query, callback){
-                    const result = openTabs.filter(tab=>(!query.active || tab.active) && (!query.windowId || tab.windowId === query.windowId))
+                    const windowId = query.lastFocusedWindow || query.currentWindow ? lastFocusedWindow.id : query.windowId
+                    const result = openTabs.filter(tab=>(!query.active || tab.active) && (windowId === undefined || tab.windowId === windowId))
                     if(callback) callback(result)
                     return Promise.resolve(result)
                 },
@@ -41,12 +43,12 @@ function harness(){
                 onActivated:event('activate'), onUpdated:event('update'), onRemoved:event('remove'),
                 onCreated:event('create'), onMoved:event('move'), onAttached:event('attach'), onDetached:event('detach')
             },
-            windows: {getLastFocused:async()=>({id:10, focused:true}), update:async()=>{}}
+            windows: {getLastFocused:async()=>({...lastFocusedWindow}), update:async()=>{}}
         }
     })
     vm.runInContext(background, ctx)
     return {ctx, timers, events, writes, run:code=>vm.runInContext(code, ctx),
-        setTabs(value){openTabs = value}, advance(ms){now += ms},
+        setTabs(value){openTabs = value}, setFocusedWindow(value){lastFocusedWindow = value}, advance(ms){now += ms},
         fireTimer(delay){
             const match = [...timers.entries()].find(([,timer])=>timer.delay === delay)
             assert.ok(match, `expected a ${delay} ms timer`)
@@ -107,7 +109,22 @@ function viewHarness(){
 function seedPreviews(h, infos, position = null){
     h.run(`syncSafariTabs(${JSON.stringify(infos)}, ${JSON.stringify(position)}); applySafariScreenshots(${JSON.stringify(infos.map(tabInfo=>({blob:'YQ==',tabInfo})))})`)
 }
-;(async()=>{
+module.exports = {harness}
+if(require.main === module) (async()=>{
+    await check('macOS Safari declares a persistent background page and the matching toolbar entry point', ()=>{
+        const manifest = JSON.parse(fs.readFileSync(path.join(resources, 'manifest.json'), 'utf8'))
+        assert.equal(manifest.manifest_version,2,'Safari makes all Manifest V3 backgrounds nonpersistent')
+        assert.equal(manifest.background.persistent,true)
+        assert.deepEqual(manifest.background.scripts,['background.js'])
+        assert.equal(manifest.browser_action.default_popup,'popup.html')
+        assert.equal(manifest.action,undefined)
+        const h=harness(),calls=[]
+        assert.equal(h.ctx.chrome.action,undefined,'Safari MV2 need not expose the MV3 toolbar API')
+        h.ctx.calls=calls
+        h.run('checkConnect=()=>calls.push("connect");scheduleScreenshotLoop=delay=>calls.push(delay)')
+        h.events.action.listener()
+        assert.deepEqual(calls,['connect',120])
+    })
     await check('Safari manifest and both extension configurations match the containing app version/build', ()=>{
         const manifest = JSON.parse(fs.readFileSync(path.join(resources, 'manifest.json'), 'utf8'))
         const project = fs.readFileSync(path.join(__dirname, '../MakeItHome.xcodeproj/project.pbxproj'), 'utf8')
@@ -396,6 +413,86 @@ function seedPreviews(h, infos, position = null){
         vm.runInContext(focusBridge, bridge)
         vm.runInContext('focusOnMe("selection"); focusOnMe()', bridge)
         assert.equal(JSON.stringify(messages), '[{"type":"focusOnMe","value":"selection"},{"type":"focusOnMe","value":null}]')
+    })
+    await check('current tab status comes from Safari without changing activity or relying on cached order', async()=>{
+        const h = harness()
+        h.run('tabs={99:{id:99,windowId:99,active:true}};activeTabId=99;lastActiveAt=123')
+        h.setTabs([{id:1,windowId:10,active:true},{id:2,windowId:20,active:true}])
+        h.setFocusedWindow({id:20,focused:true})
+        assert.equal((await h.run('getCurrentTabInfo()')).id,2)
+        assert.equal(h.run('lastActiveAt'),123)
+        assert.equal(h.run('activeTabId'),99,'A status read has no bookkeeping side effects')
+        h.setTabs([])
+        assert.equal(await h.run('getCurrentTabInfo()'),null,'No tabs must resolve instead of leaving a pending Promise')
+        h.ctx.chrome.tabs.query=(query,callback)=>callback([{id:0,windowId:0,active:true}])
+        assert.equal((await h.run('getCurrentTabInfo()')).id,0,'Status reads also support callback-only Safari')
+        h.ctx.chrome.tabs.query=async()=>{throw Error('fixture read failure')}
+        await assert.rejects(h.run('getCurrentTabInfo()'),/fixture read failure/)
+    })
+    await check('opening a tab works from fresh Safari state in the same, another, or minimized window', async()=>{
+        for(const target of [
+            {windowId:10,active:false,state:'normal'},
+            {windowId:10,active:true,state:'normal'},
+            {windowId:20,active:false,state:'normal'},
+            {windowId:20,active:true,state:'normal'},
+            {windowId:20,active:true,state:'minimized'}
+        ]){
+            const h = harness(), calls = []
+            const tab = {id:773,windowId:target.windowId,active:target.active}
+            h.setTabs([tab,{id:2,windowId:10,active:target.windowId !== 10 || !target.active}])
+            h.run('tabs={773:{id:773,windowId:99,active:true}};activeTabId=773')
+            h.ctx.chrome.windows.get=async id=>({id,state:target.state})
+            h.ctx.chrome.windows.update=async(id,options)=>{
+                calls.push(['window',id,options.state])
+                h.setFocusedWindow({id,focused:true})
+            }
+            h.ctx.chrome.tabs.update=async(id,options)=>{
+                calls.push(['tab',id]); tab.active=options.active
+                h.setTabs([tab])
+            }
+            const request=h.run('requestTabFocus(773)')
+            await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(150)
+            await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(400)
+            assert.equal(await request,'selected',JSON.stringify(target))
+            assert.deepEqual(calls.map(call=>call.slice(0,2)),[
+                ['window',target.windowId],['tab',773],['window',target.windowId],['tab',773]
+            ])
+            assert.equal(calls[0][2],target.state === 'minimized' ? 'normal' : undefined)
+        }
+    })
+    await check('selection verifies the queried active tab rather than trusting an active flag or update result', async()=>{
+        const h=harness()
+        h.setTabs([{id:2,windowId:10,active:true}])
+        h.ctx.chrome.tabs.get=async()=>({id:1,windowId:10,active:true})
+        const request=h.run('requestTabFocus(1)')
+        await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(150)
+        await new Promise(resolve=>setImmediate(resolve)); h.fireTimer(400)
+        assert.equal(await request,'failed')
+        assert.equal(h.run('lastTabFocusFailureStage'),'verifyActiveTab')
+    })
+    await check('background-window activation and metadata cannot replace the queried current tab', async()=>{
+        const h=harness()
+        h.run('activeTabId=1')
+        h.setTabs([{id:1,windowId:10,active:true},{id:2,windowId:20,active:true}])
+        h.events.activate.listener({tabId:2,windowId:20})
+        h.run('captureRequested=false')
+        h.events.update.listener(2,{url:'https://example.test/changed'},{id:2,windowId:20,active:true})
+        assert.equal(h.run('activeTabId'),1)
+        assert.equal(h.run('captureRequested'),false)
+        assert.equal((await h.run('getCurrentTabInfo()')).id,1)
+    })
+    await check('capture reads the selected tab in the last focused window without manufacturing activity', async()=>{
+        const h=harness(),captures=[]
+        h.setTabs([{id:1,windowId:10,active:true},{id:2,windowId:20,active:true}])
+        h.setFocusedWindow({id:20,focused:true})
+        h.run(`appIsShowing=true;activeTabId=1;lastActiveAt=123;resizeAndCompressImage=async()=>({});blobToBase64=async()=> 'YQ=='`)
+        h.ctx.fetch=async()=>({blob:async()=>({})})
+        h.ctx.chrome.tabs.captureVisibleTab=async windowId=>{captures.push(windowId);return 'data:image/jpeg;base64,YQ=='}
+        assert.equal((await h.run('captureScreenshotAndSend()')).changed,true)
+        assert.deepEqual(captures,[20])
+        assert.equal(h.run('activeTabId'),2)
+        assert.equal(h.run('lastActiveAt'),123)
+        assert.equal(h.run('tabs[2].lastStrBlob'),'YQ==')
     })
     await check('browser awaits Safari window focus before selecting the tab', async()=>{
         const h = harness(), calls = []
@@ -720,9 +817,10 @@ function seedPreviews(h, infos, position = null){
         for(const id of [0,800003]){
             const h=harness(),calls=[],windowId=id===0?0:99
             let tab={id,windowId,active:false},focused={id:windowId,focused:false}
+            h.setTabs([tab]); h.setFocusedWindow(focused)
             h.ctx.chrome.tabs.get=(target,callback)=>{assert.equal(target,id);h.ctx.setTimeout(()=>callback({...tab}),40)}
             h.ctx.chrome.windows.update=(target,options,callback)=>{
-                calls.push(['window',target]);h.ctx.setTimeout(()=>{focused={id:target,focused:true};callback(focused)},80)
+                calls.push(['window',target]);h.ctx.setTimeout(()=>{focused={id:target,focused:true};h.setFocusedWindow(focused);callback(focused)},80)
             }
             h.ctx.chrome.tabs.update=(target,options,callback)=>{
                 calls.push(['tab',target]);h.ctx.setTimeout(()=>{tab.active=true;callback({...tab})},50)
@@ -755,8 +853,9 @@ function seedPreviews(h, infos, position = null){
     await check('a tab moved during activation focuses its new window and uses the same exact tab ID', async()=>{
         const h=harness(),windows=[],selections=[]
         let tab={id:773,windowId:10,active:false},focused=10
+        h.setTabs([tab])
         h.ctx.chrome.tabs.get=async id=>{assert.equal(id,773);return {...tab}}
-        h.ctx.chrome.windows.update=async id=>{windows.push(id);focused=id;if(id===10)tab.windowId=20}
+        h.ctx.chrome.windows.update=async id=>{windows.push(id);focused=id;h.setFocusedWindow({id,focused:true});if(id===10)tab.windowId=20}
         h.ctx.chrome.tabs.update=async id=>{selections.push(id);tab.active=true}
         h.ctx.chrome.windows.getLastFocused=async()=>({id:focused,focused:true})
         const request=h.run('requestTabFocus(773)')
@@ -916,13 +1015,14 @@ function seedPreviews(h, infos, position = null){
     })
     await check('stalled capture releases the refresh loop and ignores its late callback', async()=>{
         const h=harness()
+        h.timers.clear() // Isolate the operation deadline from background startup timers.
         let completeCapture
         h.run(`toConnect=false;contentNeedsLoad=false;appIsShowing=true;tabsListDirty=false;lastOpenTabsSyncAt=Date.now();resizeAndCompressImage=async()=>({});blobToBase64=async()=> 'YQ=='`)
         h.ctx.fetch=async()=>({blob:async()=>({})})
         h.ctx.chrome.tabs.captureVisibleTab=(id,options,callback)=>{completeCapture=callback}
         const loop=h.run('runScreenshotLoop()')
         await new Promise(resolve=>setImmediate(resolve))
-        h.fireTimer(3500)
+        h.fireTimer(h.run('screenshotPolicy.captureTimeoutMs'))
         await loop
         assert.equal(h.run('screenshotInProgress'),false)
         completeCapture('data:image/jpeg;base64,YQ==')
@@ -974,12 +1074,13 @@ function seedPreviews(h, infos, position = null){
     })
     await check('an expired inventory query cannot remove cached previews when its callback eventually arrives', async()=>{
         const h=harness()
+        h.timers.clear()
         let completeQuery
         h.run(`tabs[1]={id:1,lastStrBlob:'YQ=='};sendJsMessage=async()=>true`)
         h.ctx.chrome.tabs.query=(query,callback)=>{completeQuery=callback}
         const sync=h.run('checkOpenTabs()')
         const rejected=assert.rejects(sync,/timed out/)
-        await new Promise(resolve=>setImmediate(resolve));h.fireTimer(3500);await rejected
+        await new Promise(resolve=>setImmediate(resolve));h.fireTimer(h.run('screenshotPolicy.captureTimeoutMs'));await rejected
         completeQuery([])
         await new Promise(resolve=>setImmediate(resolve))
         assert.equal(h.run('tabs[1].lastStrBlob'),'YQ==')
