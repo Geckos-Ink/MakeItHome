@@ -19,6 +19,11 @@ public class SwifterPlaceholder : NSWindow {
         // give it utility/titled chrome: a focused zero-sized titled window is rendered by AppKit
         // as the small square users could see after changing Spaces.
         super.init(contentRect: NSRect(x: 100, y: 100, width: 1, height: 1), styleMask: [.borderless], backing: .buffered, defer: true)
+
+        // Display's collections own these windows through ARC. AppKit's default
+        // release-on-close would also consume that ownership when duplicates close,
+        // leaving dangling references when the timer's autorelease pool drains.
+        isReleasedWhenClosed = false
         
         /// Allow the panel to be on top of other windows
         level = .normal
