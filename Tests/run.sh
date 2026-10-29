@@ -34,6 +34,7 @@ swiftc -O -parse-as-library "$ROOT/MakeItHome/Helpers/FocusedWindowPointerPolicy
     "$ROOT/Tests/FocusedWindowPointerTests.swift" -o "$TEST_DIR/focused-window-pointer-tests"
 "$TEST_DIR/focused-window-pointer-tests"
 python3 "$ROOT/Tests/DisplaySwitchTests.py"
+python3 "$ROOT/Tests/AppIconOwnershipTests.py"
 python3 "$ROOT/Tests/ScreenRecorderFrameDeliveryTests.py"
 python3 "$ROOT/Tests/LiveWindowPreviewTests.py"
 python3 "$ROOT/Tests/AppPreviewFallbackTests.py"

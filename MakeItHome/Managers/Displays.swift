@@ -935,10 +935,16 @@ public class Display : Equatable {
             
             print("App bundleId", self.bundleId)
             
-            Static.highPriorityQueue.async {
-                if runningApp.icon != nil {
-                    let avg = averageColor(of: runningApp.icon!)
-                    self.iconAvgColor = avg ?? self.iconAvgColor
+            if let icon = runningApp.icon {
+                Static.highPriorityQueue.async { [weak self] in
+                    let avg = averageColor(of: icon)
+                    // SceneKit reads this reference on main. Replacing an ARC-owned
+                    // color on the worker races those reads and their retains/releases.
+                    DispatchQueue.main.async { [weak self] in
+                        if let avg {
+                            self?.iconAvgColor = avg
+                        }
+                    }
                 }
             }
         }
