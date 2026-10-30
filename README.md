@@ -14,7 +14,7 @@ MakeItHome extends your Mac beyond the physical edges of the screen. Push the cu
 
 <img src="https://github.com/Geckos-Ink/MakeItHome/blob/main/md-assets/guide_0.gif?raw=true">
 
-**Current release: 2.1.0** — [available on the Mac App Store](https://apps.apple.com/it/app/makeithome-screen-extender/id6444596296?l=en-GB&mt=12)
+**Current version: 2.1.3** — [Get MakeItHome on the Mac App Store](https://apps.apple.com/it/app/makeithome-screen-extender/id6444596296?l=en-GB&mt=12)
 
 ## Features
 
@@ -34,13 +34,14 @@ MakeItHome extends your Mac beyond the physical edges of the screen. Push the cu
 
 MakeItHome uses the Screen Recording permission to create its magic: the live previews of your windows. The captured images are processed entirely on your Mac — they are never saved to disk nor sent over the internet.
 
-## What's new in 2.1.0
+## What's new in 2.1.3
 
-- Choose which built-in widgets — Clipboard, Notes, Tasks, and Calendar — appear in the Widgets Zone.
-- Use the redesigned Calendar with a clearer month layout, expandable week rows, a dedicated daily agenda, and improved handling of all-day and timed events.
-- Rely on a more robust Clipboard history with richer text support, smoother updates, bounded image previews, and a notch-aware layout.
-- Enjoy smoother live previews and improved responsiveness while MakeItHome is active or idle.
-- Benefit from refined widget visuals, better overlay contrast, and general stability and memory-use improvements.
+- Improved blurred backgrounds that follow each display's wallpaper, with still-image, solid-color, and video-file fallbacks.
+- On macOS 14 and later, sample the rendered wallpaper using existing Screen Recording access, excluding app windows and desktop icons.
+- Preserve the previous background during temporary loading failures and retry automatically.
+- Fixed a window-lifetime issue during duplicate Space-placeholder cleanup and a threading race in app-icon color updates.
+
+See [the release notes](WhatsNew.md) for changes in 2.1.0 through 2.1.3 and the earlier 2.0.9 notes.
 
 ## How to
 
@@ -86,20 +87,20 @@ The App Extension API is implemented in the current release, and a demo app is a
 
 ## Project status
 
-Version 2.1.0 builds on the "MakeItHome 2.0" foundation with a focus on configurable widgets, a more capable Calendar and Clipboard, and runtime stability:
+Version 2.1.3 builds on the "MakeItHome 2.0" foundation with configurable widgets, a more capable Calendar and Clipboard, Safari tab previews, improved multi-display focus handling, and wallpaper and runtime stability fixes:
 
 - ✅ Widgets Zone in the top bar
 - ✅ Configurable built-in widgets
 - ✅ Calendar month view and daily agenda
 - ✅ Rich-text and image-aware Clipboard history
 - ✅ App Extension API, with a working demo app
-- ✅ Browser extension groundwork (MakeItHome Web)
+- ✅ Safari tab previews with titles, icons, and retained carousel position (MakeItHome Web)
 - ✅ Interface localization
 - 🚧 Widgets from external apps
 - 🚧 App Extension tutorial and API documentation
 - 🚧 Browser extensions for more browsers
 
-Development branches are named after the version in progress. The 2.1.0 source is available on the [`2.1.0` branch](https://github.com/Geckos-Ink/MakeItHome/tree/2.1.0) and under the [`release-2.1.0` tag](https://github.com/Geckos-Ink/MakeItHome/releases/tag/release-2.1.0).
+Development branches are named after the version in progress. The current source is on the [`2.1.3` branch](https://github.com/Geckos-Ink/MakeItHome/tree/2.1.3). The earlier 2.1.0 source remains available under the [`release-2.1.0` tag](https://github.com/Geckos-Ink/MakeItHome/releases/tag/release-2.1.0).
 
 **Looking for testers!** New features have a talent for shipping with a bug nobody noticed. If you'd like to help make releases more stable, get in touch (contacts below).
 
@@ -108,8 +109,8 @@ Development branches are named after the version in progress. The 2.1.0 source i
 - MakeItHome requires macOS 12.3 or later and Xcode with the macOS SDK.
 - Open `MakeItHome.xcodeproj` in Xcode and run the `MakeItHome` scheme.
 - The app requires the **Screen Recording** and **Accessibility** permissions to function.
-- In the 2.1.1 development tree, the first Screen Recording approval starts a one-time cursor-control request after a one-second delay, by posting a mouse move at the cursor's current position. Pending onboarding survives a required app relaunch; actual macOS permission dialogs still require manual validation.
-- The 2.1.2 development tree adds “Move pointer to focused window on another display” in menu-bar settings (enabled by default). When focus changes to a window on a different display from the pointer, the pointer moves once to that window's center, or its visible portion if the center is offscreen. This includes switching windows within one app. It requires Accessibility permission and skips dragging or an open overscreen; enabling it or waking the Mac does not move the pointer to an already-focused window. Geometry and focus-history regression tests are automated; actual multi-display and permission behavior still need manual validation.
+- Since 2.1.1, the first Screen Recording approval starts a one-time cursor-control request after a one-second delay, by posting a mouse move at the cursor's current position. Pending onboarding survives a required app relaunch; actual macOS permission dialogs still require manual validation.
+- Since 2.1.2, menu-bar settings include “Move pointer to focused window on another display” (enabled by default). When focus changes to a window on a different display from the pointer, the pointer moves once to that window's center, or its visible portion if the center is offscreen. This includes switching windows within one app. It requires Accessibility permission and skips dragging or an open overscreen; enabling it or waking the Mac does not move the pointer to an already-focused window. Geometry and focus-history regression tests are automated; actual multi-display and permission behavior still need manual validation.
 - Display crossings now choose the active screen from pointer coordinates and reuse known ScreenCaptureKit displays, avoiding a full content query on each crossing. Rapid switches share cold queries, and delayed work from the previous display cannot hide or pause the new surface. Window/space-holder coordinates stay anchored to the primary display. Regression coverage is in [`Tests/DisplaySwitchTests.py`](Tests/DisplaySwitchTests.py); actual multi-monitor latency, hot-plug and mixed-scale layouts still need manual validation.
 - The overscreen shares tracked apps across displays, with one entry per running process. Each card shows the app's last focused window on the current screen, including the window already in use. Apps without local window history remain available from other displays, and explicit edge pins retain precedence. A card uses only its selected window's own capture, showing the app icon until a preview is available. Clicking a card closes the overscreen and selects that exact window; pointer movement to another display uses fresh window coordinates when enabled. Closing without a selection restores the opening window on the same stable Space. If app activation picks a sibling, Accessibility repairs the original window's focus without moving the pointer; already-correct focus needs no raise. Ambiguous native matches are skipped. Regression checks are in [`Tests/AppPreviewFallbackTests.py`](Tests/AppPreviewFallbackTests.py), [`Tests/OverscreenFocusRestoreTests.py`](Tests/OverscreenFocusRestoreTests.py) and [`Tests/FocusedWindowPointerMonitorTests.py`](Tests/FocusedWindowPointerMonitorTests.py); real multi-display/TCC/Space behavior remains a manual check.
 - Safari reconnects retain the approved secret after token/connection errors and ignore retired responses after a newer connection succeeds. Credential storage is awaited briefly before connection completion. Native authentication and approval remain required; test with `node Tests/WebExtensionConnectionTests.cjs`. Installed Safari restart/sleep and permission behavior still need manual verification.
@@ -118,11 +119,11 @@ Development branches are named after the version in progress. The 2.1.0 source i
 - The top Widgets Zone web assets live in `MakeItHome/Resources/assets/`; its Swift controller is `MakeItHome/Views/Overscreen/WidgetZoneView.swift`.
 - The browser extension sources are in `MakeItHome/MakeItHome Web Extension/`. Run `node Tests/WebExtensionTests.cjs` for its dependency-free browser/view regressions (Node.js required).
 
-The 2.1.2 development tree requests a persistent background page for MakeItHome Web on macOS Safari, using Manifest V2 and `background.persistent: true`. This keeps the background page loaded during normal browser idle while Safari is running and the extension is enabled. Existing capture pacing, bounded in-memory previews and connection backoff still apply. Safari quit/relaunch and Mac sleep/resume can interrupt execution; startup reconnects using stored credentials. This manifest is macOS-only: Safari Manifest V3 and iOS require nonpersistent backgrounds. See [Apple’s background-page guidance](https://developer.apple.com/documentation/safariservices/optimizing-your-web-extension-for-safari). Signed Safari idle retention must be checked with Web Inspector closed, along with browser relaunch and sleep/resume recovery.
+Since 2.1.2, MakeItHome requests a persistent background page for MakeItHome Web on macOS Safari, using Manifest V2 and `background.persistent: true`. This keeps the background page loaded during normal browser idle while Safari is running and the extension is enabled. Existing capture pacing, bounded in-memory previews and connection backoff still apply. Safari quit/relaunch and Mac sleep/resume can interrupt execution; startup reconnects using stored credentials. This manifest is macOS-only: Safari Manifest V3 and iOS require nonpersistent backgrounds. See [Apple’s background-page guidance](https://developer.apple.com/documentation/safariservices/optimizing-your-web-extension-for-safari). Signed Safari idle retention must be checked with Web Inspector closed, along with browser relaunch and sleep/resume recovery.
 
-The 2.1.2 development tree also keeps extension approval responsive while the user decides: connection requests return `connectionDeferred` immediately, Allow/Deny closes the panel through explicit button actions in the normal app event loop, approval expires after 30 seconds, and the local server caps concurrent connections and expires abandoned clients. Regression checks are in `Tests/AppExtensionApprovalTests.py` (add `--native` for brief automatic AppKit dialogs) and `Tests/AppExtensionApprovalTransportTests.py` (local listener required).
+Since 2.1.2, MakeItHome also keeps extension approval responsive while the user decides: connection requests return `connectionDeferred` immediately, Allow/Deny closes the panel through explicit button actions in the normal app event loop, approval expires after 30 seconds, and the local server caps concurrent connections and expires abandoned clients. Regression checks are in `Tests/AppExtensionApprovalTests.py` (add `--native` for brief automatic AppKit dialogs) and `Tests/AppExtensionApprovalTransportTests.py` (local listener required).
 
-The current development tree also improves MakeItHome Web for Safari: the carousel shows only tabs with cached previews, their titles, and tab icons (with a globe fallback when unavailable), cached previews arrive in batches, and reopening returns to the last tab-carousel position. Titles and icons keep a dedicated row beneath each preview. The app target is currently 2.1.2/build 167 while the embedded extension builds 2.1.2/build 165 and its manifest version remains 2.1.1; this version-alignment gap still fails its regression check. Safari receives the bundled extension when the signed normal app is updated and run. Cached images and tab order survive duplicate content delivery and source updates, and incoming cards wait for navigation to settle without resetting the current scroll position. A cold view restores missing cached previews and the last saved position. Clicking a tab closes the overscreen in 120 ms (immediately with Reduce Motion), cancels stale reopen callbacks, and hands focus to Safari. After its browser window receives focus, selection waits 150 ms and retries once after 400 ms to handle activation races. Click requests stay queued until Safari acknowledges processing, with a 15-second expiry to prevent stale selections after sleep. Lost polling responses redeliver pending requests; lost acknowledgements are resent without repeating the selection. Selection resolves the exact tab ID again after activation, follows tabs moved to another window, and waits for callback or Promise API completion. Safari verifies the actual active tab and focused window, and stalled API/HTTP responses have bounded deadlines. Capture runs less frequently at smaller sizes, preview caches are bounded, and webpages no longer send a one-second heartbeat. Previews remain in memory; only the selected non-private tab ID and fallback position are saved locally. Safari can capture the visible tab, so a tab without a cached preview stays out of the carousel until visited and captured. Signed Safari installation, website permissions, multi-window behavior, and CPU/memory measurements still require manual validation.
+The current development tree also improves MakeItHome Web for Safari: the carousel shows only tabs with cached previews, their titles, and tab icons (with a globe fallback when unavailable), cached previews arrive in batches, and reopening returns to the last tab-carousel position. Titles and icons keep a dedicated row beneath each preview. The app target is currently 2.1.3/build 168 while the embedded extension builds 2.1.3/build 166 and its manifest version remains 2.1.2; this version-alignment gap still fails its regression check. Safari receives the bundled extension when the signed normal app is updated and run. Cached images and tab order survive duplicate content delivery and source updates, and incoming cards wait for navigation to settle without resetting the current scroll position. A cold view restores missing cached previews and the last saved position. Clicking a tab closes the overscreen in 120 ms (immediately with Reduce Motion), cancels stale reopen callbacks, and hands focus to Safari. After its browser window receives focus, selection waits 150 ms and retries once after 400 ms to handle activation races. Click requests stay queued until Safari acknowledges processing, with a 15-second expiry to prevent stale selections after sleep. Lost polling responses redeliver pending requests; lost acknowledgements are resent without repeating the selection. Selection resolves the exact tab ID again after activation, follows tabs moved to another window, and waits for callback or Promise API completion. Safari verifies the actual active tab and focused window, and stalled API/HTTP responses have bounded deadlines. Capture runs less frequently at smaller sizes, preview caches are bounded, and webpages no longer send a one-second heartbeat. Previews remain in memory; only the selected non-private tab ID and fallback position are saved locally. Safari can capture the visible tab, so a tab without a cached preview stays out of the carousel until visited and captured. Signed Safari installation, website permissions, multi-window behavior, and CPU/memory measurements still require manual validation.
 
 Heads-up on GitHub's security advisories: they are all related to the Angular project used for the Notes and Tasks widgets and are inconsistent issues in practice. The Swift code advisories are the ones worth checking.
 

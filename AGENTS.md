@@ -1,6 +1,6 @@
 # MakeItHome — AI Agent Reference
 
-This is the fast-access operational reference for agents working on MakeItHome, a shipped macOS SwiftUI application that exposes an “overscreen” beyond display edges for live app previews, app switching, widgets, and trusted third-party extension content. The current development tree builds app marketing version 2.1.3/build 168 on branch `2.1.3`; the embedded Safari extension builds 2.1.3/build 166 and its manifest version remains 2.1.2 (see Known Gaps). Version 2.1.0 is tagged as `release-2.1.0` and documented in the public README as the current Mac App Store release. The isolated Test target still uses marketing version 2.1.0. Do not confuse the embedded Safari Web Extension, the optional third-party App Extension protocol, or the Angular source templates under `Assets/templates/` with the native application itself.
+This is the fast-access operational reference for agents working on MakeItHome, a shipped macOS SwiftUI application that exposes an “overscreen” beyond display edges for live app previews, app switching, widgets, and trusted third-party extension content. The current development tree builds app marketing version 2.1.3/build 168 on branch `2.1.3`; the embedded Safari extension builds 2.1.3/build 166 and its manifest version remains 2.1.2 (see Known Gaps). Version 2.1.0 remains tagged as `release-2.1.0`; the public README identifies 2.1.3 as the current version and links to the 2.1.3 source branch. The isolated Test target still uses marketing version 2.1.0. Do not confuse the embedded Safari Web Extension, the optional third-party App Extension protocol, or the Angular source templates under `Assets/templates/` with the native application itself.
 
 ## Read This First
 
@@ -10,7 +10,7 @@ Use this source-of-truth order:
 2. [`Tests/PreviewFlowGateTests.swift`](Tests/PreviewFlowGateTests.swift), executable protocol behavior, target definitions, and build settings in [`MakeItHome.xcodeproj/project.pbxproj`](MakeItHome.xcodeproj/project.pbxproj) — asserted behavior and build truth.
 3. Current Swift, JavaScript, HTML, property lists, entitlements, and packaged-resource configuration — implemented behavior.
 4. [`README.md`](README.md) — public product behavior, current release statement, and roadmap summary; verify its branch pointers against repository refs.
-5. [`WhatsNew.md`](WhatsNew.md) — public 2.0.9 release notes, not a development changelog.
+5. [`WhatsNew.md`](WhatsNew.md) — public release notes for 2.0.9 and 2.1.0 through 2.1.3, newest first, not a development changelog.
 6. [`MakeItHome/StressTests/README.md`](MakeItHome/StressTests/README.md) — verified manual stress-harness invocations.
 7. [`MakeItHome/Notes/`](MakeItHome/Notes/) and Git history — historical context only; notes may contain experiments or superseded code.
 
@@ -840,7 +840,6 @@ There is no root lint/format task, CI workflow, automated UI suite, checked-in a
 
 ### Known Gaps
 
-- [`WhatsNew.md`](WhatsNew.md) remains the standalone 2.0.9 release-note file; the 2.1.0 summary currently lives in [`README.md`](README.md) and the Mac App Store listing.
 - The app target also copies its processed [`Info.plist`](MakeItHome/Info.plist) in the Resources phase, producing an Xcode build warning.
 - App Extension tutorial/API documentation remains incomplete.
 - Focused suites cover preview gating, capture lifecycle, extension approval/connect/auth/status transport and isolated WebKit rendering. Durable trust persistence, installed Safari capture/activation, clipboard fidelity, calendar and end-to-end UI paths remain gaps.
